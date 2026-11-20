@@ -4,16 +4,19 @@ What we are building: [product-brief.md](product-brief.md). Shared modules:
 [platform-modules.md](platform-modules.md). The design is in [architecture.md](architecture.md);
 its first table says which sections each step reads.
 
-**Current position:** Step 1.4 done (2026-11-21): the `ac_repair` template in `src/seed-templates.ts` now has 12 catalogue
-items, 7 intake questions, a 7-item checklist and fuller terms; checked by `quick` only (types, lint, routes test; the
-template is Zod-parsed when the seed loads it), no browser check. Phase 1 is complete except the browser checks owed by 1.2
-and 1.3; next: phase-1 end (`validate full`, tag `phase-1-done`), then step 2.1 (HIGH). Step 1.3 before it: public page `/b/[slug]` (scope `public-slug`, no cookies) built by
+**Current position:** Phase 1 done (2026-11-21, tag `phase-1-done`): `validate full` green (157 tests), and the browser
+checks owed by 1.2 and 1.3 are done by `pnpm run check:browser` (`scripts/browser-check.ts`, Playwright): sign-in code
+from Mailpit → signup → onboarding → edit a price → public page in a cookieless context, screenshots at 375 px and
+1280 px into `.validation/browser/`; no overflow, no console errors, no cookie on `/b/[slug]`, unknown slug 404.
+Found: the owner's home page has no link to their public page (fold into 2.3, the owner inbox). Next: step 2.1 (HIGH).
+Step 1.4 before it: the `ac_repair` template in `src/seed-templates.ts` has 12 catalogue items, 7 intake questions, a
+7-item checklist and fuller terms. Step 1.3 before it: public page `/b/[slug]` (scope `public-slug`, no cookies) built by
 `src/public-page.ts` from the slug, the business row, its profile and its active price-list items; unknown slug or a
 business not yet onboarded gives 404. It shows Call and WhatsApp; the "request a job" button and the reviews slot wait for
 steps 2.2 and the reviews step, as their routes do not exist yet. Checked by 3 database tests and `quick` (typecheck,
-routes test); **not checked in a browser at 375 px / desktop** (steps 1.2 and 1.3 both still owe that). Step 1.2 before it:
+routes test). Step 1.2 before it:
 `kk.business_profile`, `kk.catalogue_item`, owner pages `/onboarding` and `/catalogue`. Phase 0 is closed (tag
-`phase-0-done`). Next: step 1.4 (fill out the `ac_repair` template). Design change (2026-11-21, docs only): a request has
+`phase-0-done`). Design change (2026-11-21, docs only): a request has
 tasks (`job_task`), and charges sit at task or request level; see architecture.md 5.3 and 6.
 
 Steps marked with a `[module]` build or extend a shared module in `packages/`. Those steps
@@ -82,7 +85,7 @@ also write the module's README, and their tests run through the module's public 
 | --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | -------- | ------ | ----------------------------------------------------------------------------- |
 | 2.1 | `[module]` `tokens` links; customer magic links: scoped to one job, expiring, revocable                                                                     | M    | HIGH     | todo   | A token cannot read another job; expired token is refused; mutant proves both |
 | 2.2 | `[module]` `storage`; request intake: public form (pick one or more catalogue tasks), trade questions, photo upload (type and size checks, private storage) | M    | HIGH     | todo   | Upload rejects wrong types and sizes; photos are not publicly listable        |
-| 2.3 | Owner inbox: new requests, log a phone enquiry                                                                                                              | S    | STANDARD | todo   | Both request sources appear in one list                                       |
+| 2.3 | Owner inbox: new requests, log a phone enquiry; a link to the owner's public page from home                                                                 | S    | STANDARD | todo   | Both request sources appear in one list                                       |
 | 2.4 | `[module]` `money`; `job_task`; quotes: lines from the catalogue at task or request level, versions, expiry                                                 | M    | HIGH     | todo   | Totals and tax are tested; old versions are immutable                         |
 | 2.5 | Negotiation: customer accepts, rejects or counters; owner revises; accepted quote locked                                                                    | M    | HIGH     | todo   | State machine test covers every transition; a locked quote cannot be edited   |
 

@@ -12,6 +12,7 @@
     "typecheck": "turbo run typecheck && tsc -p scripts",
     "test": "turbo run test",
     "check:boundaries": "node scripts/check-boundaries.mjs",
+    "check:browser": "node scripts/browser-check.ts",
     "up": "node scripts/stack.ts up",
     "down": "node scripts/stack.ts down",
     "up:fresh": "node scripts/stack.ts fresh"
@@ -20,9 +21,10 @@
     "@biomejs/biome": "^2.6.8",
     "@bodhchakra/db": "workspace:*",
     "@bodhchakra/log": "workspace:*",
+    "@types/node": "^26.6.6",
     "kaamkoti": "workspace:*",
     "platform": "workspace:*",
-    "@types/node": "^26.6.6",
+    "playwright": "^1.65.1",
     "turbo": "^2.11.13",
     "typescript": "^7.0.2",
     "vitest": "^5.1.1"
