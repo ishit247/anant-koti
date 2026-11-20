@@ -29,8 +29,8 @@ Decided (do not re-ask):
   status is computed at request time. A lapsed business shows a contact card, never
   a broken page. Customers never need an account: they act through scoped magic links.
 - CI runs locally (`pnpm run validate quick|standard|full`) until launch; images are
-  built here and shipped to our server over SSH. No hosted CI and no new remote
-  without asking.
+  built here and shipped to our server over SSH. No hosted CI. The one remote is
+  `origin`, a private GitHub repo (2026-11-21); no other remote without asking.
 
 Ask the user only about the open decisions in the Decisions table of
 docs/development-plan.md, and only when you reach the phase that needs the answer.
@@ -169,8 +169,8 @@ Match the verification to what the change can break.
 
 ## Development stays on this machine
 
-During development, the repository and this machine are the only places project
-information lives. (Running the finished product on the user's own server is the
+During development, project information lives on this machine and in the private
+GitHub repo `origin` (https://github.com/ishit247/anant-koti), and nowhere else. (Running the finished product on the user's own server is the
 product's runtime and is a separate matter — hosting is decided: own VPS, see the
 Decisions table in docs/development-plan.md.)
 
@@ -184,7 +184,10 @@ Decisions table in docs/development-plan.md.)
   query string, an issue tracker, a paste service, or a third-party API. Reading
   public documentation is fine; sending project content out with the request is
   not.
-- No new git remotes; `git push` goes where the repository already points.
+- `git push` goes only to `origin`; no new git remotes. Secrets are never committed:
+  `.env` stays ignored and real values live only on the server.
+- No GitHub features that run or publish project content (Actions, Pages, Codespaces)
+  without asking.
 - **Ask before:** any step that moves project information off this machine, even
   a convenience. Say what would be sent and to whom.
 
@@ -220,7 +223,7 @@ Policies for keeping sessions cheap. If one is wrong for the task, say so and as
   `docs/development-plan.md` updated in the same commit. At each phase end: `validate full`, check "Done when",
   tag `phase-<N>-done`, report in a few lines, continue. Stop and ask only when: a test still fails after 3 fix
   attempts, a step needs a Decisions-table answer, an "Ask before" rule applies, or a security guard cannot be
-  proven by a test. No push; there is no remote.
+  proven by a test. Push to `origin` only when the user asks.
 - **Fresh sessions save tokens (asked 2026-11-07).** After each step's commit, if this session has already done
   two or more substantial steps, or long design discussion preceded the work, stop and tell the user plainly:
   "Step X is committed; start a new session to continue from step Y." Mark that in the "Current position" line.
