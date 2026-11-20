@@ -4,13 +4,14 @@ What we are building: [product-brief.md](product-brief.md). Shared modules:
 [platform-modules.md](platform-modules.md). The design is in [architecture.md](architecture.md);
 its first table says which sections each step reads.
 
-**Current position:** Step 1.2 done (2026-11-21): migration 0003 adds `kk.business_profile` and `kk.catalogue_item`
-(RLS, no delete); `src/business-profile.ts` copies a template into a business (`startFromTemplate`) and saves the price
-list (`saveCatalogue`); owner pages `/onboarding` and `/catalogue`; home sends an owner with no profile to onboarding.
-Checked by `validate standard` and an RLS mutant; **not yet checked in a browser at 375 px / desktop.** Step 1.1 before
-it: `kk.trade_template` and `trade-template.ts` (one `ac_repair` v1 seed template, which step 1.4 fills out). Phase 0 is
-closed (tag `phase-0-done`). Next: step 1.3 (public business page). Design change (2026-11-21, docs only): a request has tasks (`job_task`),
-and charges sit at task or request level; see architecture.md 5.3 and 6. Two steps done earlier: start a new session.
+**Current position:** Step 1.3 done (2026-11-21): public page `/b/[slug]` (scope `public-slug`, no cookies) built by
+`src/public-page.ts` from the slug, the business row, its profile and its active price-list items; unknown slug or a
+business not yet onboarded gives 404. It shows Call and WhatsApp; the "request a job" button and the reviews slot wait for
+steps 2.2 and the reviews step, as their routes do not exist yet. Checked by 3 database tests and `quick` (typecheck,
+routes test); **not checked in a browser at 375 px / desktop** (steps 1.2 and 1.3 both still owe that). Step 1.2 before it:
+`kk.business_profile`, `kk.catalogue_item`, owner pages `/onboarding` and `/catalogue`. Phase 0 is closed (tag
+`phase-0-done`). Next: step 1.4 (fill out the `ac_repair` template). Design change (2026-11-21, docs only): a request has
+tasks (`job_task`), and charges sit at task or request level; see architecture.md 5.3 and 6.
 
 Steps marked with a `[module]` build or extend a shared module in `packages/`. Those steps
 also write the module's README, and their tests run through the module's public API.
@@ -69,18 +70,18 @@ also write the module's README, and their tests run through the module's public 
 | --- | ------------------------------------------------------------------------------------------------ | ---- | -------- | ------ | -------------------------------------------------------------- |
 | 1.1 | Trade template model: catalogue, units, intake questions, checklist, terms (typed JSON with Zod) | M    | STANDARD | done   | One template seeds; invalid template JSON is rejected at write |
 | 1.2 | Onboarding: pick a trade, edit catalogue and prices                                              | M    | STANDARD | done   | New owner reaches a usable catalogue in under 5 minutes        |
-| 1.3 | Public business page (profile, services, reviews slot, "request a job")                          | M    | STANDARD | todo   | Page renders without cookies on the public domain              |
+| 1.3 | Public business page (profile, services, reviews slot, "request a job")                          | M    | STANDARD | done   | Page renders without cookies on the public domain              |
 | 1.4 | First ready-made template (AC/appliance repair)                                                  | S    | STANDARD | todo   | Template is selectable at onboarding                           |
 
 ## Phase 2: Requests and quotes
 
-| Id  | Step                                                                                                                     | Size | Model    | Status | Done when                                                                     |
-| --- | ------------------------------------------------------------------------------------------------------------------------ | ---- | -------- | ------ | ----------------------------------------------------------------------------- |
-| 2.1 | `[module]` `tokens` links; customer magic links: scoped to one job, expiring, revocable                                  | M    | HIGH     | todo   | A token cannot read another job; expired token is refused; mutant proves both |
+| Id  | Step                                                                                                                                                        | Size | Model    | Status | Done when                                                                     |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | -------- | ------ | ----------------------------------------------------------------------------- |
+| 2.1 | `[module]` `tokens` links; customer magic links: scoped to one job, expiring, revocable                                                                     | M    | HIGH     | todo   | A token cannot read another job; expired token is refused; mutant proves both |
 | 2.2 | `[module]` `storage`; request intake: public form (pick one or more catalogue tasks), trade questions, photo upload (type and size checks, private storage) | M    | HIGH     | todo   | Upload rejects wrong types and sizes; photos are not publicly listable        |
-| 2.3 | Owner inbox: new requests, log a phone enquiry                                                                           | S    | STANDARD | todo   | Both request sources appear in one list                                       |
-| 2.4 | `[module]` `money`; `job_task`; quotes: lines from the catalogue at task or request level, versions, expiry                                              | M    | HIGH     | todo   | Totals and tax are tested; old versions are immutable                         |
-| 2.5 | Negotiation: customer accepts, rejects or counters; owner revises; accepted quote locked                                 | M    | HIGH     | todo   | State machine test covers every transition; a locked quote cannot be edited   |
+| 2.3 | Owner inbox: new requests, log a phone enquiry                                                                                                              | S    | STANDARD | todo   | Both request sources appear in one list                                       |
+| 2.4 | `[module]` `money`; `job_task`; quotes: lines from the catalogue at task or request level, versions, expiry                                                 | M    | HIGH     | todo   | Totals and tax are tested; old versions are immutable                         |
+| 2.5 | Negotiation: customer accepts, rejects or counters; owner revises; accepted quote locked                                                                    | M    | HIGH     | todo   | State machine test covers every transition; a locked quote cannot be edited   |
 
 ## Phase 3: Scheduling and notifications
 
@@ -92,12 +93,12 @@ also write the module's README, and their tests run through the module's public 
 
 ## Phase 4: Jobs, invoices and payments
 
-| Id  | Step                                                                                                      | Size | Model    | Status | Done when                                                                         |
-| --- | --------------------------------------------------------------------------------------------------------- | ---- | -------- | ------ | --------------------------------------------------------------------------------- |
-| 4.1 | `[module]` `payments` (D5): payment link, verified webhook, idempotent recording, deposits, part-payments | L    | HIGH     | todo   | Replayed and forged webhooks are rejected; paid state comes only from the webhook |
-| 4.2 | Job execution (basic): check-in, checklist, photos, mark complete                                         | M    | STANDARD | todo   | Technician completes a job at 375 px                                              |
+| Id  | Step                                                                                                                       | Size | Model    | Status | Done when                                                                         |
+| --- | -------------------------------------------------------------------------------------------------------------------------- | ---- | -------- | ------ | --------------------------------------------------------------------------------- |
+| 4.1 | `[module]` `payments` (D5): payment link, verified webhook, idempotent recording, deposits, part-payments                  | L    | HIGH     | todo   | Replayed and forged webhooks are rejected; paid state comes only from the webhook |
+| 4.2 | Job execution (basic): check-in, checklist, photos, mark complete                                                          | M    | STANDARD | todo   | Technician completes a job at 375 px                                              |
 | 4.3 | Change orders: extra work found on site or tasks the customer adds after acceptance; business prices, customer re-approves | M    | HIGH     | todo   | Invoice includes only approved change orders                                      |
-| 4.4 | Invoice from accepted quote plus change orders; cash payment recorded by the owner                        | M    | HIGH     | todo   | Invoice totals match the tests; a paid invoice is immutable                       |
+| 4.4 | Invoice from accepted quote plus change orders; cash payment recorded by the owner                                         | M    | HIGH     | todo   | Invoice totals match the tests; a paid invoice is immutable                       |
 
 ## Phase 5: Subscription for tradespeople
 

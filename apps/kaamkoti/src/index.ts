@@ -19,6 +19,7 @@ export {
   saveCatalogue,
   startFromTemplate,
 } from "./business-profile.ts";
+export { type PublicPage, publicPage } from "./public-page.ts";
 export {
   latestTradeTemplate,
   listTradeTemplates,

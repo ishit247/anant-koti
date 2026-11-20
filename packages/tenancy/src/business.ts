@@ -48,12 +48,14 @@ export interface BusinessProfile {
   readonly name: string;
   readonly slug: string;
   readonly city: string;
+  /** E.164. */
+  readonly phone: string;
 }
 
 /** The business `withTenant` opened: RLS leaves exactly one row. */
 export async function currentBusiness(client: DbClient): Promise<BusinessProfile> {
   const { rows } = await client.query<BusinessProfile>(
-    "select name, slug, city from tenancy.business",
+    "select name, slug, city, phone from tenancy.business",
   );
   if (rows.length !== 1) throw new Error("currentBusiness: not inside withTenant of one business");
   return rows[0] as BusinessProfile;
