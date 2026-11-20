@@ -6,11 +6,13 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { migrate } from "@bodhchakra/db";
 import { createLogger } from "@bodhchakra/log";
-import { migrations, RUNTIME_ROLE, seed } from "kaamkoti";
+import * as kaamkoti from "kaamkoti";
+import * as platform from "platform";
 
 const COMPOSE_FILE = fileURLToPath(new URL("../infra/compose.dev.yml", import.meta.url));
 /** DEV credentials from infra/postgres/init, public in the repository. */
 const KAAMKOTI_OWNER_URL = "postgres://kaamkoti_owner:kaamkoti_owner@127.0.0.1:45442/kaamkoti";
+const PLATFORM_OWNER_URL = "postgres://platform_owner:platform_owner@127.0.0.1:45442/platform";
 
 const log = createLogger({ service: "stack" });
 const compose = (...args: string[]) =>
@@ -20,8 +22,13 @@ const compose = (...args: string[]) =>
 
 async function up() {
   compose("up", "-d", "--wait");
-  const applied = await migrate(KAAMKOTI_OWNER_URL, migrations, { runtimeRole: RUNTIME_ROLE });
-  log.info("migrations applied", { database: "kaamkoti", count: applied.length, applied });
+  for (const [database, url, app] of [
+    ["kaamkoti", KAAMKOTI_OWNER_URL, kaamkoti],
+    ["platform", PLATFORM_OWNER_URL, platform],
+  ] as const) {
+    const applied = await migrate(url, app.migrations, { runtimeRole: app.RUNTIME_ROLE });
+    log.info("migrations applied", { database, count: applied.length, applied });
+  }
 }
 
 const command = process.argv[2];
@@ -36,7 +43,7 @@ switch (command) {
   case "fresh":
     compose("down", "-v");
     await up();
-    await seed(KAAMKOTI_OWNER_URL, log);
+    await kaamkoti.seed(KAAMKOTI_OWNER_URL, log);
     log.info("seeded", { database: "kaamkoti", businesses: 2, members: 4, customers: 6 });
     break;
   default:

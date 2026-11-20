@@ -13,7 +13,9 @@
   "dependencies": {
     "@bodhchakra/audit": "workspace:*",
     "@bodhchakra/db": "workspace:*",
+    "@bodhchakra/jobs": "workspace:*",
     "@bodhchakra/log": "workspace:*",
+    "@bodhchakra/outbox": "workspace:*",
     "@bodhchakra/tenancy": "workspace:*"
   }
 }

@@ -1,0 +1,23 @@
+{
+  "name": "@bodhchakra/outbox",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bodhchakra": {
+    "layer": "core"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@bodhchakra/db": "workspace:*",
+    "@bodhchakra/jobs": "workspace:*",
+    "@bodhchakra/log": "workspace:*",
+    "@bodhchakra/tokens": "workspace:*",
+    "zod": "^4.6.7"
+  }
+}

@@ -20,7 +20,7 @@ function* files(dir) {
 }
 
 const members = new Map(); // package name -> { dir, layer }
-for (const group of ["packages", "apps"]) {
+for (const group of ["packages", "apps", "services"]) {
   const base = join(root, group);
   if (!existsSync(base)) continue;
   for (const name of readdirSync(base)) {
@@ -28,7 +28,8 @@ for (const group of ["packages", "apps"]) {
     const manifest = join(dir, "package.json");
     if (!existsSync(manifest)) continue;
     const pkg = JSON.parse(readFileSync(manifest, "utf8"));
-    const layer = group === "apps" ? "app" : pkg.bodhchakra?.layer;
+    // Apps and services (the platform container) sit on top: they may import any module.
+    const layer = group === "packages" ? pkg.bodhchakra?.layer : "app";
     members.set(pkg.name, { dir, layer, name: pkg.name });
   }
 }

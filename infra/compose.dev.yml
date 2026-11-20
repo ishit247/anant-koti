@@ -24,6 +24,30 @@ services:
       interval: 1s
       timeout: 3s
       retries: 60
+    networks: [default, internal]
+
+  # The shared platform container (docs/architecture.md 1). Behind a profile so `pnpm run up` stays fast; build
+  # and start it with `docker compose -f infra/compose.dev.yml --profile platform up -d --build platform`.
+  # In production it has no host port and apps reach it on the internal network as http://platform:3000. Here
+  # the port is bound to loopback only, so an app running on this machine can call it.
+  platform:
+    profiles: [platform]
+    build:
+      context: ..
+      dockerfile: services/platform/Dockerfile
+    environment:
+      DATABASE_URL: postgres://platform_app:platform_app@postgres:5432/platform
+      SERVICE_CLIENTS: '{"kaamkoti":"dev-only-kaamkoti-service-secret-public-in-repo"}'
+    ports:
+      - "127.0.0.1:45443:3000"
+    networks: [internal]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+networks:
+  # Joins apps, workers and platform. Postgres is on it too, under its service name.
+  internal:
 
 volumes:
   pgdata:

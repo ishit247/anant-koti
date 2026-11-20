@@ -9,3 +9,11 @@ create role kaamkoti_app login nobypassrls password 'kaamkoti_app';
 
 revoke connect on database kaamkoti from public;
 grant connect on database kaamkoti to kaamkoti_app;
+
+-- The shared platform container's database (identity, billing, notify), on the same pattern.
+create role platform_owner login password 'platform_owner';
+create database platform owner platform_owner;
+create role platform_app login nobypassrls password 'platform_app';
+
+revoke connect on database platform from public;
+grant connect on database platform to platform_app;

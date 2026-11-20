@@ -4,10 +4,12 @@ What we are building: [product-brief.md](product-brief.md). Shared modules:
 [platform-modules.md](platform-modules.md). The design is in [architecture.md](architecture.md);
 its first table says which sections each step reads.
 
-**Current position:** Step 0.4 done (2026-11-21): `tenancy` (business, member, RLS, `resolve_slug`,
-`memberships_of`, `requireRole`, `defineRoute` + `scanRoutes` kit) and `audit` (append-only, savepoint writes).
-`migrate` now takes `{ runtimeRole }`, which migrations read as `db.runtime_role`. Seed: 2 businesses, 4 members,
-6 customers. Tests need the stack up (`pnpm run up`). Next: step 0.5 (HIGH; needs Opus or Fable).
+**Current position:** Step 0.5 done (2026-11-21): `tokens` (`signRequest`/`verifyRequest`), `jobs` (pg-boss 12,
+schema installed by a generated migration, runtime role runs no DDL), `outbox` (`enqueue`, `startDelivery`,
+`receive`), and `services/platform` (`/health`, signed `/internal/v1/<topic>`, its own `platform` database,
+Dockerfile, compose profile `platform`). D13 answered. Tests need the stack up (`pnpm run up`); the dev volume
+must be recreated once (`pnpm run up:fresh`) for the platform roles. Next: step 0.6 (HIGH, size L: split it
+before starting). Start a new session for it.
 
 Steps marked with a `[module]` build or extend a shared module in `packages/`. Those steps
 also write the module's README, and their tests run through the module's public API.
@@ -45,7 +47,7 @@ also write the module's README, and their tests run through the module's public 
 | D11 | Do existing apps (Profile, School, POS) adopt the modules? | Yes, one module at a time when work touches that area; no big-bang migration; moving into the monorepo is decided per app           | 0.1       | Gradual; the platform owns `@bodhchakra/*` (2026-11-21)                                                 |
 | D12 | One login and one bill across products                     | Not now                                                                                                                             | 0.1       | **Yes, plan for it** (2026-11-21): identity and billing account in `platform`, from phase 0 and phase 5 |
 | D14 | Single sign-on mechanism across product domains            | Platform is an OpenID Connect provider (authorization code + PKCE); each app keeps its own session cookie on its own domain         | 0.1       | As recommended (2026-11-21)                                                                             |
-| D13 | Auth core                                                  | Wrap `better-auth` (already used in Profile) inside `@bodhchakra/auth`, so apps never import it directly; less security code to own | 0.5       |                                                                                                         |
+| D13 | Auth core                                                  | Wrap `better-auth` (already used in Profile) inside `@bodhchakra/auth`, so apps never import it directly; less security code to own | 0.5       | As recommended (2026-11-21)                                                                             |
 
 ## Phase 0: Foundations
 
@@ -55,7 +57,7 @@ also write the module's README, and their tests run through the module's public 
 | 0.2 | Monorepo skeleton (pnpm, turbo); lint, typecheck, `pnpm run validate quick\|standard\|full`; dependency-direction and public-API-only checks; `[module]` `config`, `log`                                                 | M    | STANDARD | done   | `validate quick` green; an import of a module's internals fails the check                               |
 | 0.3 | Compose on the shared [../infra](../../infra) pattern; `[module]` `db` (migration runner applying module migrations then app migrations, tenant context, test helper); `up:fresh`; seeds with 2 businesses and customers | M    | HIGH     | done   | `up:fresh` rebuilds everything in under a minute                                                        |
 | 0.4 | `[module]` `tenancy` and `audit`: business, members, roles (owner, technician), RLS, route scope declarations and a test that enumerates them                                                                            | M    | HIGH     | done   | Cross-business read and write tests fail closed; mutant proves the test                                 |
-| 0.5 | `platform` container skeleton: service tokens, internal network, health check, its own database; `[module]` `tokens` (request signing), `jobs` (pg-boss) and `outbox` for app ↔ platform calls                           | M    | HIGH     | todo   | App call with a bad or expired service token is refused; outbox delivers once after `platform` restarts |
+| 0.5 | `platform` container skeleton: service tokens, internal network, health check, its own database; `[module]` `tokens` (request signing), `jobs` (pg-boss) and `outbox` for app ↔ platform calls                           | M    | HIGH     | done   | App call with a bad or expired service token is refused; outbox delivers once after `platform` restarts |
 | 0.6 | Identity in `platform` (D13, D14): email/phone OTP, single sign-on provider; `[module]` `auth` client in the app (login redirect, local session, links identity to local member)                                         | L    | HIGH     | todo   | One identity signs in to Kaam Koti; a forged or replayed sign-in response is refused; mutant proves it  |
 | 0.7 | App flow: owner signup creates the business; invite a technician (`tenancy.invite` on `tokens`); the app's route test runs `scanRoutes` over its routes                                                                  | S    | STANDARD | todo   | Signup, login and invite work in the browser at 375 px and desktop width                                |
 

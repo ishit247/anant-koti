@@ -21,6 +21,7 @@
     "@bodhchakra/db": "workspace:*",
     "@bodhchakra/log": "workspace:*",
     "kaamkoti": "workspace:*",
+    "platform": "workspace:*",
     "@types/node": "^26.6.6",
     "turbo": "^2.11.13",
     "typescript": "^7.0.2",

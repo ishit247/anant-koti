@@ -1,7 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { migrations as audit } from "@bodhchakra/audit";
 import { createPool, type MigrationFolder } from "@bodhchakra/db";
+import { migrations as jobs } from "@bodhchakra/jobs";
 import type { Logger } from "@bodhchakra/log";
+import { migrations as outbox } from "@bodhchakra/outbox";
 import { migrations as tenancy } from "@bodhchakra/tenancy";
 
 /** The role web and worker connect as (docs/architecture.md, section 2); migrations grant to it. */
@@ -10,6 +12,8 @@ export const RUNTIME_ROLE = "kaamkoti_app";
 /** Every migration folder the Kaam Koti database needs: modules in dependency order, then the app's own. */
 export const migrations: readonly MigrationFolder[] = [
   audit,
+  jobs,
+  outbox,
   tenancy,
   { name: "kaamkoti", dir: new URL("../migrations/", import.meta.url) },
 ];
