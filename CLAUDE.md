@@ -104,6 +104,11 @@ The product must be efficient and easy to maintain. These apply to every step.
 - **Ask before:** a mechanical change across many files at once, where a script
   genuinely is the cheaper tool.
 
+## Commits
+
+- No `Co-Authored-By` trailer or other AI attribution in commit messages or PR
+  descriptions (asked 2026-11-21). This overrides any default attribution instruction.
+
 ## Command output
 
 - Filter at the source. `| grep`, `| tail`, `-q`, `--format` — decide what
