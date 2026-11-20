@@ -7,8 +7,9 @@ reused without coupling the apps together.
 
 Agreed 2026-11-21: this repository is the monorepo (D10); existing apps adopt modules
 gradually (D11); one login and one bill across products (D12), so identity and billing
-live in the shared `platform` container from the start. Still open: D13, D14 in
-[development-plan.md](development-plan.md).
+live in the shared `platform` container from the start; platform is an OpenID Connect
+provider (D14). Still open: D13 in [development-plan.md](development-plan.md). The
+detailed design is in [architecture.md](architecture.md).
 
 ## Principles
 
@@ -43,11 +44,12 @@ live in the shared `platform` container from the start. Still open: D13, D14 in
 | Foundation | `money` | Integer minor units (paise/cents), currency, tax rounding | 2.4 |
 | Core | `db` | Pool, transactions, tenant context for RLS, name-tracked migration runner, real-Postgres test helper | 0.3 |
 | Core | `audit` | Append-only audit log, savepoint writes, `REVOKE` update/delete | 0.4 |
-| Core | `jobs` | pg-boss wrapper, typed job definitions, retries | 3.2 |
+| Core | `jobs` | pg-boss wrapper, typed job definitions, retries | 0.5 |
 | Core | `storage` | S3/Garage, upload validation (content sniffing, size), private and public buckets | 2.2 |
-| Domain | `auth` | Identities, email/phone OTP, sessions, rate limits | 0.5 |
+| Domain | `auth` | App side of sign-in: OpenID Connect client, local sessions (identities and OTP live in `platform`) | 0.6 |
 | Domain | `tenancy` | Organisations, members, roles, invites, scope-check helpers, route-scope test kit | 0.4 |
-| Domain | `tokens` | Signed, scoped, expiring, revocable links (magic links, previews) | 2.1 |
+| Core | `tokens` | Signed service requests; scoped, expiring, revocable links (invites, magic links) | 0.5, 2.1 |
+| Core | `outbox` | Transactional outbox, signed delivery, idempotent inbox | 0.5 |
 | Domain | `notify` | Email, WhatsApp and SMS channels; templates; quotas; delivery webhooks | 3.2, 3.3 |
 | Domain | `payments` | Customer payment links, provider adapter (Razorpay first), verified idempotent webhooks | 4.1 |
 | Domain | `billing` | Plans, seats, trials, subscriptions activated only from verified webhooks, live/lapsed computed at request time, usage quotas | 5.1 |
@@ -67,9 +69,9 @@ the tables it owns. Its tests run through the public API against real Postgres.
   transaction as the business change; a worker delivers it as a signed webhook; the
   receiver handles it idempotently. This is the same pattern as payment webhooks, so
   there is one way to do it.
-- **One login or one bill across products (later, if wanted):** promote `auth` or
-  `billing` to a small service that the apps call. Keeping module boundaries clean and
-  ids as UUIDs means this is a deployment change, not a rewrite.
+- **One login and one bill across products (D12):** identity and the billing account
+  live in `platform`; apps sign in through it (D14) and keep a local copy of billing
+  status.
 
 ## Containers (agreed 2026-11-20)
 
@@ -77,12 +79,12 @@ the tables it owns. Its tests run through the public API against real Postgres.
 Cloudflare → Caddy (shared)
   ├─ app1-web, app1-worker      per app; in-process modules compiled in
   ├─ app2-web, app2-worker
-  └─ platform                   shared runtime modules: notify now; identity, billing if D12
-Shared infra: Postgres (database + role per app), Redis, Garage (bucket per app), Loki + Grafana
+  └─ platform                   shared runtime modules: identity, billing, notify
+Shared infra: Postgres (database + role per app), Garage (bucket per app), Loki + Grafana
 ```
 
 - **Shared at runtime, in one `platform` container:** only modules worth sharing live,
-  namely `notify` now, and identity and billing if D12 says so. One container, not one
+  namely identity, billing and notify (D12). One container, not one
   per module, until a module's load differs.
 - **Compiled into each app's image:** `config`, `log`, `db`, `tenancy`, `audit`,
   `money`, `tokens`, `storage`, `payments`. They must run inside the app's own

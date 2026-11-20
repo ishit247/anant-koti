@@ -1,11 +1,11 @@
 # Trade Services: development plan and tracker
 
 What we are building: [product-brief.md](product-brief.md). Shared modules:
-[platform-modules.md](platform-modules.md). The design will be in `docs/architecture.md`,
-written in step 0.1.
+[platform-modules.md](platform-modules.md). The design is in [architecture.md](architecture.md);
+its first table says which sections each step reads.
 
-**Current position:** Planning done (2026-11-21); D1–D4 and D10–D12 answered. Next:
-step 0.1 (HIGH), in a fresh session.
+**Current position:** Step 0.1 done (2026-11-21): [architecture.md](architecture.md); D14
+answered. Next: step 0.2 (STANDARD).
 
 Steps marked with a `[module]` build or extend a shared module in `packages/`. Those steps
 also write the module's README, and their tests run through the module's public API.
@@ -42,18 +42,18 @@ also write the module's README, and their tests run through the module's public 
 | D10 | Repo layout | New `e:\bodhchakra\platform` monorepo | 0.2 | This folder (`e:\bodhchakra\idea`) is the monorepo; rename it later (2026-11-21) |
 | D11 | Do existing apps (Profile, School, POS) adopt the modules? | Yes, one module at a time when work touches that area; no big-bang migration; moving into the monorepo is decided per app | 0.1 | Gradual; the platform owns `@bodhchakra/*` (2026-11-21) |
 | D12 | One login and one bill across products | Not now | 0.1 | **Yes, plan for it** (2026-11-21): identity and billing account in `platform`, from phase 0 and phase 5 |
-| D14 | Single sign-on mechanism across product domains | Platform is an OpenID Connect provider (authorization code + PKCE); each app keeps its own session cookie on its own domain | 0.1 | |
+| D14 | Single sign-on mechanism across product domains | Platform is an OpenID Connect provider (authorization code + PKCE); each app keeps its own session cookie on its own domain | 0.1 | As recommended (2026-11-21) |
 | D13 | Auth core | Wrap `better-auth` (already used in Profile) inside `@bodhchakra/auth`, so apps never import it directly; less security code to own | 0.5 | |
 
 ## Phase 0: Foundations
 
 | Id | Step | Size | Model | Status | Done when |
 |---|---|---|---|---|---|
-| 0.1 | Architecture doc: domains, data model, tenancy, job state machine, money model, notification model, each module's API and tables | M | HIGH | todo | `docs/architecture.md` covers every MVP stage and module boundary; D1, D10–D12 answered |
+| 0.1 | Architecture doc: domains, data model, tenancy, job state machine, money model, notification model, each module's API and tables | M | HIGH | done | `docs/architecture.md` covers every MVP stage and module boundary; D1, D10–D12 answered |
 | 0.2 | Monorepo skeleton (pnpm, turbo); lint, typecheck, `pnpm run validate quick\|standard\|full`; dependency-direction and public-API-only checks; `[module]` `config`, `log` | M | STANDARD | todo | `validate quick` green; an import of a module's internals fails the check |
 | 0.3 | Compose on the shared [../infra](../../infra) pattern; `[module]` `db` (migration runner applying module migrations then app migrations, tenant context, test helper); `up:fresh`; seeds with 2 businesses and customers | M | HIGH | todo | `up:fresh` rebuilds everything in under a minute |
 | 0.4 | `[module]` `tenancy` and `audit`: business, members, roles (owner, technician), RLS, route scope declarations and a test that enumerates them | M | HIGH | todo | Cross-business read and write tests fail closed; mutant proves the test |
-| 0.5 | `platform` container skeleton: service tokens, internal network, health check, its own database; `[module]` `outbox` for app → platform calls | M | HIGH | todo | App call with a bad or expired service token is refused; outbox delivers once after `platform` restarts |
+| 0.5 | `platform` container skeleton: service tokens, internal network, health check, its own database; `[module]` `tokens` (request signing), `jobs` (pg-boss) and `outbox` for app ↔ platform calls | M | HIGH | todo | App call with a bad or expired service token is refused; outbox delivers once after `platform` restarts |
 | 0.6 | Identity in `platform` (D13, D14): email/phone OTP, single sign-on provider; `[module]` `auth` client in the app (login redirect, local session, links identity to local member) | L | HIGH | todo | One identity signs in to Kaam Koti; a forged or replayed sign-in response is refused; mutant proves it |
 | 0.7 | App flow: owner signup creates the business; invite a technician | S | STANDARD | todo | Signup, login and invite work in the browser at 375 px and desktop width |
 
@@ -70,7 +70,7 @@ also write the module's README, and their tests run through the module's public 
 
 | Id | Step | Size | Model | Status | Done when |
 |---|---|---|---|---|---|
-| 2.1 | `[module]` `tokens`; customer magic links: scoped to one job, expiring, revocable | M | HIGH | todo | A token cannot read another job; expired token is refused; mutant proves both |
+| 2.1 | `[module]` `tokens` links; customer magic links: scoped to one job, expiring, revocable | M | HIGH | todo | A token cannot read another job; expired token is refused; mutant proves both |
 | 2.2 | `[module]` `storage`; request intake: public form, trade questions, photo upload (type and size checks, private storage) | M | HIGH | todo | Upload rejects wrong types and sizes; photos are not publicly listable |
 | 2.3 | Owner inbox: new requests, log a phone enquiry | S | STANDARD | todo | Both request sources appear in one list |
 | 2.4 | `[module]` `money`; quotes: line items from the catalogue, versions, expiry | M | HIGH | todo | Totals and tax are tested; old versions are immutable |
@@ -81,7 +81,7 @@ also write the module's README, and their tests run through the module's public 
 | Id | Step | Size | Model | Status | Done when |
 |---|---|---|---|---|---|
 | 3.1 | Scheduling: slots, technician assignment, conflict check | M | STANDARD | todo | Double-booking a technician is refused |
-| 3.2 | `[module]` `jobs` and `notify`, with `notify` served from the shared `platform` container; app outbox and its delivery worker: templates, email channel, retries, audit log | M | STANDARD | todo | A failed send retries and is logged without personal data |
+| 3.2 | `[module]` `notify`, served from the shared `platform` container through the outbox: templates, email channel, retries, audit log | M | STANDARD | todo | A failed send retries and is logged without personal data |
 | 3.3 | `[module]` `notify` WhatsApp channel (D7): confirmations, reminders, "on the way"; per-business monthly quota | M | HIGH | todo | Quota is enforced; delivery webhook is signature-verified |
 
 ## Phase 4: Jobs, invoices and payments

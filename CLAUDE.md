@@ -9,8 +9,8 @@ and container design is in [docs/platform-modules.md](docs/platform-modules.md).
 
 Start with [docs/development-plan.md](docs/development-plan.md): it holds the
 current position, the phases and steps with their size and recommended model,
-and the decision table. The design will be in `docs/architecture.md` (step 0.1);
-read only the sections the current step needs.
+and the decision table. The design is in [docs/architecture.md](docs/architecture.md);
+read only the sections the current step needs (its first table maps steps to sections).
 
 Decided (do not re-ask):
 
