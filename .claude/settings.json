@@ -1,0 +1,16 @@
+{
+  "disableRemoteControl": true,
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"systemMessage\":\"Model reminder (CLAUDE.md, Model usage plan): steps marked HIGH in docs/development-plan.md need Opus or Fable. Check the running model (/model) before starting one.\",\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"Apply the Model usage plan reminder in CLAUDE.md: before starting a step marked HIGH in docs/development-plan.md, compare the model you are running as with the plan and, if lower, stop and warn the user in one line first.\"}}'",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
