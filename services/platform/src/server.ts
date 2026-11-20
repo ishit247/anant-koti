@@ -1,12 +1,13 @@
 // Platform's HTTP surface. The handler speaks Web-standard Request and Response, so it can be mounted elsewhere
-// later. `listen` puts it on node:http. Routes now: the health check, and the internal API apps call with signed
-// requests (docs/architecture.md 1 and 9.1). Sign-in pages (0.6) and provider webhooks (3.3) join here.
+// later. `listen` puts it on node:http. Routes now: the health check, the internal API apps call with signed
+// requests (docs/architecture.md 1 and 9.1), and identity's sign-in routes (3). Provider webhooks (3.3) join here.
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { Db, DbClient } from "@bodhchakra/db";
 import type { Logger } from "@bodhchakra/log";
 import { delivery, receive } from "@bodhchakra/outbox";
 import { CLIENT_HEADER, verifyRequest } from "@bodhchakra/tokens";
 import type { z } from "zod";
+import type { Identity } from "./identity.ts";
 
 /** Larger bodies are refused before they are read in full. Messages carry ids and short variables. */
 export const MAX_BODY_BYTES = 64 * 1024;
@@ -26,6 +27,7 @@ export interface PlatformDeps {
   clients: Readonly<Record<string, string>>;
   // biome-ignore lint/suspicious/noExplicitAny: each topic's payload type is checked by its own schema.
   topics: Readonly<Record<string, Topic<any>>>;
+  identity: Identity;
 }
 
 const json = (status: number, body: Record<string, string>) => Response.json(body, { status });
@@ -82,6 +84,8 @@ export function createHandler(deps: PlatformDeps): (request: Request) => Promise
       const internalPath = INTERNAL.exec(url.pathname);
       if (internalPath?.[1] && request.method === "POST")
         return await internal(request, url, internalPath[1]);
+      const signIn = deps.identity.handle(request, url);
+      if (signIn) return await signIn;
       return json(404, { error: "not_found" });
     } catch (error) {
       deps.log.error("request failed", { path: url.pathname, error });
@@ -129,7 +133,11 @@ export function listen(
       body: method === "GET" || method === "HEAD" ? undefined : Buffer.concat(chunks),
     });
     const response = await handler(request);
-    res.writeHead(response.status, Object.fromEntries(response.headers));
+    // Object.fromEntries would keep one Set-Cookie of several; sign-in sets more than one.
+    const outgoing: Record<string, string | string[]> = Object.fromEntries(response.headers);
+    const cookies = response.headers.getSetCookie();
+    if (cookies.length > 0) outgoing["set-cookie"] = cookies;
+    res.writeHead(response.status, outgoing);
     res.end(Buffer.from(await response.arrayBuffer()));
   }
   return new Promise((resolve, reject) => {

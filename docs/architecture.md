@@ -73,7 +73,9 @@ There is one identity per person, and it lives in `platform`. Each app keeps its
 
 - **Platform is the OpenID Connect provider** (D14): authorization code flow with PKCE. Each app is a
   registered confidential client (client id and secret from config). First-party clients skip the consent
-  screen. Sign-in is by OTP to email or phone. Rate limits are per identifier and per IP, in Redis.
+  screen. Sign-in is by OTP to email (phone joins with WhatsApp delivery in 3.3). Rate limits are per identifier
+  and per IP, in Redis; the IP comes from `x-client-ip`, set by the proxy. The ID token carries `email`, `name`
+  and `email_verified`, so the callback needs no userinfo call.
 - **Platform internals (D13, decided 2026-11-21):** better-auth with its OIDC provider plugin, wrapped so only
   `services/platform` imports it. Its tables live in the `identity` schema.
   `identity.user.id` is a UUID and is the `sub` claim.

@@ -2,7 +2,7 @@
 # and role pair per app). Start and reset with `pnpm run up` and `pnpm run up:fresh` (scripts/stack.ts).
 # Every value here is a DEV default and public in the repository. Host ports sit below 49152 (Windows reserves
 # shifting blocks above it for Hyper-V) and differ from Profile's (45432), so both stacks can run at once.
-# Redis and Garage join this file with their first use (rate limits in 0.6, uploads in 2.2).
+# Garage joins this file with its first use (uploads in 2.2).
 name: bodhchakra-dev
 
 services:
@@ -38,12 +38,51 @@ services:
     environment:
       DATABASE_URL: postgres://platform_app:platform_app@postgres:5432/platform
       SERVICE_CLIENTS: '{"kaamkoti":"dev-only-kaamkoti-service-secret-public-in-repo"}'
+      IDENTITY_ORIGIN: http://127.0.0.1:45443
+      IDENTITY_SECRET: dev-only-identity-secret-public-in-repo-0123456789
+      # Kaam Koti's callback and sign-out pages arrive with 0.6b; these are their dev addresses.
+      SIGN_IN_CLIENTS: >-
+        {"kaamkoti":{"secret":"dev-only-kaamkoti-sign-in-secret-public-in-repo",
+        "redirectUris":["http://127.0.0.1:45450/auth/callback"],
+        "postLogoutRedirectUris":["http://127.0.0.1:45450/"]}}
+      REDIS_URL: redis://redis:6379
+      SMTP_URL: smtp://mailpit:1025
+      EMAIL_FROM: Bodhchakra <sign-in@localhost>
     ports:
       - "127.0.0.1:45443:3000"
     networks: [internal]
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+
+  # Rate-limit counters for platform (docs/architecture.md 1). Nothing in it must survive a restart: no volume.
+  redis:
+    image: redis:8
+    ports:
+      - "127.0.0.1:45444:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+    networks: [internal]
+
+  # Catches every email in development: SMTP on 45445, the inbox at http://127.0.0.1:45446.
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports:
+      - "127.0.0.1:45445:1025"
+      - "127.0.0.1:45446:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks: [internal]
 
 networks:
   # Joins apps, workers and platform. Postgres is on it too, under its service name.
