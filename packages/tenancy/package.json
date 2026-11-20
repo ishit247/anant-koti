@@ -10,7 +10,8 @@
     "layer": "domain"
   },
   "scripts": {
-    "typecheck": "tsc -p ."
+    "typecheck": "tsc -p .",
+    "test": "vitest run"
   },
   "dependencies": {
     "@bodhchakra/db": "workspace:*"

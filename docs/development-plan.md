@@ -4,9 +4,10 @@ What we are building: [product-brief.md](product-brief.md). Shared modules:
 [platform-modules.md](platform-modules.md). The design is in [architecture.md](architecture.md);
 its first table says which sections each step reads.
 
-**Current position:** Step 0.3 done (2026-11-21): dev Postgres in `infra/compose.dev.yml`, `db` module,
-`pnpm run up | down | up:fresh` (about 3 s), seed with 2 businesses and 6 customers. Tests need the stack up.
-Next: step 0.4 (HIGH; needs Opus or Fable).
+**Current position:** Step 0.4 done (2026-11-21): `tenancy` (business, member, RLS, `resolve_slug`,
+`memberships_of`, `requireRole`, `defineRoute` + `scanRoutes` kit) and `audit` (append-only, savepoint writes).
+`migrate` now takes `{ runtimeRole }`, which migrations read as `db.runtime_role`. Seed: 2 businesses, 4 members,
+6 customers. Tests need the stack up (`pnpm run up`). Next: step 0.5 (HIGH; needs Opus or Fable).
 
 Steps marked with a `[module]` build or extend a shared module in `packages/`. Those steps
 also write the module's README, and their tests run through the module's public API.
@@ -53,10 +54,10 @@ also write the module's README, and their tests run through the module's public 
 | 0.1 | Architecture doc: domains, data model, tenancy, job state machine, money model, notification model, each module's API and tables                                                                                         | M    | HIGH     | done   | `docs/architecture.md` covers every MVP stage and module boundary; D1, D10–D12 answered                 |
 | 0.2 | Monorepo skeleton (pnpm, turbo); lint, typecheck, `pnpm run validate quick\|standard\|full`; dependency-direction and public-API-only checks; `[module]` `config`, `log`                                                 | M    | STANDARD | done   | `validate quick` green; an import of a module's internals fails the check                               |
 | 0.3 | Compose on the shared [../infra](../../infra) pattern; `[module]` `db` (migration runner applying module migrations then app migrations, tenant context, test helper); `up:fresh`; seeds with 2 businesses and customers | M    | HIGH     | done   | `up:fresh` rebuilds everything in under a minute                                                        |
-| 0.4 | `[module]` `tenancy` and `audit`: business, members, roles (owner, technician), RLS, route scope declarations and a test that enumerates them                                                                            | M    | HIGH     | todo   | Cross-business read and write tests fail closed; mutant proves the test                                 |
+| 0.4 | `[module]` `tenancy` and `audit`: business, members, roles (owner, technician), RLS, route scope declarations and a test that enumerates them                                                                            | M    | HIGH     | done   | Cross-business read and write tests fail closed; mutant proves the test                                 |
 | 0.5 | `platform` container skeleton: service tokens, internal network, health check, its own database; `[module]` `tokens` (request signing), `jobs` (pg-boss) and `outbox` for app ↔ platform calls                           | M    | HIGH     | todo   | App call with a bad or expired service token is refused; outbox delivers once after `platform` restarts |
 | 0.6 | Identity in `platform` (D13, D14): email/phone OTP, single sign-on provider; `[module]` `auth` client in the app (login redirect, local session, links identity to local member)                                         | L    | HIGH     | todo   | One identity signs in to Kaam Koti; a forged or replayed sign-in response is refused; mutant proves it  |
-| 0.7 | App flow: owner signup creates the business; invite a technician                                                                                                                                                         | S    | STANDARD | todo   | Signup, login and invite work in the browser at 375 px and desktop width                                |
+| 0.7 | App flow: owner signup creates the business; invite a technician (`tenancy.invite` on `tokens`); the app's route test runs `scanRoutes` over its routes                                                                  | S    | STANDARD | todo   | Signup, login and invite work in the browser at 375 px and desktop width                                |
 
 ## Phase 1: Trade templates and the public page
 

@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@bodhchakra/audit": "workspace:*",
     "@bodhchakra/db": "workspace:*",
     "@bodhchakra/log": "workspace:*",
     "@bodhchakra/tenancy": "workspace:*"

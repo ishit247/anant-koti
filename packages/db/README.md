@@ -6,16 +6,16 @@ read, a migration runner that tracks files by name, and throwaway databases for 
 
 ## API
 
-| Export                           | What it does                                                                                                    |
-| -------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `createPool({ url, log, max? })` | Returns a `Db`. Idle-connection errors are logged and the pool replaces the connection.                         |
-| `db.tx(fn)`                      | Runs `fn(client)` in one transaction: commit if it resolves, rollback and rethrow if it throws.                 |
-| `db.withTenant(businessId, fn)`  | Like `tx`, with `app.business_id` set for that transaction only (`set_config(…, true)`). Rejects a non-uuid id. |
-| `db.end()`                       | Closes the pool.                                                                                                |
-| `DbClient`                       | The client type that module functions take, so they join the caller's transaction.                              |
-| `migrate(url, folders)`          | Applies every unrecorded file from `folders`, in the order given. Returns the names applied.                    |
-| `MigrationFolder`                | `{ name, dir }`. Each module exports one; the app lists the modules' folders first, then its own.               |
-| `testDb({ owner, folders })`     | Creates and migrates a fresh database. Returns `url(role)`, `connect(role)` and `drop()`.                       |
+| Export                                    | What it does                                                                                                    |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `createPool({ url, log, max? })`          | Returns a `Db`. Idle-connection errors are logged and the pool replaces the connection.                         |
+| `db.tx(fn)`                               | Runs `fn(client)` in one transaction: commit if it resolves, rollback and rethrow if it throws.                 |
+| `db.withTenant(businessId, fn)`           | Like `tx`, with `app.business_id` set for that transaction only (`set_config(…, true)`). Rejects a non-uuid id. |
+| `db.end()`                                | Closes the pool.                                                                                                |
+| `DbClient`                                | The client type that module functions take, so they join the caller's transaction.                              |
+| `migrate(url, folders, { runtimeRole })`  | Applies every unrecorded file from `folders`, in the order given. Returns the names applied.                    |
+| `MigrationFolder`                         | `{ name, dir }`. Each module exports one; the app lists the modules' folders first, then its own.               |
+| `testDb({ owner, runtimeRole, folders })` | Creates and migrates a fresh database. Returns `url(role)`, `connect(role)` and `drop()`.                       |
 
 ## Rules it enforces
 
@@ -26,6 +26,17 @@ read, a migration runner that tracks files by name, and throwaway databases for 
 - **Migrations:** files are named `NNNN_name.sql` and recorded as `<folder>/<file>` in `db.migration`. Each file
   runs in its own transaction together with its record. An advisory lock serialises concurrent runs. Tracking is
   by name only, so while there is no production data a migration is corrected in place (CLAUDE.md).
+- **Grants name no role.** A module's migrations serve several databases (`kaamkoti`, `platform`), so `migrate`
+  sets the session setting `db.runtime_role`, and every migration grants to it in a `do` block:
+
+  ```sql
+  do $$
+  declare
+    runtime text := current_setting('db.runtime_role');
+  begin
+    execute format('grant select, insert on audit.event to %I', runtime);
+  end $$;
+  ```
 
 ## Config
 

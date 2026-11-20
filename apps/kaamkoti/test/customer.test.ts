@@ -1,7 +1,7 @@
 import { type Db, type DbClient, type TestDb, testDb } from "@bodhchakra/db";
 import { createLogger } from "@bodhchakra/log";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { migrations, seed } from "../src/index.ts";
+import { migrations, RUNTIME_ROLE, seed } from "../src/index.ts";
 
 const SHARMA = "10000000-0000-4000-8000-000000000001";
 const KAVERI = "20000000-0000-4000-8000-000000000002";
@@ -15,7 +15,11 @@ describe("kk.customer on the seeded database", () => {
   let database: TestDb;
   let app: Db;
   beforeAll(async () => {
-    database = await testDb({ owner: "kaamkoti_owner", folders: migrations });
+    database = await testDb({
+      owner: "kaamkoti_owner",
+      runtimeRole: RUNTIME_ROLE,
+      folders: migrations,
+    });
     await seed(database.url("kaamkoti_owner"), createLogger({ service: "test" }));
     app = database.connect("kaamkoti_app");
   });

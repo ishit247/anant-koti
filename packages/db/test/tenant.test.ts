@@ -15,6 +15,7 @@ describe("withTenant", () => {
   beforeAll(async () => {
     database = await testDb({
       owner: "kaamkoti_owner",
+      runtimeRole: "kaamkoti_app",
       folders: [{ name: "items", dir: new URL("./migrations/items/", import.meta.url) }],
     });
     await database
@@ -80,7 +81,7 @@ describe("withTenant", () => {
 describe("tx", () => {
   let database: TestDb;
   beforeAll(async () => {
-    database = await testDb({ owner: "kaamkoti_owner", folders: [] });
+    database = await testDb({ owner: "kaamkoti_owner", runtimeRole: "kaamkoti_app", folders: [] });
   });
   afterAll(() => database.drop());
 

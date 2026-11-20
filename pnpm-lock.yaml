@@ -193,6 +193,9 @@ importers:
 
   apps/kaamkoti:
     dependencies:
+      '@bodhchakra/audit':
+        specifier: workspace:*
+        version: link:../../packages/audit
       '@bodhchakra/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -202,6 +205,15 @@ importers:
       '@bodhchakra/tenancy':
         specifier: workspace:*
         version: link:../../packages/tenancy
+
+  packages/audit:
+    dependencies:
+      '@bodhchakra/db':
+        specifier: workspace:*
+        version: link:../db
+      '@bodhchakra/log':
+        specifier: workspace:*
+        version: link:../log
 
   packages/config:
     dependencies:

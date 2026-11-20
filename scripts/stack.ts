@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { migrate } from "@bodhchakra/db";
 import { createLogger } from "@bodhchakra/log";
-import { migrations, seed } from "kaamkoti";
+import { migrations, RUNTIME_ROLE, seed } from "kaamkoti";
 
 const COMPOSE_FILE = fileURLToPath(new URL("../infra/compose.dev.yml", import.meta.url));
 /** DEV credentials from infra/postgres/init, public in the repository. */
@@ -20,7 +20,7 @@ const compose = (...args: string[]) =>
 
 async function up() {
   compose("up", "-d", "--wait");
-  const applied = await migrate(KAAMKOTI_OWNER_URL, migrations);
+  const applied = await migrate(KAAMKOTI_OWNER_URL, migrations, { runtimeRole: RUNTIME_ROLE });
   log.info("migrations applied", { database: "kaamkoti", count: applied.length, applied });
 }
 
@@ -37,7 +37,7 @@ switch (command) {
     compose("down", "-v");
     await up();
     await seed(KAAMKOTI_OWNER_URL, log);
-    log.info("seeded", { database: "kaamkoti", businesses: 2, customers: 6 });
+    log.info("seeded", { database: "kaamkoti", businesses: 2, members: 4, customers: 6 });
     break;
   default:
     console.error("usage: node scripts/stack.ts up|down|fresh");

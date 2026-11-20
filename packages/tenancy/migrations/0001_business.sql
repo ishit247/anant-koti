@@ -1,5 +1,5 @@
--- The tenant (docs/architecture.md 4.1). Members, invites, the runtime role's rights on this schema and
--- tenancy.resolve_slug arrive with the rest of the module in step 0.4.
+-- The tenant (docs/architecture.md 4.1, 4.2). The runtime role sees and changes only the business named by
+-- app.business_id (set by db.withTenant), so a new business is created inside withTenant of its own new id.
 create schema tenancy;
 
 create table tenancy.business (
@@ -12,3 +12,27 @@ create table tenancy.business (
   currency text not null default 'INR' check (currency ~ '^[A-Z]{3}$'),
   created_at timestamptz not null default now()
 );
+
+alter table tenancy.business enable row level security;
+create policy tenant on tenancy.business
+  using (id = nullif(current_setting('app.business_id', true), '')::uuid)
+  with check (id = nullif(current_setting('app.business_id', true), '')::uuid);
+
+-- Public pages arrive with a slug and no tenant. This returns only the id, which then opens withTenant.
+-- Security definer runs as the owner, which RLS does not restrict; search_path is empty so nothing can shadow
+-- the qualified names.
+create function tenancy.resolve_slug(p_slug text) returns uuid
+  language sql stable security definer set search_path = ''
+  as $$ select id from tenancy.business where slug = p_slug $$;
+-- Functions are executable by PUBLIC by default; only the runtime role may call this one.
+revoke execute on function tenancy.resolve_slug(text) from public;
+
+-- No delete: closing a business is its own step.
+do $$
+declare
+  runtime text := current_setting('db.runtime_role');
+begin
+  execute format('grant usage on schema tenancy to %I', runtime);
+  execute format('grant select, insert, update on tenancy.business to %I', runtime);
+  execute format('grant execute on function tenancy.resolve_slug(text) to %I', runtime);
+end $$;

@@ -9,9 +9,12 @@ const folder = (name: string): MigrationFolder => ({
 describe("migrate", () => {
   let database: TestDb;
   beforeEach(async () => {
-    database = await testDb({ owner: "kaamkoti_owner", folders: [] });
+    database = await testDb({ owner: "kaamkoti_owner", runtimeRole: "kaamkoti_app", folders: [] });
   });
   afterEach(() => database.drop());
+
+  const run = (...names: string[]) =>
+    migrate(database.url("kaamkoti_owner"), names.map(folder), { runtimeRole: "kaamkoti_app" });
 
   const recorded = (db = database.connect("kaamkoti_owner")) =>
     db.tx(async (client) =>
@@ -19,10 +22,7 @@ describe("migrate", () => {
     );
 
   it("applies folders in the order given, recording each file as folder/file", async () => {
-    const applied = await migrate(database.url("kaamkoti_owner"), [
-      folder("items"),
-      folder("later"),
-    ]);
+    const applied = await run("items", "later");
 
     expect(applied).toEqual([
       "items/0001_item.sql",
@@ -33,17 +33,13 @@ describe("migrate", () => {
   });
 
   it("applies nothing on a second run", async () => {
-    await migrate(database.url("kaamkoti_owner"), [folder("items")]);
+    await run("items");
 
-    expect(
-      await migrate(database.url("kaamkoti_owner"), [folder("items"), folder("later")]),
-    ).toEqual(["later/0001_tag.sql"]);
+    expect(await run("items", "later")).toEqual(["later/0001_tag.sql"]);
   });
 
   it("leaves nothing of a failing migration and names it in the error", async () => {
-    await expect(migrate(database.url("kaamkoti_owner"), [folder("broken")])).rejects.toThrow(
-      "migration broken/0002_fails.sql failed",
-    );
+    await expect(run("broken")).rejects.toThrow("migration broken/0002_fails.sql failed");
 
     expect(await recorded()).toEqual(["broken/0001_ok.sql"]);
     const tables = await database
@@ -56,13 +52,31 @@ describe("migrate", () => {
   });
 
   it("refuses a misnamed file before applying anything", async () => {
-    await expect(
-      migrate(database.url("kaamkoti_owner"), [folder("items"), folder("misnamed")]),
-    ).rejects.toThrow("misnamed: migration files must be named NNNN_name.sql: 1_bad.sql");
+    await expect(run("items", "misnamed")).rejects.toThrow(
+      "misnamed: migration files must be named NNNN_name.sql: 1_bad.sql",
+    );
 
     const exists = await database
       .connect("kaamkoti_owner")
       .tx(async (client) => (await client.query("select to_regclass('fx.item') as t")).rows[0].t);
     expect(exists).toBeNull();
+  });
+
+  it("gives migrations the runtime role as db.runtime_role", async () => {
+    await run("runtime-role");
+
+    const granted = await database
+      .connect("kaamkoti_app")
+      .tx(
+        async (client) =>
+          (await client.query("select has_table_privilege('fx.flag', 'select') as ok")).rows[0].ok,
+      );
+    expect(granted).toBe(true);
+  });
+
+  it("refuses a runtime role that is not a role name", async () => {
+    await expect(
+      migrate(database.url("kaamkoti_owner"), [], { runtimeRole: "app; drop" }),
+    ).rejects.toThrow('"app; drop" is not a role name');
   });
 });

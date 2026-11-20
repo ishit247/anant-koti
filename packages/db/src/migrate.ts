@@ -46,17 +46,34 @@ async function load(folders: readonly MigrationFolder[]): Promise<Migration[]> {
   return migrations;
 }
 
+export interface MigrateOptions {
+  /**
+   * The database's runtime role (e.g. `kaamkoti_app`). Module migrations serve more than one database, so they
+   * cannot name it; they read it from the session setting `db.runtime_role` and grant to it in a `do` block.
+   */
+  runtimeRole: string;
+}
+
+const ROLE = /^[a-z_][a-z0-9_]*$/;
+
 /**
  * Applies every migration not yet recorded. Each runs in its own transaction together with its record, so a
  * failure leaves the earlier ones applied and nothing at all of the failing one. Returns the names applied.
  * `url` must connect as the database's owner role.
  */
-export async function migrate(url: string, folders: readonly MigrationFolder[]): Promise<string[]> {
+export async function migrate(
+  url: string,
+  folders: readonly MigrationFolder[],
+  options: MigrateOptions,
+): Promise<string[]> {
+  if (!ROLE.test(options.runtimeRole))
+    throw new Error(`migrate: "${options.runtimeRole}" is not a role name`);
   const migrations = await load(folders);
   const client = new pg.Client({ connectionString: url });
   await client.connect();
   try {
     await client.query("select pg_advisory_lock($1)", [ADVISORY_LOCK_KEY]);
+    await client.query("select set_config('db.runtime_role', $1, false)", [options.runtimeRole]);
     await client.query(
       `create schema if not exists db;
        create table if not exists db.migration (name text primary key, applied_at timestamptz not null default now())`,

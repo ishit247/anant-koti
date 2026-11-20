@@ -13,6 +13,8 @@ const ROLE = /^[a-z_][a-z0-9_]*$/;
 export interface TestDbOptions {
   /** The role that owns the database and runs the migrations, e.g. `kaamkoti_owner`. */
   owner: string;
+  /** The runtime role the migrations grant to, e.g. `kaamkoti_app`. */
+  runtimeRole: string;
   folders: readonly MigrationFolder[];
 }
 
@@ -44,7 +46,7 @@ export async function testDb(options: TestDbOptions): Promise<TestDb> {
 
   const name = `test_${randomBytes(6).toString("hex")}`;
   await asSuperuser(`create database ${name} owner ${options.owner}`);
-  await migrate(url(options.owner, name), options.folders);
+  await migrate(url(options.owner, name), options.folders, { runtimeRole: options.runtimeRole });
 
   const log = createLogger({ service: "test-db" });
   const pools: Db[] = [];
