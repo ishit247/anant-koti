@@ -190,8 +190,9 @@ Each module's own section in 12 lists its tables. Section 4.1 covers tenancy.
 | `catalogue_item`    | `name`, `unit` (`job`, `hour`, `unit`, `sq_ft`, …), `unit_price_minor`, `tax_rate_bp`, `active`                                                                                                                                          |
 | `customer`          | `name`, `phone_e164`, `email`, `address`; unique (`business_id`, `phone_e164`); found or created on request                                                                                                                              |
 | `job`               | The request and everything after: `customer_id`, `number` (per business), `source` (`public_form`, `whatsapp_link`, `qr`, `phone`), `answers`, `address`, `preferred_window`, `status` (section 6), `accepted_quote_id`, `cancel_reason` |
+| `job_task`          | One piece of work in a request: `job_id`, `catalogue_item_id` (nullable: custom task), `title`, `status` (`requested`, `quoted`, `approved`, `done`, `dropped`), `added_by` (`customer`, `business`), `added_at`. A request has one or more                    |
 | `quote`             | `job_id`, `version` (unique per job), `status` (`draft`, `sent`, `accepted`, `rejected`, `countered`, `superseded`), `valid_until`, totals, `deposit_minor`, `counter_note`, `counter_total_minor`, `sent_at`, `decided_at`              |
-| `quote_line`        | `quote_id`, `catalogue_item_id` (nullable), `description`, `unit`, `quantity_milli`, `unit_price_minor`, `tax_rate_bp`, `net_minor`, `tax_minor`                                                                                         |
+| `quote_line`        | `quote_id`, `job_task_id` (nullable: null = request-level charge), `catalogue_item_id` (nullable), `description`, `unit`, `quantity_milli`, `unit_price_minor`, `tax_rate_bp`, `net_minor`, `tax_minor`                                                                                         |
 | `appointment`       | `job_id`, `kind` (`site_visit`, `work`), `technician_member_id`, `starts_at`, `ends_at`, `status` (`planned`, `done`, `cancelled`), `on_the_way_at`                                                                                      |
 | `job_visit`         | `appointment_id`, `checked_in_at`, `checklist` (results), `completed_at`, `note`                                                                                                                                                         |
 | `change_order`      | `job_id`, `number`, `status` (`proposed`, `approved`, `rejected`), totals, `decided_at`                                                                                                                                                  |
@@ -249,6 +250,12 @@ requested ──send quote──▶ quoted ──customer accepts──▶ accep
   expired: accepting it is refused and the customer sees "ask for a new quote". The pg-boss job at
   `valid_until` only notifies the owner. No stored status can be stale.
 - Site visits are appointments of kind `site_visit` and do not move the job's state.
+- **Tasks and charges.** The customer picks catalogue items on the request form; each becomes a `job_task` with
+  a known price. A charge is task-level when its line has a `job_task_id`, and request-level (visit fee, discount,
+  one lump price) when it is null; one quote can mix both. A task the customer adds before the quote is accepted
+  makes a new quote version. After acceptance, the customer's added task is only a request: it is
+  `requested` and costs nothing until the business prices it in a change order and the customer approves.
+  Invoice lines copy `job_task_id` from the lines they snapshot.
 - A proposed change order needs the customer's approval by token. It can be approved only while the job is
   `in_progress` or `completed` and the invoice is not yet issued. The invoice includes only `approved` change
   orders (4.3).
