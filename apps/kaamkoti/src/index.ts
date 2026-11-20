@@ -7,6 +7,10 @@ import type { Logger } from "@bodhchakra/log";
 import { migrations as outbox } from "@bodhchakra/outbox";
 import { migrations as tenancy } from "@bodhchakra/tenancy";
 import { migrations as tokens } from "@bodhchakra/tokens";
+import { seedTemplates } from "./seed-templates.ts";
+import { saveTradeTemplate } from "./trade-template.ts";
+
+export { latestTradeTemplate, saveTradeTemplate, type TradeTemplate } from "./trade-template.ts";
 
 /** The role web and worker connect as (docs/architecture.md, section 2); migrations grant to it. */
 export const RUNTIME_ROLE = "kaamkoti_app";
@@ -27,7 +31,10 @@ export async function seed(url: string, log: Logger): Promise<void> {
   const sql = await readFile(new URL("../seed.sql", import.meta.url), "utf8");
   const db = createPool({ url, log, max: 1 });
   try {
-    await db.tx((client) => client.query(sql));
+    await db.tx(async (client) => {
+      await client.query(sql);
+      for (const template of seedTemplates) await saveTradeTemplate(client, template);
+    });
   } finally {
     await db.end();
   }
