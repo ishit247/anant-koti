@@ -1,5 +1,7 @@
 import { currentBusiness, defineRoute, listMembers } from "@bodhchakra/tenancy";
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { businessProfile } from "../business-profile.ts";
 import { requireMember } from "../guard.ts";
 import { server } from "../server.ts";
 import { InviteForm } from "./team/invite-form.tsx";
@@ -25,10 +27,15 @@ export default async function Home() {
     );
   }
   const me = await requireMember(route);
-  const { business, members } = await server().db.withTenant(me.businessId, async (client) => ({
-    business: await currentBusiness(client),
-    members: await listMembers(client),
-  }));
+  const { business, members, profile } = await server().db.withTenant(
+    me.businessId,
+    async (client) => ({
+      business: await currentBusiness(client),
+      members: await listMembers(client),
+      profile: await businessProfile(client),
+    }),
+  );
+  if (me.role === "owner" && !profile) redirect("/onboarding");
   return (
     <>
       <header className="bar">
@@ -44,6 +51,10 @@ export default async function Home() {
       </p>
       {me.role === "owner" ? (
         <>
+          <h2>Prices</h2>
+          <p>
+            <a href="/catalogue">Edit your price list</a>
+          </p>
           <h2>Team</h2>
           <ul>
             {members.map((m) => (

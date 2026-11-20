@@ -31,3 +31,19 @@ insert into kk.customer (id, business_id, name, phone_e164, email, address) valu
   -- Same phone as a Sharma customer: one person can be a customer of two businesses.
   ('20000000-0000-4000-8000-0000000c0003', '20000000-0000-4000-8000-000000000002',
    'Anita Deshpande', '+919000001001', null, null);
+
+-- Both businesses are onboarded. Sharma started from the ac_repair template (as startFromTemplate would copy it);
+-- Kaveri built its own list, so it has no template of its own. Prices are in paise, tax in basis points.
+insert into kk.business_profile (business_id, trade_key, about, service_area, intake, checklist, terms) values
+  ('10000000-0000-4000-8000-000000000001', 'ac_repair', 'AC and appliance repair across Pune since 2012.',
+   'Pune, Pimpri-Chinchwad', '[]', '[{"key":"power_off","label":"Power isolated before opening"}]',
+   'Quote is valid for 7 days. Parts replaced carry a 30-day warranty. Payment is due on completion.'),
+  ('20000000-0000-4000-8000-000000000002', 'electrician', '', 'Bengaluru south', '[]', '[]',
+   'Payment is due on completion.');
+
+insert into kk.catalogue_item (id, business_id, name, unit, unit_price_minor, tax_rate_bp, position) values
+  ('10000000-0000-4000-8000-0000000b0001', '10000000-0000-4000-8000-000000000001', 'Inspection visit', 'visit', 30000, 1800, 0),
+  ('10000000-0000-4000-8000-0000000b0002', '10000000-0000-4000-8000-000000000001', 'AC gas refill', 'unit', 250000, 1800, 1),
+  ('10000000-0000-4000-8000-0000000b0003', '10000000-0000-4000-8000-000000000001', 'AC general service', 'unit', 80000, 1800, 2),
+  ('20000000-0000-4000-8000-0000000b0001', '20000000-0000-4000-8000-000000000002', 'Fan installation', 'unit', 40000, 1800, 0),
+  ('20000000-0000-4000-8000-0000000b0002', '20000000-0000-4000-8000-000000000002', 'House rewiring', 'sq_ft', 9000, 1800, 1);

@@ -18,7 +18,7 @@ const catalogueItem = z.strictObject({
   taxRateBp: z.int().min(0).max(10_000),
 });
 
-const intakeQuestion = z.discriminatedUnion("type", [
+export const intakeQuestion = z.discriminatedUnion("type", [
   z.strictObject({ key, label: text(200), type: z.literal("text"), required: z.boolean() }),
   z.strictObject({ key, label: text(200), type: z.literal("number"), required: z.boolean() }),
   z.strictObject({
@@ -31,7 +31,7 @@ const intakeQuestion = z.discriminatedUnion("type", [
   z.strictObject({ key, label: text(200), type: z.literal("photo"), required: z.boolean() }),
 ]);
 
-const checklistItem = z.strictObject({ key, label: text(200) });
+export const checklistItem = z.strictObject({ key, label: text(200) });
 
 /** Keys are unique within each list: answers and results are stored under them. */
 const unique = (items: readonly { key: string }[]) =>
@@ -62,6 +62,14 @@ export async function saveTradeTemplate(client: DbClient, input: unknown): Promi
     [template.key, template.version, JSON.stringify(template.body)],
   );
   return template;
+}
+
+/** The newest version of every template, for the onboarding choice. */
+export async function listTradeTemplates(client: DbClient): Promise<TradeTemplate[]> {
+  const { rows } = await client.query(
+    `select distinct on (key) key, version, body from kk.trade_template order by key, version desc`,
+  );
+  return rows.map((row) => tradeTemplate.parse(row));
 }
 
 /** The newest version of a template, parsed again on read because stored JSON is an edge too. */

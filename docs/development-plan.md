@@ -4,11 +4,12 @@ What we are building: [product-brief.md](product-brief.md). Shared modules:
 [platform-modules.md](platform-modules.md). The design is in [architecture.md](architecture.md);
 its first table says which sections each step reads.
 
-**Current position:** Step 1.1 done (2026-11-21): `kk.trade_template` (migration 0002; global, runtime role select-only)
-and `apps/kaamkoti/src/trade-template.ts` (Zod model; `saveTradeTemplate` validates before writing,
-`latestTradeTemplate` re-parses on read). `seed()` loads `src/seed-templates.ts` (one `ac_repair` v1 template, which
-step 1.4 fills out). Phase 0 is closed (tag `phase-0-done`). Next: step 1.2 (onboarding: pick a trade, edit
-catalogue and prices; adds `business_profile` and `catalogue_item`).
+**Current position:** Step 1.2 done (2026-11-21): migration 0003 adds `kk.business_profile` and `kk.catalogue_item`
+(RLS, no delete); `src/business-profile.ts` copies a template into a business (`startFromTemplate`) and saves the price
+list (`saveCatalogue`); owner pages `/onboarding` and `/catalogue`; home sends an owner with no profile to onboarding.
+Checked by `validate standard` and an RLS mutant; **not yet checked in a browser at 375 px / desktop.** Step 1.1 before
+it: `kk.trade_template` and `trade-template.ts` (one `ac_repair` v1 seed template, which step 1.4 fills out). Phase 0 is
+closed (tag `phase-0-done`). Next: step 1.3 (public business page). Two steps done in this session: start a new session.
 
 Steps marked with a `[module]` build or extend a shared module in `packages/`. Those steps
 also write the module's README, and their tests run through the module's public API.
@@ -66,7 +67,7 @@ also write the module's README, and their tests run through the module's public 
 | Id  | Step                                                                                             | Size | Model    | Status | Done when                                                      |
 | --- | ------------------------------------------------------------------------------------------------ | ---- | -------- | ------ | -------------------------------------------------------------- |
 | 1.1 | Trade template model: catalogue, units, intake questions, checklist, terms (typed JSON with Zod) | M    | STANDARD | done   | One template seeds; invalid template JSON is rejected at write |
-| 1.2 | Onboarding: pick a trade, edit catalogue and prices                                              | M    | STANDARD | todo   | New owner reaches a usable catalogue in under 5 minutes        |
+| 1.2 | Onboarding: pick a trade, edit catalogue and prices                                              | M    | STANDARD | done   | New owner reaches a usable catalogue in under 5 minutes        |
 | 1.3 | Public business page (profile, services, reviews slot, "request a job")                          | M    | STANDARD | todo   | Page renders without cookies on the public domain              |
 | 1.4 | First ready-made template (AC/appliance repair)                                                  | S    | STANDARD | todo   | Template is selectable at onboarding                           |
 

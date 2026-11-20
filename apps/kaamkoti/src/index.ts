@@ -10,7 +10,21 @@ import { migrations as tokens } from "@bodhchakra/tokens";
 import { seedTemplates } from "./seed-templates.ts";
 import { saveTradeTemplate } from "./trade-template.ts";
 
-export { latestTradeTemplate, saveTradeTemplate, type TradeTemplate } from "./trade-template.ts";
+export {
+  type BusinessProfile,
+  businessProfile,
+  type CatalogueItem,
+  catalogueRowInput,
+  listCatalogue,
+  saveCatalogue,
+  startFromTemplate,
+} from "./business-profile.ts";
+export {
+  latestTradeTemplate,
+  listTradeTemplates,
+  saveTradeTemplate,
+  type TradeTemplate,
+} from "./trade-template.ts";
 
 /** The role web and worker connect as (docs/architecture.md, section 2); migrations grant to it. */
 export const RUNTIME_ROLE = "kaamkoti_app";
