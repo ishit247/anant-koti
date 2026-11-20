@@ -9,7 +9,7 @@ its first table says which sections each step reads.
 7 days) and `currentBusiness`/`listMembers`, and Kaam Koti is a Next.js app (`apps/kaamkoti/src/app`, dev port 45450,
 `pnpm --filter kaamkoti dev` with platform up) with signup, sign-in, sign-out, team and invite pages. Route
 declarations are now a module `const route`, not an export, because Next refuses extra exports from pages and
-server-action files. Next: check the phase 0 "Done when" list, tag `phase-0-done`, then phase 1 (step 1.1).
+server-action files. Phase 0 is closed: `validate full` green, tag `phase-0-done`. Next: phase 1 (step 1.1).
 Start a new session for it.
 
 Steps marked with a `[module]` build or extend a shared module in `packages/`. Those steps
