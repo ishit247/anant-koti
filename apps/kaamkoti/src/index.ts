@@ -19,6 +19,14 @@ export {
   saveCatalogue,
   startFromTemplate,
 } from "./business-profile.ts";
+export { JOB_STATUSES, type JobStatus } from "./job.ts";
+export {
+  type CustomerJobView,
+  issueJobLink,
+  JOB_LINK_DAYS,
+  openJobLink,
+  revokeJobLinks,
+} from "./job-link.ts";
 export { type PublicPage, publicPage } from "./public-page.ts";
 export {
   latestTradeTemplate,

@@ -10,7 +10,10 @@ create table kk.customer (
   address text check (length(address) <= 500),
   created_at timestamptz not null default now(),
   -- Also the index for the business_id foreign key and for listing a business's customers.
-  unique (business_id, phone_e164)
+  unique (business_id, phone_e164),
+  -- Target of composite foreign keys, so a row can only name a customer of its own business: foreign key
+  -- checks do not see RLS.
+  unique (business_id, id)
 );
 
 alter table kk.customer enable row level security;

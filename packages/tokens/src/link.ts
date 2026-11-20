@@ -1,5 +1,5 @@
 // Scoped, expiring, revocable links (docs/architecture.md 7). The link is 32 random bytes in base64url; the
-// table keeps only its SHA-256. `issue` and `revoke` run inside `withTenant` of the link's business;
+// table keeps only its SHA-256. `issue` and the revokes run inside `withTenant` of the link's business;
 // `resolve` needs no tenant, because the person arriving has only the link.
 import { createHash, randomBytes } from "node:crypto";
 import type { DbClient } from "@bodhchakra/db";
@@ -11,7 +11,6 @@ export interface NewLink {
   businessId: string;
   /** The invite or job the link opens. */
   subjectId: string;
-  actions?: readonly string[];
   expiresAt: Date;
 }
 
@@ -20,7 +19,6 @@ export interface Link {
   readonly purpose: LinkPurpose;
   readonly businessId: string;
   readonly subjectId: string;
-  readonly actions: readonly string[];
 }
 
 /** 32 random bytes in base64url. */
@@ -34,16 +32,9 @@ export async function issue(
 ): Promise<{ id: string; secret: string }> {
   const secret = randomBytes(32).toString("base64url");
   const { rows } = await client.query<{ id: string }>(
-    `insert into tokens.token (hash, purpose, business_id, subject_id, actions, expires_at)
-     values ($1, $2, $3, $4, $5, $6) returning id`,
-    [
-      sha256(secret),
-      link.purpose,
-      link.businessId,
-      link.subjectId,
-      link.actions ?? [],
-      link.expiresAt,
-    ],
+    `insert into tokens.token (hash, purpose, business_id, subject_id, expires_at)
+     values ($1, $2, $3, $4, $5) returning id`,
+    [sha256(secret), link.purpose, link.businessId, link.subjectId, link.expiresAt],
   );
   return { id: (rows[0] as { id: string }).id, secret };
 }
@@ -53,14 +44,13 @@ interface LinkRow {
   purpose: LinkPurpose;
   business_id: string;
   subject_id: string;
-  actions: string[];
 }
 
 /** The live link a secret names, or null for one that is unknown, malformed, revoked or expired. */
 export async function resolve(client: DbClient, secret: string): Promise<Link | null> {
   if (!TOKEN.test(secret)) return null;
   const { rows } = await client.query<LinkRow>(
-    "select id, purpose, business_id, subject_id, actions from tokens.resolve($1)",
+    "select id, purpose, business_id, subject_id from tokens.resolve($1)",
     [sha256(secret)],
   );
   const row = rows[0];
@@ -70,7 +60,6 @@ export async function resolve(client: DbClient, secret: string): Promise<Link | 
     purpose: row.purpose,
     businessId: row.business_id,
     subjectId: row.subject_id,
-    actions: row.actions,
   };
 }
 
@@ -80,4 +69,21 @@ export async function revoke(client: DbClient, id: string): Promise<void> {
     "update tokens.token set revoked_at = now() where id = $1 and revoked_at is null",
     [id],
   );
+}
+
+/**
+ * Ends every live link to one subject, for example all of a job's links after a message went to a wrong number.
+ * Runs inside `withTenant`; returns how many links it ended.
+ */
+export async function revokeFor(
+  client: DbClient,
+  purpose: LinkPurpose,
+  subjectId: string,
+): Promise<number> {
+  const { rowCount } = await client.query(
+    `update tokens.token set revoked_at = now()
+     where purpose = $1 and subject_id = $2 and revoked_at is null`,
+    [purpose, subjectId],
+  );
+  return rowCount ?? 0;
 }

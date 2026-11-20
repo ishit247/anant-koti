@@ -4,11 +4,15 @@ What we are building: [product-brief.md](product-brief.md). Shared modules:
 [platform-modules.md](platform-modules.md). The design is in [architecture.md](architecture.md);
 its first table says which sections each step reads.
 
-**Current position:** Phase 1 done (2026-11-21, tag `phase-1-done`): `validate full` green (157 tests), and the browser
-checks owed by 1.2 and 1.3 are done by `pnpm run check:browser` (`scripts/browser-check.ts`, Playwright): sign-in code
-from Mailpit → signup → onboarding → edit a price → public page in a cookieless context, screenshots at 375 px and
-1280 px into `.validation/browser/`; no overflow, no console errors, no cookie on `/b/[slug]`, unknown slug 404.
-Found: the owner's home page has no link to their public page (fold into 2.3, the owner inbox). Next: step 2.1 (HIGH).
+**Current position:** Step 2.1 done (2026-11-21). Next: step 2.2 (HIGH). Customer job links: `kk.job` (migration
+`0004_job.sql`; a composite foreign key keeps a job on its own business's customer), `src/job-link.ts`
+(`issueJobLink`, `revokeJobLinks`, `openJobLink`) and the page `/j/[secret]` (scope `customer-token`, no cookies). Design
+change, recorded in architecture.md 7: **a new link per message**, live 30 days, because a hashed secret cannot be
+resent; `tokens.extend` and the unused `actions` column are gone, `tokens.revokeFor` is new. Seeds: two jobs per
+business and one fixed dev link each (`dev-job-link-sharma-request-1-…`). Handed on: the per-IP rate limit to 2.2, the
+owner's revoke-and-resend button to 2.3. Verified: `validate standard` (175 tests), 5 mutants killed, `up:fresh`,
+browser check. Phase 1 done before it (tag `phase-1-done`): `pnpm run check:browser` (`scripts/browser-check.ts`,
+Playwright) covers sign-in → signup → onboarding → price edit → public page → job link, at 375 px and 1280 px.
 Step 1.4 before it: the `ac_repair` template in `src/seed-templates.ts` has 12 catalogue items, 7 intake questions, a
 7-item checklist and fuller terms. Step 1.3 before it: public page `/b/[slug]` (scope `public-slug`, no cookies) built by
 `src/public-page.ts` from the slug, the business row, its profile and its active price-list items; unknown slug or a
@@ -81,13 +85,13 @@ also write the module's README, and their tests run through the module's public 
 
 ## Phase 2: Requests and quotes
 
-| Id  | Step                                                                                                                                                        | Size | Model    | Status | Done when                                                                     |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | -------- | ------ | ----------------------------------------------------------------------------- |
-| 2.1 | `[module]` `tokens` links; customer magic links: scoped to one job, expiring, revocable                                                                     | M    | HIGH     | todo   | A token cannot read another job; expired token is refused; mutant proves both |
-| 2.2 | `[module]` `storage`; request intake: public form (pick one or more catalogue tasks), trade questions, photo upload (type and size checks, private storage) | M    | HIGH     | todo   | Upload rejects wrong types and sizes; photos are not publicly listable        |
-| 2.3 | Owner inbox: new requests, log a phone enquiry; a link to the owner's public page from home                                                                 | S    | STANDARD | todo   | Both request sources appear in one list                                       |
-| 2.4 | `[module]` `money`; `job_task`; quotes: lines from the catalogue at task or request level, versions, expiry                                                 | M    | HIGH     | todo   | Totals and tax are tested; old versions are immutable                         |
-| 2.5 | Negotiation: customer accepts, rejects or counters; owner revises; accepted quote locked                                                                    | M    | HIGH     | todo   | State machine test covers every transition; a locked quote cannot be edited   |
+| Id  | Step                                                                                                                                                                                                                         | Size | Model    | Status | Done when                                                                                                          |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | -------- | ------ | ------------------------------------------------------------------------------------------------------------------ |
+| 2.1 | `[module]` `tokens` links; customer magic links: scoped to one job, expiring, revocable                                                                                                                                      | M    | HIGH     | done   | A token cannot read another job; expired token is refused; mutant proves both                                      |
+| 2.2 | `[module]` `storage`; request intake: public form (pick one or more catalogue tasks), trade questions, photo upload (type and size checks, private storage); the app's per-IP rate limiter, for intake and for `/j/` lookups | M    | HIGH     | todo   | Upload rejects wrong types and sizes; photos are not publicly listable; intake and `/j/` answer 429 past the limit |
+| 2.3 | Owner inbox: new requests, log a phone enquiry; a link to the owner's public page from home; on a job, "revoke links and send a new one" (`revokeJobLinks` + `issueJobLink`, audited)                                        | S    | STANDARD | todo   | Both request sources appear in one list                                                                            |
+| 2.4 | `[module]` `money`; `job_task`; quotes: lines from the catalogue at task or request level, versions, expiry                                                                                                                  | M    | HIGH     | todo   | Totals and tax are tested; old versions are immutable                                                              |
+| 2.5 | Negotiation: customer accepts, rejects or counters; owner revises; accepted quote locked                                                                                                                                     | M    | HIGH     | todo   | State machine test covers every transition; a locked quote cannot be edited                                        |
 
 ## Phase 3: Scheduling and notifications
 

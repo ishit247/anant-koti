@@ -1,7 +1,15 @@
 import { pathToFileURL } from "node:url";
 import type { MigrationFolder } from "@bodhchakra/db";
 
-export { issue, type Link, type LinkPurpose, type NewLink, resolve, revoke } from "./link.ts";
+export {
+  issue,
+  type Link,
+  type LinkPurpose,
+  type NewLink,
+  resolve,
+  revoke,
+  revokeFor,
+} from "./link.ts";
 export {
   CLIENT_HEADER,
   MAX_SKEW_SECONDS,

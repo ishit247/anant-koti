@@ -266,16 +266,21 @@ requested ──send quote──▶ quoted ──customer accepts──▶ accep
 
 ## 7. Customer access by link (`tokens`)
 
-Customers never have accounts. Each job gets one link for its customer: `https://kaamkoti.<tld>/j/<token>`.
+Customers never have accounts. They open their job by a link: `https://kaamkoti.<tld>/j/<token>`.
 
 - The token is 32 random bytes in base64url. Only its SHA-256 is stored, in `tokens.token`: `hash`, `purpose`
-  (`job`, `invite`), `business_id`, `subject_id`, `actions`, `expires_at`, `revoked_at`.
-- Scope is one job, with the actions allowed at the moment (view, respond to quote, approve change order, pay,
-  review). Lookup returns the job id. The page then runs inside `withTenant` and loads only that job.
-- Each send extends the expiry to 30 days after the latest message. The owner can revoke the link and issue a new
-  one, for example after a wrong number.
+  (`job`, `invite`), `business_id`, `subject_id`, `expires_at`, `revoked_at`.
+- Scope is one job. Lookup returns the job id. The page then runs inside `withTenant` and loads only that job.
+  What the customer may do there (view, respond to quote, approve change order, pay, review) follows from the
+  job's state at request time; nothing about actions is stored on the token.
+- **A new link per message.** The secret cannot be recovered from its hash, so a later message cannot resend an
+  earlier link. Each message carries a fresh link (`issueJobLink`), live for 30 days after that message; a job
+  can have several live links. The owner can revoke all of a job's links (`revokeJobLinks`) and send a new one,
+  for example after a wrong number. (Changed in 2.1 from "one link per job, extended on each send", which
+  needed the secret stored.)
 - The token sits in the path. Caddy writes no access logs, and pages set `Referrer-Policy: no-referrer` and load
-  no third-party resources, so it does not leak. Lookups are rate limited per IP.
+  no third-party resources, so it does not leak. Lookups are rate limited per IP (from 2.2, which brings the
+  app's rate limiter for `public-intake`; a 256-bit token cannot be guessed meanwhile).
 - Customer actions are form posts carrying the token. With no cookies there is no ambient authority, and so
   no CSRF.
 - **Lapsed business** (section 13): the link still opens, but shows a contact card and allows no actions.
@@ -376,7 +381,7 @@ them in its README.
 | `db`               | `createPool(cfg)`, `tx(fn)`, `withTenant(id, fn)`, `migrate([...folders])`, `testDb()` (fresh database per test file)                                    | `db.migration`                                                                    | 0.3  |
 | `tenancy`          | `createBusiness`, `addMember`, `createInvite`, `acceptInvite`, `memberFor(identityId)`, `requireRole`, `defineRoute({ scope, … })`, route-scope test kit | `tenancy.*`                                                                       | 0.4  |
 | `audit`            | `record(tx, event)`, `recordStrict(tx, event)`                                                                                                           | `audit.event`                                                                     | 0.4  |
-| `tokens`           | `signRequest`, `verifyRequest` (0.5); `issue`, `resolve`, `revoke`, `extend` for links (invites 0.7, jobs 2.1)                                           | `tokens.token`                                                                    | 0.5  |
+| `tokens`           | `signRequest`, `verifyRequest` (0.5); `issue`, `resolve`, `revoke`, `revokeFor` for links (invites 0.7, jobs 2.1)                                        | `tokens.token`                                                                    | 0.5  |
 | `jobs`             | `createJobs(pool)`, `defineJob(name, zodPayload, handler)`, `send(tx, …)`, `sendAt`                                                                      | `pgboss.*`                                                                        | 0.5  |
 | `outbox`           | `enqueue(tx, topic, payload, key)`, `startDelivery`, `receive(source, key, tx, fn)`                                                                      | `outbox.message`, `outbox.inbox`                                                  | 0.5  |
 | `auth` (app side)  | `createAuth(options)` → `startLogin`, `handleCallback`, `getSession`, `signOut`; `SignInRefused`, `SignInUnavailable`                                    | `auth.login_attempt`, `auth.session`                                              | 0.6  |

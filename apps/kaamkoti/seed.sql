@@ -1,7 +1,8 @@
 -- Development seed, run by `pnpm run up:fresh` as kaamkoti_owner in one transaction. Fixed ids so tests and
 -- manual checks can name rows. Two businesses with three customers each, so isolation always has rows on both
 -- sides. Phone numbers are in the fictional +91 90000 range; emails use example.com.
--- Grows with the schema: jobs across the states of section 6 arrive in phase 2.
+-- Grows with the schema: two new requests per business now; jobs across the other states of section 6 arrive
+-- with the steps that move them there.
 insert into tenancy.business (id, slug, name, phone, city) values
   ('10000000-0000-4000-8000-000000000001', 'sharma-cooling', 'Sharma Cooling Services', '+919000000101', 'Pune'),
   ('20000000-0000-4000-8000-000000000002', 'kaveri-electricals', 'Kaveri Electricals', '+919000000202', 'Bengaluru');
@@ -47,3 +48,21 @@ insert into kk.catalogue_item (id, business_id, name, unit, unit_price_minor, ta
   ('10000000-0000-4000-8000-0000000b0003', '10000000-0000-4000-8000-000000000001', 'AC general service', 'unit', 80000, 1800, 2),
   ('20000000-0000-4000-8000-0000000b0001', '20000000-0000-4000-8000-000000000002', 'Fan installation', 'unit', 40000, 1800, 0),
   ('20000000-0000-4000-8000-0000000b0002', '20000000-0000-4000-8000-000000000002', 'House rewiring', 'sq_ft', 9000, 1800, 1);
+
+insert into kk.job (id, business_id, customer_id, number, source) values
+  ('10000000-0000-4000-8000-0000000e0001', '10000000-0000-4000-8000-000000000001',
+   '10000000-0000-4000-8000-0000000c0001', 1, 'public_form'),
+  ('10000000-0000-4000-8000-0000000e0002', '10000000-0000-4000-8000-000000000001',
+   '10000000-0000-4000-8000-0000000c0002', 2, 'phone'),
+  ('20000000-0000-4000-8000-0000000e0001', '20000000-0000-4000-8000-000000000002',
+   '20000000-0000-4000-8000-0000000c0001', 1, 'public_form'),
+  ('20000000-0000-4000-8000-0000000e0002', '20000000-0000-4000-8000-000000000002',
+   '20000000-0000-4000-8000-0000000c0003', 2, 'phone');
+
+-- One customer link per business to its request #1, with a fixed development secret (stored, as always, only
+-- as its SHA-256) so manual and browser checks can open /j/<secret>. Real links come from issueJobLink.
+insert into tokens.token (hash, purpose, business_id, subject_id, expires_at) values
+  (sha256(convert_to('dev-job-link-sharma-request-1-xxxxxxxxxxxxx', 'UTF8')), 'job',
+   '10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-0000000e0001', now() + interval '30 days'),
+  (sha256(convert_to('dev-job-link-kaveri-request-1-xxxxxxxxxxxxx', 'UTF8')), 'job',
+   '20000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-0000000e0001', now() + interval '30 days');

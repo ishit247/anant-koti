@@ -1,7 +1,8 @@
 // Phase-end browser check: `pnpm run check:browser`, against the running dev stack (`pnpm run up:fresh`,
 // the platform container, `pnpm --filter kaamkoti dev`). Chromium lives on D: (set
 // PLAYWRIGHT_BROWSERS_PATH=D:\playwright-browsers; install with `pnpm exec playwright install chromium-headless-shell`). A new owner signs in with an email code read from
-// Mailpit, creates a business, picks a trade, edits a price, and the public page is opened without cookies.
+// Mailpit, creates a business, picks a trade, edits a price, and the public page and a customer's job link are
+// opened without cookies.
 // Each page is screenshotted at phone and desktop width into .validation/browser/; the run fails on a console
 // error, a page wider than the viewport, or a cookie on the public page.
 import { mkdirSync } from "node:fs";
@@ -111,6 +112,23 @@ try {
   // fetch, not the page: the browser logs a 404 as a console error.
   const missing = await fetch(`${APP}/b/no-such-business-${run}`);
   if (missing.status !== 404) problems.push(`unknown slug answered ${missing.status}`);
+
+  // The customer's job link (seeded in apps/kaamkoti/seed.sql), also cookieless.
+  const jobPage = await visitor.newPage();
+  watchConsole(jobPage, "job link");
+  const job = await jobPage.goto(`${APP}/j/dev-job-link-sharma-request-1-xxxxxxxxxxxxx`);
+  if (job?.status() !== 200) problems.push(`job link answered ${job?.status()}`);
+  if (job?.headers()["set-cookie"]) problems.push("job link set a cookie");
+  if (job?.headers()["referrer-policy"] !== "no-referrer")
+    problems.push("job link lacks Referrer-Policy: no-referrer");
+  if (!(await jobPage.getByRole("heading", { name: "Request #1" }).count()))
+    problems.push("job link does not show request #1");
+  await shoot(jobPage, "9-job-link");
+  await jobPage.goto(`${APP}/j/${"x".repeat(43)}`);
+  if (!(await jobPage.getByText("This link is no longer valid").count()))
+    problems.push("an unknown job link is not refused");
+  await shoot(jobPage, "10-job-link-dead");
+  if ((await visitor.cookies()).length > 0) problems.push("visitor context holds cookies");
   await visitor.close();
 } finally {
   await owner?.close();
