@@ -149,8 +149,8 @@ Match the verification to what the change can break.
 
 ## Security rules that recur
 
-- **A permission answers *what*, never *whose*.** Every route taking an id needs
-  a permission check *and* a scope check (the site belongs to the signed-in
+- **A permission answers _what_, never _whose_.** Every route taking an id needs
+  a permission check _and_ a scope check (the site belongs to the signed-in
   owner, or to the guest cookie for a guest draft), and must declare its scope rule. A test
   enumerates routes and fails if one lacks a declaration.
 - **GRANT never withholds; REVOKE does.** If default privileges already grant all
@@ -249,11 +249,11 @@ Policies for keeping sessions cheap. If one is wrong for the task, say so and as
 A stronger model costs more per token but is worth it where one subtle mistake is expensive and hard to see in tests.
 The recommendation is per step; the user decides, but must be reminded.
 
-| Work | Recommended model |
-|---|---|
+| Work                                                                                                                                                                                                                                                              | Recommended model        |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
 | Payment webhooks, subscription lifecycle, money logic, owner isolation (RLS, scope checks), authentication, domain routing and cookie boundaries, preview tokens, upload handling, moderation and takedown, migrations that change subscription or payment tables | **HIGH** (Opus or Fable) |
-| Editor screens, templates and block types, dashboard, maps UI, routes and tests that follow an existing pattern, seeds | STANDARD (Sonnet) |
-| Documentation, tracker updates, running validation, status checks | STANDARD, or cheaper |
+| Editor screens, templates and block types, dashboard, maps UI, routes and tests that follow an existing pattern, seeds                                                                                                                                            | STANDARD (Sonnet)        |
+| Documentation, tracker updates, running validation, status checks                                                                                                                                                                                                 | STANDARD, or cheaper     |
 
 **The reminder (a rule for the assistant).** At the start of a session, and again before starting any step marked HIGH
 in a phase file, compare the model you are running as with the plan. If a HIGH step is about to start on a lower model,

@@ -16,16 +16,16 @@ Agreed 2026-11-20. Open questions live in the Decisions table of
 
 ## Core flow (the same for every trade)
 
-| Stage | What happens |
-|---|---|
-| Request | Customer submits what, where, when and photos, from the business's public page, a WhatsApp link or a QR code; or the owner logs a phone enquiry |
-| Quote and negotiate | Quote with line items and versions; customer accepts, rejects or counters; quotes expire; optional site visit first |
-| Accept | Accepted quote is locked as the agreed scope; optional deposit |
-| Schedule | Slot and technician; confirmation, reminder and "on the way" messages |
-| Job | Check-in, trade checklist, before/after photos; change orders for extra work, which the customer re-approves |
-| Pay | Invoice from the accepted quote plus change orders; UPI, card, cash on site, part-payments |
-| Review | Requested automatically after payment; low ratings go privately to the owner first |
-| Referral | Customer share link; points or credit for both sides, redeemable on the next job |
+| Stage               | What happens                                                                                                                                    |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Request             | Customer submits what, where, when and photos, from the business's public page, a WhatsApp link or a QR code; or the owner logs a phone enquiry |
+| Quote and negotiate | Quote with line items and versions; customer accepts, rejects or counters; quotes expire; optional site visit first                             |
+| Accept              | Accepted quote is locked as the agreed scope; optional deposit                                                                                  |
+| Schedule            | Slot and technician; confirmation, reminder and "on the way" messages                                                                           |
+| Job                 | Check-in, trade checklist, before/after photos; change orders for extra work, which the customer re-approves                                    |
+| Pay                 | Invoice from the accepted quote plus change orders; UPI, card, cash on site, part-payments                                                      |
+| Review              | Requested automatically after payment; low ratings go privately to the owner first                                                              |
+| Referral            | Customer share link; points or credit for both sides, redeemable on the next job                                                                |
 
 ## Generic through trade templates
 
@@ -44,12 +44,12 @@ stock, route planning, GST invoices, multiple branches.
 
 ## Plans
 
-| Plan | For | India / Global (indicative) |
-|---|---|---|
-| Trial | 14–30 days of Team | free |
-| Solo | One tradesperson | ₹299–499/mo · $15–19/mo |
-| Team | 2–10 technicians, priced per seat | ₹999–1,499/mo · $39–49/mo |
-| Business | Branches, roles, reports, tax invoices | ₹2,999+/mo · $99+/mo |
+| Plan     | For                                    | India / Global (indicative) |
+| -------- | -------------------------------------- | --------------------------- |
+| Trial    | 14–30 days of Team                     | free                        |
+| Solo     | One tradesperson                       | ₹299–499/mo · $15–19/mo     |
+| Team     | 2–10 technicians, priced per seat      | ₹999–1,499/mo · $39–49/mo   |
+| Business | Branches, roles, reports, tax invoices | ₹2,999+/mo · $99+/mo        |
 
 - No commission on jobs; payment-gateway fees are passed through at cost.
 - Annual billing gets 2 months free.

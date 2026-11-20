@@ -15,7 +15,7 @@ detailed design is in [architecture.md](architecture.md).
 
 1. **Libraries, not services.** A module is a TypeScript package that runs inside the
    app's process, with no network hop and nothing extra to deploy. A module becomes a
-   service only when two *running* apps must share its state (see "How apps interact").
+   service only when two _running_ apps must share its state (see "How apps interact").
 2. **Framework-agnostic.** A module uses plain TypeScript and Node/Web APIs. It never
    imports Next.js or NestJS. Each app keeps a thin adapter: a route handler, a Nest
    guard, a server action.
@@ -37,22 +37,22 @@ detailed design is in [architecture.md](architecture.md).
 
 ## Modules
 
-| Layer | Module | Owns | First built in step |
-|---|---|---|---|
-| Foundation | `config` | Env parsing with Zod; bad config stops start-up | 0.2 |
-| Foundation | `log` | Structured logger (pino), request id, redaction of secrets and personal data | 0.2 |
-| Foundation | `money` | Integer minor units (paise/cents), currency, tax rounding | 2.4 |
-| Core | `db` | Pool, transactions, tenant context for RLS, name-tracked migration runner, real-Postgres test helper | 0.3 |
-| Core | `audit` | Append-only audit log, savepoint writes, `REVOKE` update/delete | 0.4 |
-| Core | `jobs` | pg-boss wrapper, typed job definitions, retries | 0.5 |
-| Core | `storage` | S3/Garage, upload validation (content sniffing, size), private and public buckets | 2.2 |
-| Domain | `auth` | App side of sign-in: OpenID Connect client, local sessions (identities and OTP live in `platform`) | 0.6 |
-| Domain | `tenancy` | Organisations, members, roles, invites, scope-check helpers, route-scope test kit | 0.4 |
-| Core | `tokens` | Signed service requests; scoped, expiring, revocable links (invites, magic links) | 0.5, 2.1 |
-| Core | `outbox` | Transactional outbox, signed delivery, idempotent inbox | 0.5 |
-| Domain | `notify` | Email, WhatsApp and SMS channels; templates; quotas; delivery webhooks | 3.2, 3.3 |
-| Domain | `payments` | Customer payment links, provider adapter (Razorpay first), verified idempotent webhooks | 4.1 |
-| Domain | `billing` | Plans, seats, trials, subscriptions activated only from verified webhooks, live/lapsed computed at request time, usage quotas | 5.1 |
+| Layer      | Module     | Owns                                                                                                                          | First built in step |
+| ---------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| Foundation | `config`   | Env parsing with Zod; bad config stops start-up                                                                               | 0.2                 |
+| Foundation | `log`      | Structured logger (pino), request id, redaction of secrets and personal data                                                  | 0.2                 |
+| Foundation | `money`    | Integer minor units (paise/cents), currency, tax rounding                                                                     | 2.4                 |
+| Core       | `db`       | Pool, transactions, tenant context for RLS, name-tracked migration runner, real-Postgres test helper                          | 0.3                 |
+| Core       | `audit`    | Append-only audit log, savepoint writes, `REVOKE` update/delete                                                               | 0.4                 |
+| Core       | `jobs`     | pg-boss wrapper, typed job definitions, retries                                                                               | 0.5                 |
+| Core       | `storage`  | S3/Garage, upload validation (content sniffing, size), private and public buckets                                             | 2.2                 |
+| Domain     | `auth`     | App side of sign-in: OpenID Connect client, local sessions (identities and OTP live in `platform`)                            | 0.6                 |
+| Domain     | `tenancy`  | Organisations, members, roles, invites, scope-check helpers, route-scope test kit                                             | 0.4                 |
+| Core       | `tokens`   | Signed service requests; scoped, expiring, revocable links (invites, magic links)                                             | 0.5, 2.1            |
+| Core       | `outbox`   | Transactional outbox, signed delivery, idempotent inbox                                                                       | 0.5                 |
+| Domain     | `notify`   | Email, WhatsApp and SMS channels; templates; quotas; delivery webhooks                                                        | 3.2, 3.3            |
+| Domain     | `payments` | Customer payment links, provider adapter (Razorpay first), verified idempotent webhooks                                       | 4.1                 |
+| Domain     | `billing`  | Plans, seats, trials, subscriptions activated only from verified webhooks, live/lapsed computed at request time, usage quotas | 5.1                 |
 
 Not a module yet: a shared UI kit. It waits for a second app that wants the same
 components (principle 6).

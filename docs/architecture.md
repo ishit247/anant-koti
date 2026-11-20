@@ -6,20 +6,20 @@ Step 0.1, written 2026-11-21. Product: [product-brief.md](product-brief.md). Mod
 
 Read only what your step needs. Each step's sections:
 
-| Step | Read |
-|---|---|
-| 0.2 | 1, 12 |
-| 0.3 | 1, 2, 4.1, 5 |
-| 0.4 | 4, 5.2, 11 |
-| 0.5 | 1, 9, 12 (`tokens`, `outbox`, `jobs`) |
-| 0.6, 0.7 | 3, 4.3 |
-| 1.x | 5.3, 6 |
-| 2.1–2.3 | 5.3, 7, 10 |
-| 2.4, 2.5 | 5.3, 6, 8 |
-| 3.x | 5.3, 6, 9 |
-| 4.x | 5.3, 6, 8, 12 (`payments`) |
-| 5.x | 4, 13 |
-| 6.x | 5.3, 9, 13 |
+| Step     | Read                                  |
+| -------- | ------------------------------------- |
+| 0.2      | 1, 12                                 |
+| 0.3      | 1, 2, 4.1, 5                          |
+| 0.4      | 4, 5.2, 11                            |
+| 0.5      | 1, 9, 12 (`tokens`, `outbox`, `jobs`) |
+| 0.6, 0.7 | 3, 4.3                                |
+| 1.x      | 5.3, 6                                |
+| 2.1–2.3  | 5.3, 7, 10                            |
+| 2.4, 2.5 | 5.3, 6, 8                             |
+| 3.x      | 5.3, 6, 9                             |
+| 4.x      | 5.3, 6, 8, 12 (`payments`)            |
+| 5.x      | 4, 13                                 |
+| 6.x      | 5.3, 9, 13                            |
 
 ## 1. Containers, hosts and cookies
 
@@ -51,10 +51,10 @@ Internal network only: kaamkoti-worker, platform internal API, Postgres, Garage,
 
 Postgres roles are cluster-wide, and POS already owns `app_platform`, so every role carries its project prefix.
 
-| Database | Owner role (migrations) | Runtime role | Schemas |
-|---|---|---|---|
-| `kaamkoti` | `kaamkoti_owner` | `kaamkoti_app` (web and worker) | `tenancy`, `audit`, `tokens`, `outbox`, `storage`, `payments`, `billing`, `auth`, `pgboss`, `kk` (app) |
-| `platform` | `platform_owner` | `platform_app` | `identity`, `billing`, `notify`, `tokens`, `outbox`, `audit`, `pgboss` |
+| Database   | Owner role (migrations) | Runtime role                    | Schemas                                                                                                |
+| ---------- | ----------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `kaamkoti` | `kaamkoti_owner`        | `kaamkoti_app` (web and worker) | `tenancy`, `audit`, `tokens`, `outbox`, `storage`, `payments`, `billing`, `auth`, `pgboss`, `kk` (app) |
+| `platform` | `platform_owner`        | `platform_app`                  | `identity`, `billing`, `notify`, `tokens`, `outbox`, `audit`, `pgboss`                                 |
 
 - The runtime role owns nothing, is `NOBYPASSRLS`, and gets its rights from each migration's explicit `GRANT`s,
   with `REVOKE` where a right must be withheld (for example `audit.event`: insert and select only).
@@ -103,11 +103,11 @@ There is one identity per person, and it lives in `platform`. Each app keeps its
 
 `tenancy.business` is the tenant. Every tenant-owned row carries `business_id uuid not null`.
 
-| Table | Columns (beyond `id uuid`, `created_at`) |
-|---|---|
-| `tenancy.business` | `slug` (unique, public URL), `name`, `phone`, `city`, `timezone` (default `Asia/Kolkata`), `currency` (default `INR`) |
-| `tenancy.member` | `business_id`, `identity_id`, `display_name`, `role` (`owner`, `technician`), `removed_at`; unique (`business_id`, `identity_id`) |
-| `tenancy.invite` | `business_id`, `role`, `invited_by`, `token_id` → `tokens.token`, `accepted_member_id`, `expires_at` |
+| Table              | Columns (beyond `id uuid`, `created_at`)                                                                                          |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `tenancy.business` | `slug` (unique, public URL), `name`, `phone`, `city`, `timezone` (default `Asia/Kolkata`), `currency` (default `INR`)             |
+| `tenancy.member`   | `business_id`, `identity_id`, `display_name`, `role` (`owner`, `technician`), `removed_at`; unique (`business_id`, `identity_id`) |
+| `tenancy.invite`   | `business_id`, `role`, `invited_by`, `token_id` → `tokens.token`, `accepted_member_id`, `expires_at`                              |
 
 There is one owner per business in the MVP. More roles (manager, branch) arrive with the Business plan (7.7).
 
@@ -131,30 +131,30 @@ There is one owner per business in the MVP. More roles (manager, branch) arrive 
 
 ### 4.3 Permissions and scope
 
-A permission answers *what* the role may do. Scope answers *whose* row it is. Both are checked.
+A permission answers _what_ the role may do. Scope answers _whose_ row it is. Both are checked.
 
-| Action | Owner | Technician |
-|---|---|---|
-| Business settings, catalogue, members, billing | yes | no |
-| Requests, quotes, change-order pricing, invoices, cash payments | yes | no |
-| Schedule and assign | yes | no |
-| View a job | all | only jobs with an appointment assigned to them |
-| Check in, checklist, photos, propose change order, mark complete | yes | assigned jobs only |
+| Action                                                           | Owner | Technician                                     |
+| ---------------------------------------------------------------- | ----- | ---------------------------------------------- |
+| Business settings, catalogue, members, billing                   | yes   | no                                             |
+| Requests, quotes, change-order pricing, invoices, cash payments  | yes   | no                                             |
+| Schedule and assign                                              | yes   | no                                             |
+| View a job                                                       | all   | only jobs with an appointment assigned to them |
+| Check in, checklist, photos, propose change order, mark complete | yes   | assigned jobs only                             |
 
 - RLS gives business scope. The technician rule ("assigned to me") is an explicit check in the job query helper,
   and it is tested.
 - **Every route declares its scope** in an exported constant. A test (0.4) enumerates every route file, server
   action and webhook handler, and fails on any without a declaration.
 
-| Scope | Credential | Resolves to |
-|---|---|---|
-| `member` | session cookie (`app.` only) | business, member, role; then `withTenant` |
-| `customer-token` | token in the path (section 7) | business, job and allowed actions; then `withTenant` |
-| `public-slug` | none | business by slug; read-only public columns |
-| `public-intake` | none, rate limited | business by slug; may only create a request |
-| `service` | signed request from platform (section 9) | the business in the payload; then `withTenant` |
-| `provider-webhook` | provider signature | the business in the URL, verified against its secret |
-| `none` | none | health checks and static pages only |
+| Scope              | Credential                               | Resolves to                                          |
+| ------------------ | ---------------------------------------- | ---------------------------------------------------- |
+| `member`           | session cookie (`app.` only)             | business, member, role; then `withTenant`            |
+| `customer-token`   | token in the path (section 7)            | business, job and allowed actions; then `withTenant` |
+| `public-slug`      | none                                     | business by slug; read-only public columns           |
+| `public-intake`    | none, rate limited                       | business by slug; may only create a request          |
+| `service`          | signed request from platform (section 9) | the business in the payload; then `withTenant`       |
+| `provider-webhook` | provider signature                       | the business in the URL, verified against its secret |
+| `none`             | none                                     | health checks and static pages only                  |
 
 ## 5. Data model
 
@@ -174,23 +174,23 @@ Each module's own section in 12 lists its tables. Section 4.1 covers tenancy.
 
 ### 5.3 App tables (schema `kk`)
 
-| Table | Purpose and key columns |
-|---|---|
-| `trade_template` | Global, read-only, from seeds: `key`, `version`, `body` (catalogue, intake questions, checklist, terms) |
-| `business_profile` | 1:1 with business: `trade_key`, `about`, `service_area`, `logo_object_id`, `intake` (questions), `checklist`, `terms`; copied from the template at onboarding, then the business's own |
-| `catalogue_item` | `name`, `unit` (`job`, `hour`, `unit`, `sq_ft`, …), `unit_price_minor`, `tax_rate_bp`, `active` |
-| `customer` | `name`, `phone_e164`, `email`, `address`; unique (`business_id`, `phone_e164`); found or created on request |
-| `job` | The request and everything after: `customer_id`, `number` (per business), `source` (`public_form`, `whatsapp_link`, `qr`, `phone`), `answers`, `address`, `preferred_window`, `status` (section 6), `accepted_quote_id`, `cancel_reason` |
-| `quote` | `job_id`, `version` (unique per job), `status` (`draft`, `sent`, `accepted`, `rejected`, `countered`, `superseded`), `valid_until`, totals, `deposit_minor`, `counter_note`, `counter_total_minor`, `sent_at`, `decided_at` |
-| `quote_line` | `quote_id`, `catalogue_item_id` (nullable), `description`, `unit`, `quantity_milli`, `unit_price_minor`, `tax_rate_bp`, `net_minor`, `tax_minor` |
-| `appointment` | `job_id`, `kind` (`site_visit`, `work`), `technician_member_id`, `starts_at`, `ends_at`, `status` (`planned`, `done`, `cancelled`), `on_the_way_at` |
-| `job_visit` | `appointment_id`, `checked_in_at`, `checklist` (results), `completed_at`, `note` |
-| `change_order` | `job_id`, `number`, `status` (`proposed`, `approved`, `rejected`), totals, `decided_at` |
-| `change_order_line` | Same shape as `quote_line` |
-| `invoice` | `job_id` (unique while not void), `number` (per business, gap-free sequence row), `status` (`issued`, `paid`, `void`), totals, `issued_at`, `paid_at` |
-| `invoice_line` | Snapshot of the accepted quote's lines plus approved change-order lines |
-| `job_photo` | `job_id`, `object_id` → `storage.object`, `kind` (`request`, `before`, `after`) |
-| `review` | `job_id` (unique), `rating` 1–5, `text`, `status` (`held`, `published`), `owner_response`, `publish_after` |
+| Table               | Purpose and key columns                                                                                                                                                                                                                  |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `trade_template`    | Global, read-only, from seeds: `key`, `version`, `body` (catalogue, intake questions, checklist, terms)                                                                                                                                  |
+| `business_profile`  | 1:1 with business: `trade_key`, `about`, `service_area`, `logo_object_id`, `intake` (questions), `checklist`, `terms`; copied from the template at onboarding, then the business's own                                                   |
+| `catalogue_item`    | `name`, `unit` (`job`, `hour`, `unit`, `sq_ft`, …), `unit_price_minor`, `tax_rate_bp`, `active`                                                                                                                                          |
+| `customer`          | `name`, `phone_e164`, `email`, `address`; unique (`business_id`, `phone_e164`); found or created on request                                                                                                                              |
+| `job`               | The request and everything after: `customer_id`, `number` (per business), `source` (`public_form`, `whatsapp_link`, `qr`, `phone`), `answers`, `address`, `preferred_window`, `status` (section 6), `accepted_quote_id`, `cancel_reason` |
+| `quote`             | `job_id`, `version` (unique per job), `status` (`draft`, `sent`, `accepted`, `rejected`, `countered`, `superseded`), `valid_until`, totals, `deposit_minor`, `counter_note`, `counter_total_minor`, `sent_at`, `decided_at`              |
+| `quote_line`        | `quote_id`, `catalogue_item_id` (nullable), `description`, `unit`, `quantity_milli`, `unit_price_minor`, `tax_rate_bp`, `net_minor`, `tax_minor`                                                                                         |
+| `appointment`       | `job_id`, `kind` (`site_visit`, `work`), `technician_member_id`, `starts_at`, `ends_at`, `status` (`planned`, `done`, `cancelled`), `on_the_way_at`                                                                                      |
+| `job_visit`         | `appointment_id`, `checked_in_at`, `checklist` (results), `completed_at`, `note`                                                                                                                                                         |
+| `change_order`      | `job_id`, `number`, `status` (`proposed`, `approved`, `rejected`), totals, `decided_at`                                                                                                                                                  |
+| `change_order_line` | Same shape as `quote_line`                                                                                                                                                                                                               |
+| `invoice`           | `job_id` (unique while not void), `number` (per business, gap-free sequence row), `status` (`issued`, `paid`, `void`), totals, `issued_at`, `paid_at`                                                                                    |
+| `invoice_line`      | Snapshot of the accepted quote's lines plus approved change-order lines                                                                                                                                                                  |
+| `job_photo`         | `job_id`, `object_id` → `storage.object`, `kind` (`request`, `before`, `after`)                                                                                                                                                          |
+| `review`            | `job_id` (unique), `rating` 1–5, `text`, `status` (`held`, `published`), `owner_response`, `publish_after`                                                                                                                               |
 
 Rules the database enforces, not just the code:
 
@@ -222,19 +222,19 @@ requested ──send quote──▶ quoted ──customer accepts──▶ accep
                                                                              completed
 ```
 
-| From | Event | To | Who | Side effects |
-|---|---|---|---|---|
-| — | request created | `requested` | customer (`public-intake`) or owner (phone) | customer found or created; notify owner and customer; token issued |
-| `requested` | quote sent | `quoted` | owner | quote `draft → sent`; expiry job at `valid_until`; notify customer |
-| `requested` | decline | `declined` | owner | notify customer |
-| `quoted` | accept | `accepted` | customer | quote → `accepted`, `job.accepted_quote_id` set; deposit link if `deposit_minor > 0`; notify owner |
-| `quoted` | reject or counter | `quoted` | customer | quote → `rejected` or `countered`; notify owner |
-| `quoted` | revise | `quoted` | owner | new version `sent`, previous → `superseded` |
-| `quoted` | close as lost | `lost` | owner | — |
-| `accepted` | appointment planned | `scheduled` | owner | notify customer; reminder jobs |
-| `scheduled` | check in | `in_progress` | assigned technician or owner | `job_visit.checked_in_at` |
-| `in_progress` | complete | `completed` | assigned technician or owner | invoice issued with pay link; notify customer |
-| `requested`…`scheduled` | cancel | `cancelled` | owner, or customer by token | appointments cancelled; open payment links cancelled |
+| From                    | Event               | To            | Who                                         | Side effects                                                                                       |
+| ----------------------- | ------------------- | ------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| —                       | request created     | `requested`   | customer (`public-intake`) or owner (phone) | customer found or created; notify owner and customer; token issued                                 |
+| `requested`             | quote sent          | `quoted`      | owner                                       | quote `draft → sent`; expiry job at `valid_until`; notify customer                                 |
+| `requested`             | decline             | `declined`    | owner                                       | notify customer                                                                                    |
+| `quoted`                | accept              | `accepted`    | customer                                    | quote → `accepted`, `job.accepted_quote_id` set; deposit link if `deposit_minor > 0`; notify owner |
+| `quoted`                | reject or counter   | `quoted`      | customer                                    | quote → `rejected` or `countered`; notify owner                                                    |
+| `quoted`                | revise              | `quoted`      | owner                                       | new version `sent`, previous → `superseded`                                                        |
+| `quoted`                | close as lost       | `lost`        | owner                                       | —                                                                                                  |
+| `accepted`              | appointment planned | `scheduled`   | owner                                       | notify customer; reminder jobs                                                                     |
+| `scheduled`             | check in            | `in_progress` | assigned technician or owner                | `job_visit.checked_in_at`                                                                          |
+| `in_progress`           | complete            | `completed`   | assigned technician or owner                | invoice issued with pay link; notify customer                                                      |
+| `requested`…`scheduled` | cancel              | `cancelled`   | owner, or customer by token                 | appointments cancelled; open payment links cancelled                                               |
 
 - **Quote expiry is computed at request time.** A `sent` quote with `valid_until < now()` is treated as
   expired: accepting it is refused and the customer sees "ask for a new quote". The pg-boss job at
@@ -313,15 +313,15 @@ receiver code handles provider webhooks, with the provider's signature in place 
   If there is no email, the owner is told.
 - Delivery-status webhooks from providers reach `hooks.` and are signature-verified (3.3).
 
-| Template | To | When |
-|---|---|---|
-| `request.received` | owner; customer gets an acknowledgement with their link | job created |
-| `quote.sent` | customer | quote sent or revised |
-| `quote.response` | owner | accepted, rejected, countered |
-| `appointment.confirmed`, `appointment.reminder`, `technician.on_the_way` | customer | planned; 24 h before; tapped by the technician |
-| `change_order.proposed` | customer | technician or owner proposes |
-| `invoice.issued`, `payment.received` | customer; owner | complete; payment recorded |
-| `review.request`, `review.held` | customer; owner | invoice paid; low rating |
+| Template                                                                 | To                                                      | When                                           |
+| ------------------------------------------------------------------------ | ------------------------------------------------------- | ---------------------------------------------- |
+| `request.received`                                                       | owner; customer gets an acknowledgement with their link | job created                                    |
+| `quote.sent`                                                             | customer                                                | quote sent or revised                          |
+| `quote.response`                                                         | owner                                                   | accepted, rejected, countered                  |
+| `appointment.confirmed`, `appointment.reminder`, `technician.on_the_way` | customer                                                | planned; 24 h before; tapped by the technician |
+| `change_order.proposed`                                                  | customer                                                | technician or owner proposes                   |
+| `invoice.issued`, `payment.received`                                     | customer; owner                                         | complete; payment recorded                     |
+| `review.request`, `review.held`                                          | customer; owner                                         | invoice paid; low rating                       |
 
 Sign-in OTPs go straight from identity to its own channel, inside platform, not through the outbox. Technician
 invites in 0.7 are shared by the owner: copy the link, or a `wa.me` share. Sending them by notify waits for 3.2.
@@ -353,22 +353,22 @@ invites in 0.7 are shared by the owner: copy the link, or a `wa.me` share. Sendi
 Each module exports only from `src/index.ts`. Signatures are indicative; the step that builds a module fixes
 them in its README.
 
-| Module | Public API | Tables | Step |
-|---|---|---|---|
-| `config` | `defineConfig(zodSchema)` → frozen typed config; throws on start-up | — | 0.2 |
-| `log` | `createLogger({ service })`, `withRequestId`; redacts keys such as `phone`, `email`, `token`, `authorization`, `secret` | — | 0.2 |
-| `db` | `createPool(cfg)`, `tx(fn)`, `withTenant(id, fn)`, `migrate([...folders])`, `testDb()` (fresh database per test file) | `db.migration` | 0.3 |
-| `tenancy` | `createBusiness`, `addMember`, `createInvite`, `acceptInvite`, `memberFor(identityId)`, `requireRole`, `defineRoute({ scope, … })`, route-scope test kit | `tenancy.*` | 0.4 |
-| `audit` | `record(tx, event)`, `recordStrict(tx, event)` | `audit.event` | 0.4 |
-| `tokens` | `signRequest`, `verifyRequest` (0.5); `issue`, `resolve`, `revoke`, `extend` for links (invites 0.7, jobs 2.1) | `tokens.token` | 0.5 |
-| `jobs` | `createJobs(pool)`, `defineJob(name, zodPayload, handler)`, `send(tx, …)`, `sendAt` | `pgboss.*` | 0.5 |
-| `outbox` | `enqueue(tx, topic, payload, key)`, `startDelivery`, `receive(source, key, tx, fn)` | `outbox.message`, `outbox.inbox` | 0.5 |
-| `auth` (app side) | `startLogin`, `handleCallback`, `getSession`, `signOut` | `auth.login_attempt`, `auth.session` | 0.6 |
-| `storage` | `upload(stream, rules)`, `signedUrl(object)`, `remove` | `storage.object` | 2.2 |
-| `money` | `money(minor, cur)`, `add`, `lineTotals(lines)`, `formatINR` | — | 2.4 |
-| `notify` (client) | `send(tx, message)`, through the outbox | — (server tables in platform) | 3.2 |
-| `payments` | `connectAccount`, `createPaymentLink(tx, …)`, `handleWebhook(req)` → typed events, `recordManual(tx, …)` | `payments.account`, `payments.link`, `payments.payment`, `payments.webhook_event` | 4.1 |
-| `billing` (client) | `status(businessId)` → `{ plan, live, limits }`, `assertWithin(limit)`, event handler for status updates | `billing.status` | 5.1 |
+| Module             | Public API                                                                                                                                               | Tables                                                                            | Step |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ---- |
+| `config`           | `defineConfig(zodSchema)` → frozen typed config; throws on start-up                                                                                      | —                                                                                 | 0.2  |
+| `log`              | `createLogger({ service })`, `withRequestId`; redacts keys such as `phone`, `email`, `token`, `authorization`, `secret`                                  | —                                                                                 | 0.2  |
+| `db`               | `createPool(cfg)`, `tx(fn)`, `withTenant(id, fn)`, `migrate([...folders])`, `testDb()` (fresh database per test file)                                    | `db.migration`                                                                    | 0.3  |
+| `tenancy`          | `createBusiness`, `addMember`, `createInvite`, `acceptInvite`, `memberFor(identityId)`, `requireRole`, `defineRoute({ scope, … })`, route-scope test kit | `tenancy.*`                                                                       | 0.4  |
+| `audit`            | `record(tx, event)`, `recordStrict(tx, event)`                                                                                                           | `audit.event`                                                                     | 0.4  |
+| `tokens`           | `signRequest`, `verifyRequest` (0.5); `issue`, `resolve`, `revoke`, `extend` for links (invites 0.7, jobs 2.1)                                           | `tokens.token`                                                                    | 0.5  |
+| `jobs`             | `createJobs(pool)`, `defineJob(name, zodPayload, handler)`, `send(tx, …)`, `sendAt`                                                                      | `pgboss.*`                                                                        | 0.5  |
+| `outbox`           | `enqueue(tx, topic, payload, key)`, `startDelivery`, `receive(source, key, tx, fn)`                                                                      | `outbox.message`, `outbox.inbox`                                                  | 0.5  |
+| `auth` (app side)  | `startLogin`, `handleCallback`, `getSession`, `signOut`                                                                                                  | `auth.login_attempt`, `auth.session`                                              | 0.6  |
+| `storage`          | `upload(stream, rules)`, `signedUrl(object)`, `remove`                                                                                                   | `storage.object`                                                                  | 2.2  |
+| `money`            | `money(minor, cur)`, `add`, `lineTotals(lines)`, `formatINR`                                                                                             | —                                                                                 | 2.4  |
+| `notify` (client)  | `send(tx, message)`, through the outbox                                                                                                                  | — (server tables in platform)                                                     | 3.2  |
+| `payments`         | `connectAccount`, `createPaymentLink(tx, …)`, `handleWebhook(req)` → typed events, `recordManual(tx, …)`                                                 | `payments.account`, `payments.link`, `payments.payment`, `payments.webhook_event` | 4.1  |
+| `billing` (client) | `status(businessId)` → `{ plan, live, limits }`, `assertWithin(limit)`, event handler for status updates                                                 | `billing.status`                                                                  | 5.1  |
 
 Platform-side tables: `identity.*` (from better-auth), `notify.message`, `notify.quota`, `billing.account`,
 `billing.subscription`, `billing.referral`, and the same `tokens`, `outbox` and `audit` modules.

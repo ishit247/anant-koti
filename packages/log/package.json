@@ -1,0 +1,16 @@
+{
+  "name": "@bodhchakra/log",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bodhchakra": {
+    "layer": "foundation"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "vitest run"
+  }
+}
