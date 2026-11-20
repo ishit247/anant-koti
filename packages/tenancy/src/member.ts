@@ -68,3 +68,12 @@ export class NotPermittedError extends Error {
 export function requireRole(membership: Membership, ...allowed: [Role, ...Role[]]): void {
   if (!allowed.includes(membership.role)) throw new NotPermittedError(membership.role, allowed);
 }
+
+/** The business's current members, owner first then by joining order. Runs inside `withTenant`. */
+export async function listMembers(client: DbClient): Promise<Membership[]> {
+  const { rows } = await client.query<MembershipRow>(
+    `select id as member_id, business_id, role, display_name from tenancy.member
+     where removed_at is null order by role = 'owner' desc, created_at`,
+  );
+  return rows.map(toMembership);
+}

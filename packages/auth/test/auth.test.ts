@@ -7,6 +7,7 @@ import type { AddressInfo } from "node:net";
 import { type Db, type TestDb, testDb } from "@bodhchakra/db";
 import { createLogger } from "@bodhchakra/log";
 import { createBusiness, migrations as tenancy } from "@bodhchakra/tenancy";
+import { migrations as tokens } from "@bodhchakra/tokens";
 import { exportJWK, generateKeyPair, type JWTPayload, SignJWT, UnsecuredJWT } from "jose";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -48,7 +49,7 @@ describe("auth", () => {
     database = await testDb({
       owner: "kaamkoti_owner",
       runtimeRole: "kaamkoti_app",
-      folders: [tenancy, migrations],
+      folders: [tokens, tenancy, migrations],
     });
     app = database.connect("kaamkoti_app");
     owner = database.connect("kaamkoti_owner");

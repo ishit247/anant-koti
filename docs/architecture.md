@@ -158,6 +158,7 @@ A permission answers _what_ the role may do. Scope answers _whose_ row it is. Bo
 | ------------------ | ---------------------------------------- | ---------------------------------------------------- |
 | `member`           | session cookie (`app.` only)             | business, member, role; then `withTenant`            |
 | `customer-token`   | token in the path (section 7)            | business, job and allowed actions; then `withTenant` |
+| `invite-token`     | token in the path (section 7)            | business and role; then `withTenant` to accept       |
 | `public-slug`      | none                                     | business by slug; read-only public columns           |
 | `public-intake`    | none, rate limited                       | business by slug; may only create a request          |
 | `service`          | signed request from platform (section 9) | the business in the payload; then `withTenant`       |

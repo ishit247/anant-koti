@@ -8,3 +8,7 @@ node_modules/
 dist/
 coverage/
 .claude/settings.local.json
+
+# DEV values, public in the repository (same as infra/compose.dev.yml).
+!apps/*/.env.development
+*.tsbuildinfo

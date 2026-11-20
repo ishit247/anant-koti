@@ -1,4 +1,5 @@
 import { type Db, type DbClient, type TestDb, testDb } from "@bodhchakra/db";
+import { migrations as tokensMigrations } from "@bodhchakra/tokens";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   addMember,
@@ -37,7 +38,7 @@ describe("tenancy", () => {
     database = await testDb({
       owner: "kaamkoti_owner",
       runtimeRole: "kaamkoti_app",
-      folders: [migrations],
+      folders: [tokensMigrations, migrations],
     });
     app = database.connect("kaamkoti_app");
     sharma = await createBusiness(

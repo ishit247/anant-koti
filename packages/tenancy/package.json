@@ -14,6 +14,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@bodhchakra/db": "workspace:*"
+    "@bodhchakra/db": "workspace:*",
+    "@bodhchakra/tokens": "workspace:*"
   }
 }

@@ -1,8 +1,8 @@
 # @bodhchakra/tokens
 
-Signed service requests between an app and `platform`. Layer: core. Design:
-[docs/architecture.md](../../docs/architecture.md) section 9.1. Customer and invite links (`issue`, `resolve`,
-`revoke`, `extend` and the `tokens.token` table) join this module in step 0.7.
+Signed service requests between an app and `platform` (section 9.1), and scoped, expiring, revocable links
+(section 7; `tokens.token`). Layer: core. Design: [docs/architecture.md](../../docs/architecture.md). `extend` joins
+with the customer job links in 2.1.
 
 ## API
 
@@ -10,6 +10,10 @@ Signed service requests between an app and `platform`. Layer: core. Design:
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `signRequest(input)`   | `{ client, secret, method, path, body, now? }` → the three headers that authenticate the request.                |
 | `verifyRequest(input)` | `{ method, path, headers, body, secretFor, now? }` → `{ ok: true, client }` or `{ ok: false, reason }`.          |
+| `issue(client, link)` | Inside `withTenant`: stores a link (`purpose`, `businessId`, `subjectId`, `expiresAt`) and returns `{ id, secret }`. The secret is 32 random bytes; only its SHA-256 is stored. |
+| `resolve(client, secret)` | No tenant needed: the live link (not revoked, not expired) or `null`. Malformed secrets are `null` without a query. |
+| `revoke(client, id)` | Inside `withTenant`: ends the link now. |
+| `migrations` | The `tokens` schema; an app lists it before tenancy. |
 | `CLIENT_HEADER`, …     | Header names `x-bc-client`, `x-bc-timestamp`, `x-bc-signature`.                                                  |
 | `MAX_SKEW_SECONDS`     | 300: how far the timestamp may be from the receiver's clock, either way.                                         |
 | `MIN_SECRET_LENGTH`    | 43 characters (32 random bytes as base64url). Shorter secrets are refused when signing and in platform's config. |
@@ -34,4 +38,5 @@ None of its own. The caller holds the secret: the app's worker for its outbox ta
 
 ## Tests
 
-`pnpm --filter @bodhchakra/tokens test` (no database needed).
+`pnpm --filter @bodhchakra/tokens test` (no database needed). Links are tested through their first user, invites, in
+`packages/tenancy/test/invite.test.ts`.

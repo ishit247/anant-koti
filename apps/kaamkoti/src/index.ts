@@ -6,6 +6,7 @@ import { migrations as jobs } from "@bodhchakra/jobs";
 import type { Logger } from "@bodhchakra/log";
 import { migrations as outbox } from "@bodhchakra/outbox";
 import { migrations as tenancy } from "@bodhchakra/tenancy";
+import { migrations as tokens } from "@bodhchakra/tokens";
 
 /** The role web and worker connect as (docs/architecture.md, section 2); migrations grant to it. */
 export const RUNTIME_ROLE = "kaamkoti_app";
@@ -15,6 +16,7 @@ export const migrations: readonly MigrationFolder[] = [
   audit,
   jobs,
   outbox,
+  tokens,
   tenancy,
   auth,
   { name: "kaamkoti", dir: new URL("../migrations/", import.meta.url) },

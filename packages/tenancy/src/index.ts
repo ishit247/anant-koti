@@ -1,8 +1,24 @@
+import { pathToFileURL } from "node:url";
 import type { MigrationFolder } from "@bodhchakra/db";
 
-export { createBusiness, type NewBusiness, type Owner, resolveSlug } from "./business.ts";
+export {
+  type BusinessProfile,
+  createBusiness,
+  currentBusiness,
+  type NewBusiness,
+  type Owner,
+  resolveSlug,
+} from "./business.ts";
+export {
+  acceptInvite,
+  createInvite,
+  InviteRefused,
+  type InviteSummary,
+  inviteSummary,
+} from "./invite.ts";
 export {
   addMember,
+  listMembers,
   type Membership,
   membershipsOf,
   type NewMember,
@@ -23,5 +39,5 @@ export {
 /** The module's schema migrations; an app lists this before its own folder. */
 export const migrations: MigrationFolder = {
   name: "tenancy",
-  dir: new URL("../migrations/", import.meta.url),
+  dir: pathToFileURL(`${import.meta.dirname}/../migrations/`),
 };

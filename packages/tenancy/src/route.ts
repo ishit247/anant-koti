@@ -1,5 +1,5 @@
-// Every route declares whose rows it may touch (docs/architecture.md 4.3). The declaration is an exported
-// constant, `export const route = defineRoute({ … })`, so a test can find any route that lacks one.
+// Every route declares whose rows it may touch (docs/architecture.md 4.3). The declaration is a
+// constant, `const route = defineRoute({ … })`, so a test can find any route that lacks one.
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +8,7 @@ import type { Role } from "./member.ts";
 export const SCOPES = [
   "member",
   "customer-token",
+  "invite-token",
   "public-slug",
   "public-intake",
   "service",
@@ -29,7 +30,9 @@ export function defineRoute<const D extends RouteDeclaration>(declaration: D): R
 const ENTRY_FILE = /^(page|route|layout)\.tsx?$/;
 const SOURCE_FILE = /\.tsx?$/;
 const SERVER_ACTION = /^\s*["']use server["'];?\s*$/m;
-const DECLARED = /^export const route = defineRoute\(/m;
+// Next.js refuses extra exports from a page, a route handler or a "use server" file, so the declaration is a
+// module constant that the guards read; `export` is also accepted for files Next does not police.
+const DECLARED = /^(?:export )?const route = defineRoute\(/m;
 const SKIP = new Set(["node_modules", ".next"]);
 
 async function* sourceFiles(dir: string): AsyncGenerator<string> {

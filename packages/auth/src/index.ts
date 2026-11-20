@@ -1,3 +1,4 @@
+import { pathToFileURL } from "node:url";
 import type { MigrationFolder } from "@bodhchakra/db";
 
 export {
@@ -15,5 +16,5 @@ export {
 /** The module's schema migrations; an app lists this after tenancy. */
 export const migrations: MigrationFolder = {
   name: "auth",
-  dir: new URL("../migrations/", import.meta.url),
+  dir: pathToFileURL(`${import.meta.dirname}/../migrations/`),
 };

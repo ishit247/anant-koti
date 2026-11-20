@@ -1,5 +1,5 @@
 -- A person's role in one business (docs/architecture.md 4.1). identity_id is the platform identity (the OIDC
--- `sub`); the name, email and phone stay in platform. Invites arrive with tokens, in step 0.7.
+-- `sub`); the name, email and phone stay in platform. Invites are in 0003.
 create table tenancy.member (
   id uuid primary key default gen_random_uuid(),
   business_id uuid not null references tenancy.business (id),
