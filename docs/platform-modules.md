@@ -106,7 +106,7 @@ Shared infra: Postgres (database + role per app), Garage (bucket per app), Loki 
 e:\bodhchakra\idea\            pnpm + turbo monorepo, one git repo
   packages\config, log, db, …  the modules, scope @bodhchakra/*
   services\platform            the shared container: identity, billing, notify
-  apps\kaamkoti-web, kaamkoti-worker
+  apps\kaamkoti                one codebase; web and worker are two entry points (two containers)
   apps\…                       later apps, and existing apps if they move in
 ```
 

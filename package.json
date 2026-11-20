@@ -9,12 +9,18 @@
   "scripts": {
     "validate": "node scripts/validate.mjs",
     "lint": "biome check .",
-    "typecheck": "turbo run typecheck",
+    "typecheck": "turbo run typecheck && tsc -p scripts",
     "test": "turbo run test",
-    "check:boundaries": "node scripts/check-boundaries.mjs"
+    "check:boundaries": "node scripts/check-boundaries.mjs",
+    "up": "node scripts/stack.ts up",
+    "down": "node scripts/stack.ts down",
+    "up:fresh": "node scripts/stack.ts fresh"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.8",
+    "@bodhchakra/db": "workspace:*",
+    "@bodhchakra/log": "workspace:*",
+    "kaamkoti": "workspace:*",
     "@types/node": "^26.6.6",
     "turbo": "^2.11.13",
     "typescript": "^7.0.2",

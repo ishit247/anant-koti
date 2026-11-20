@@ -1,0 +1,29 @@
+# Development services for this monorepo, following the shared ../infra pattern (one Postgres 17, one database
+# and role pair per app). Start and reset with `pnpm run up` and `pnpm run up:fresh` (scripts/stack.ts).
+# Every value here is a DEV default and public in the repository. Host ports sit below 49152 (Windows reserves
+# shifting blocks above it for Hyper-V) and differ from Profile's (45432), so both stacks can run at once.
+# Redis and Garage join this file with their first use (rate limits in 0.6, uploads in 2.2).
+name: bodhchakra-dev
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: kaamkoti
+    ports:
+      - "45442:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # Over TCP on purpose: during first start the entrypoint runs the init scripts on a socket-only server,
+      # which a socket check would already call ready before the roles exist.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d kaamkoti"]
+      interval: 1s
+      timeout: 3s
+      retries: 60
+
+volumes:
+  pgdata:
