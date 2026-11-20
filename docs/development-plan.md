@@ -4,7 +4,10 @@ What we are building: [product-brief.md](product-brief.md). Shared modules:
 [platform-modules.md](platform-modules.md). The design is in [architecture.md](architecture.md);
 its first table says which sections each step reads.
 
-**Current position:** Step 1.3 done (2026-11-21): public page `/b/[slug]` (scope `public-slug`, no cookies) built by
+**Current position:** Step 1.4 done (2026-11-21): the `ac_repair` template in `src/seed-templates.ts` now has 12 catalogue
+items, 7 intake questions, a 7-item checklist and fuller terms; checked by `quick` only (types, lint, routes test; the
+template is Zod-parsed when the seed loads it), no browser check. Phase 1 is complete except the browser checks owed by 1.2
+and 1.3; next: phase-1 end (`validate full`, tag `phase-1-done`), then step 2.1 (HIGH). Step 1.3 before it: public page `/b/[slug]` (scope `public-slug`, no cookies) built by
 `src/public-page.ts` from the slug, the business row, its profile and its active price-list items; unknown slug or a
 business not yet onboarded gives 404. It shows Call and WhatsApp; the "request a job" button and the reviews slot wait for
 steps 2.2 and the reviews step, as their routes do not exist yet. Checked by 3 database tests and `quick` (typecheck,
@@ -71,7 +74,7 @@ also write the module's README, and their tests run through the module's public 
 | 1.1 | Trade template model: catalogue, units, intake questions, checklist, terms (typed JSON with Zod) | M    | STANDARD | done   | One template seeds; invalid template JSON is rejected at write |
 | 1.2 | Onboarding: pick a trade, edit catalogue and prices                                              | M    | STANDARD | done   | New owner reaches a usable catalogue in under 5 minutes        |
 | 1.3 | Public business page (profile, services, reviews slot, "request a job")                          | M    | STANDARD | done   | Page renders without cookies on the public domain              |
-| 1.4 | First ready-made template (AC/appliance repair)                                                  | S    | STANDARD | todo   | Template is selectable at onboarding                           |
+| 1.4 | First ready-made template (AC/appliance repair)                                                  | S    | STANDARD | done   | Template is selectable at onboarding                           |
 
 ## Phase 2: Requests and quotes
 
