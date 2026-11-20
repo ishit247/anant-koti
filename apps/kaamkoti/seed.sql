@@ -6,7 +6,7 @@ insert into tenancy.business (id, slug, name, phone, city) values
   ('10000000-0000-4000-8000-000000000001', 'sharma-cooling', 'Sharma Cooling Services', '+919000000101', 'Pune'),
   ('20000000-0000-4000-8000-000000000002', 'kaveri-electricals', 'Kaveri Electricals', '+919000000202', 'Bengaluru');
 
--- identity_id values stand for platform identities (step 0.6 seeds the matching ones in platform).
+-- identity_id values are the platform identities in services/platform/seed.sql (same ids, example.com emails).
 insert into tenancy.member (id, business_id, identity_id, display_name, role) values
   ('10000000-0000-4000-8000-0000000a0001', '10000000-0000-4000-8000-000000000001',
    '00000000-0000-4000-8000-00000000d001', 'Prakash Sharma', 'owner'),

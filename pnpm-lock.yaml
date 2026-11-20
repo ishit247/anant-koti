@@ -199,6 +199,9 @@ importers:
       '@bodhchakra/audit':
         specifier: workspace:*
         version: link:../../packages/audit
+      '@bodhchakra/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
       '@bodhchakra/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -214,6 +217,16 @@ importers:
       '@bodhchakra/tenancy':
         specifier: workspace:*
         version: link:../../packages/tenancy
+    devDependencies:
+      '@types/pg':
+        specifier: ^8.23.1
+        version: 8.23.1
+      pg:
+        specifier: ^8.23.1
+        version: 8.23.1
+      platform:
+        specifier: workspace:*
+        version: link:../../services/platform
 
   packages/audit:
     dependencies:
@@ -223,6 +236,24 @@ importers:
       '@bodhchakra/log':
         specifier: workspace:*
         version: link:../log
+
+  packages/auth:
+    dependencies:
+      '@bodhchakra/db':
+        specifier: workspace:*
+        version: link:../db
+      '@bodhchakra/log':
+        specifier: workspace:*
+        version: link:../log
+      '@bodhchakra/tenancy':
+        specifier: workspace:*
+        version: link:../tenancy
+      jose:
+        specifier: ^6.2.18
+        version: 6.2.18
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
 
   packages/config:
     dependencies:

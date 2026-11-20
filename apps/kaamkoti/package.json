@@ -12,10 +12,16 @@
   },
   "dependencies": {
     "@bodhchakra/audit": "workspace:*",
+    "@bodhchakra/auth": "workspace:*",
     "@bodhchakra/db": "workspace:*",
     "@bodhchakra/jobs": "workspace:*",
     "@bodhchakra/log": "workspace:*",
     "@bodhchakra/outbox": "workspace:*",
     "@bodhchakra/tenancy": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1",
+    "pg": "^8.23.1",
+    "platform": "workspace:*"
   }
 }

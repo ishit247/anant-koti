@@ -4,12 +4,12 @@ What we are building: [product-brief.md](product-brief.md). Shared modules:
 [platform-modules.md](platform-modules.md). The design is in [architecture.md](architecture.md);
 its first table says which sections each step reads.
 
-**Current position:** Step 0.6a done (2026-11-21): platform is the OpenID Connect provider (better-auth 1.7 +
-`@better-auth/oauth-provider` + `jwt`, generated `identity` schema), email-code sign-in page, Redis rate limits,
-codes mailed over SMTP (Mailpit in dev), sign-in clients from `SIGN_IN_CLIENTS`. Step 0.6 was split into 0.6a
-and 0.6b; phone sign-in moved to 3.3. Dev compose gained `redis` and `mailpit`; the Kaam Koti dev callback is
-`http://127.0.0.1:45450/auth/callback`. Next: step 0.6b (HIGH), the app-side `auth` module. Start a new session
-for it.
+**Current position:** Step 0.6b done (2026-11-21): `@bodhchakra/auth` is the app-side OpenID Connect client
+(`createAuth` → `startLogin`, `handleCallback`, `getSession`, `signOut`; `jose`), with the login attempt bound
+to a `__Host-kk_login` cookie and sign-out ending the platform session through end-session. Kaam Koti migrates
+`auth`; platform seeds the four identities behind the seeded members (sign in as `prakash@example.com`, code
+in Mailpit). The Kaam Koti web app does not exist yet: 0.7 creates it (Next.js) and mounts `/login`,
+`/auth/callback` and sign-out on these functions. Next: step 0.7 (STANDARD). Start a new session for it.
 
 Steps marked with a `[module]` build or extend a shared module in `packages/`. Those steps
 also write the module's README, and their tests run through the module's public API.
@@ -59,7 +59,7 @@ also write the module's README, and their tests run through the module's public 
 | 0.4  | `[module]` `tenancy` and `audit`: business, members, roles (owner, technician), RLS, route scope declarations and a test that enumerates them                                                                                                    | M    | HIGH     | done   | Cross-business read and write tests fail closed; mutant proves the test                                                                            |
 | 0.5  | `platform` container skeleton: service tokens, internal network, health check, its own database; `[module]` `tokens` (request signing), `jobs` (pg-boss) and `outbox` for app ↔ platform calls                                                   | M    | HIGH     | done   | App call with a bad or expired service token is refused; outbox delivers once after `platform` restarts                                            |
 | 0.6a | Identity in `platform` (D13, D14): better-auth with `@better-auth/oauth-provider` and `jwt` in the `identity` schema; email OTP (phone moved to 3.3); Redis rate limits; sign-in page; Kaam Koti registered as a first-party confidential client | M    | HIGH     | done   | A test runs authorization code + PKCE over HTTP and verifies the ID token against JWKS; a wrong verifier, redirect URI or client secret is refused |
-| 0.6b | `[module]` `auth` client in the app: `auth.login_attempt`, `auth.session`, `startLogin`, `handleCallback` (`jose`), `getSession`, `signOut`; links the identity to a local member                                                                | M    | HIGH     | todo   | One identity signs in to Kaam Koti; a forged or replayed sign-in response is refused; mutant proves it                                             |
+| 0.6b | `[module]` `auth` client in the app: `auth.login_attempt`, `auth.session`, `startLogin`, `handleCallback` (`jose`), `getSession`, `signOut`; links the identity to a local member                                                                | M    | HIGH     | done   | One identity signs in to Kaam Koti; a forged or replayed sign-in response is refused; mutant proves it                                             |
 | 0.7  | App flow: owner signup creates the business; invite a technician (`tenancy.invite` on `tokens`); the app's route test runs `scanRoutes` over its routes                                                                                          | S    | STANDARD | todo   | Signup, login and invite work in the browser at 375 px and desktop width                                                                           |
 
 ## Phase 1: Trade templates and the public page

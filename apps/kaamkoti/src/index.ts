@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { migrations as audit } from "@bodhchakra/audit";
+import { migrations as auth } from "@bodhchakra/auth";
 import { createPool, type MigrationFolder } from "@bodhchakra/db";
 import { migrations as jobs } from "@bodhchakra/jobs";
 import type { Logger } from "@bodhchakra/log";
@@ -15,6 +16,7 @@ export const migrations: readonly MigrationFolder[] = [
   jobs,
   outbox,
   tenancy,
+  auth,
   { name: "kaamkoti", dir: new URL("../migrations/", import.meta.url) },
 ];
 

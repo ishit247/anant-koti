@@ -1,0 +1,23 @@
+{
+  "name": "@bodhchakra/auth",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bodhchakra": {
+    "layer": "domain"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@bodhchakra/db": "workspace:*",
+    "@bodhchakra/log": "workspace:*",
+    "@bodhchakra/tenancy": "workspace:*",
+    "jose": "^6.2.18",
+    "zod": "^4.6.7"
+  }
+}

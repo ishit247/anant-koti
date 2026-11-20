@@ -81,23 +81,29 @@ There is one identity per person, and it lives in `platform`. Each app keeps its
   `identity.user.id` is a UUID and is the `sub` claim.
 - **App side, `auth` module** (in the app, no better-auth):
   1. `GET /login`: create a row in `auth.login_attempt` (state, nonce, PKCE verifier, return path, expires
-     in 10 min), then redirect to `id.`.
+     in 10 min), set `__Host-kk_login` to the state, then redirect to `id.`.
   2. `GET /auth/callback`: look up the attempt by `state` and delete it in the same statement (single use).
-     Exchange the code over the internal network. Verify the ID token's signature against the cached JWKS, plus
-     `iss`, `aud`, `exp`, `iat` and `nonce`. Any failure is refused with no session. A replayed response finds
-     no attempt row.
+     The login cookie must carry the same state, so a response started in another browser is refused (login
+     CSRF). Exchange the code over the internal network. Verify the ID token's signature against the cached
+     JWKS (EdDSA only), plus `iss`, `aud`, `exp`, `iat` (at most 5 minutes old), `nonce` and
+     `email_verified`. Any failure is refused with no session. A replayed response finds no attempt row.
   3. Create `auth.session` (random 32-byte id, only its SHA-256 stored; 30 days absolute, 7 days idle) and set
-     `__Host-kk_session`.
+     `__Host-kk_session`. Expired attempts are purged when a sign-in starts, expired sessions when one
+     finishes, so no job is needed.
   4. Resolve the member: a `tenancy.member` with this `identity_id` goes to the app. A pending invite goes to
-     acceptance. Neither goes to onboarding (create a business).
+     acceptance (0.7). Neither goes to onboarding (create a business). `getSession` returns the identity and
+     its memberships.
 - One runtime dependency, `jose`, is used for JWKS and JWT verification. Hand-rolled JWT checks are the
   classic source of auth bugs.
 - **While platform is down:** existing sessions keep working, because they are local rows. New sign-ins show
   "Sign-in is briefly unavailable". Nothing else in the app calls identity synchronously.
-- Sign-out deletes the local session and redirects to the platform's end-session URL. Global sign-out (an event
+- Sign-out deletes the local session and redirects to the platform's end-session URL, which ends the platform
+  session too, so the next person on a shared phone is asked for a code. Platform redirects back only with an
+  `id_token_hint`, so the session row keeps the ID token until it is deleted. Global sign-out (an event
   telling every app to drop that identity's sessions) is out of MVP.
 - Identity holds name, email and phone. A member row holds only `identity_id` and a display name copied at
-  sign-in, so personal data has one home.
+  sign-in, so personal data has one home. (The ID token kept for sign-out also carries email and name; it
+  lives no longer than the session.)
 
 ## 4. Tenancy
 
@@ -365,7 +371,7 @@ them in its README.
 | `tokens`           | `signRequest`, `verifyRequest` (0.5); `issue`, `resolve`, `revoke`, `extend` for links (invites 0.7, jobs 2.1)                                           | `tokens.token`                                                                    | 0.5  |
 | `jobs`             | `createJobs(pool)`, `defineJob(name, zodPayload, handler)`, `send(tx, …)`, `sendAt`                                                                      | `pgboss.*`                                                                        | 0.5  |
 | `outbox`           | `enqueue(tx, topic, payload, key)`, `startDelivery`, `receive(source, key, tx, fn)`                                                                      | `outbox.message`, `outbox.inbox`                                                  | 0.5  |
-| `auth` (app side)  | `startLogin`, `handleCallback`, `getSession`, `signOut`                                                                                                  | `auth.login_attempt`, `auth.session`                                              | 0.6  |
+| `auth` (app side)  | `createAuth(options)` → `startLogin`, `handleCallback`, `getSession`, `signOut`; `SignInRefused`, `SignInUnavailable`                                    | `auth.login_attempt`, `auth.session`                                              | 0.6  |
 | `storage`          | `upload(stream, rules)`, `signedUrl(object)`, `remove`                                                                                                   | `storage.object`                                                                  | 2.2  |
 | `money`            | `money(minor, cur)`, `add`, `lineTotals(lines)`, `formatINR`                                                                                             | —                                                                                 | 2.4  |
 | `notify` (client)  | `send(tx, message)`, through the outbox                                                                                                                  | — (server tables in platform)                                                     | 3.2  |

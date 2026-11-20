@@ -55,5 +55,9 @@ Bad config stops start-up.
   never migrates.
 - Container: `docker compose -f infra/compose.dev.yml --profile platform up -d --build platform`. It listens
   on `127.0.0.1:45443` in development, and has no host port in production.
+- `pnpm run up:fresh` seeds the four identities behind Kaam Koti's seeded members (`seed.sql`): sign in as
+  `prakash@example.com` and read the code in Mailpit.
+- The package exports the identity pieces (`createIdentity`, `registerClients`, `createHandler`, `listen`,
+  `redisLimiter`) so an app's test can sign in against a real platform in process.
 - Tests: `pnpm --filter platform test` (needs `pnpm run up`: Postgres, Redis). They include an app's outbox
   delivering after platform comes back, and a full sign-in over HTTP.
