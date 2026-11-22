@@ -259,7 +259,7 @@ requested ──send quote──▶ quoted ──customer accepts──▶ accep
 
 | From                    | Event               | To            | Who                                   | Side effects                                                                                       |
 | ----------------------- | ------------------- | ------------- | ------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| —                       | request created     | `requested`   | customer (signed in) or owner (phone) | customer found or created; notify owner and customer                                               |
+| —                       | request created     | `requested`   | customer (signed in) or owner (phone) | customer found or created; notify owner and customer (a customer's request only; 9.2)              |
 | `requested`             | quote sent          | `quoted`      | owner                                 | quote `draft → sent`; expiry job at `valid_until`; notify customer                                 |
 | `requested`             | decline             | `declined`    | owner                                 | notify customer                                                                                    |
 | `quoted`                | accept              | `accepted`    | customer                              | quote → `accepted`, `job.accepted_quote_id` set; deposit link if `deposit_minor > 0`; notify owner |
@@ -390,8 +390,10 @@ receiver code handles provider webhooks, with the provider's signature in place 
 
 ### 9.2 Notify (platform)
 
-- The app sends `notify.send` with `{ businessId, template, to: { phone?, email? }, vars }`
-  (`@bodhchakra/notify`). The product is the signed client id, not a field, so an app reaches only its own
+- The app sends `notify.send` with `{ businessId, template, to: { identityId?, phone?, email? }, vars }`
+  (`@bodhchakra/notify`). A customer is given the addresses on their row; an owner is named by `identityId`
+  (the `sub`), and platform uses that identity's email (and phone, 3.3), so members' addresses never leave
+  platform (3.2b). The product is the signed client id, not a field, so an app reaches only its own
   templates. `vars` are display strings the app formatted (money, dates in the business's time zone). A locale
   joins when a second language does. Platform picks the channel: WhatsApp if there is a phone and quota left,
   otherwise email. SMS comes later. No address on any channel there is records the message as `no_channel`.
@@ -399,25 +401,30 @@ receiver code handles provider webhooks, with the provider's signature in place 
   version per channel. WhatsApp templates mirror the ones Meta has approved (D7, 3.3). An unknown template or
   bad variables are refused (500), so the app's outbox retries and then alerts.
 - `notify.message` keeps the recipient for retries and status (`queued`, `sent`, `failed`, `no_channel`) and is
-  purged after 30 days (3.2b). It has no RLS: only notify's code reaches it, by id. The send job retries ten
+  purged after 30 days: the daily job `notify.purge` (a `jobs` schedule) calls `notify.purge_messages()`, a
+  definer function, since the runtime role has no DELETE on the table. It has no RLS: only notify's code reaches it, by id. The send job retries ten
   times over about four hours, then marks the message `failed` and logs an alert. Each outcome is an
   `audit.event` (`notify.sent`, `notify.failed`, `notify.no_channel`) in the business's log. Logs and audit
   carry the message id and template, never the recipient, the text or a provider's error text (it can quote
   the address); a failed send logs nodemailer's code only.
-- Kaam Koti's worker (`src/worker.ts`) delivers the outbox; the web only queues (`sendOnly` jobs).
+- Kaam Koti's worker (`src/worker.ts`) delivers the outbox; the web only queues (`sendOnly` jobs). The app's
+  messages are queued by `Notices` (`src/notices.ts`), each in the transaction of its change; a sent quote also
+  queues `kaamkoti.quote_expiry` at its `valid_until`, which the worker runs (section 6).
 - The WhatsApp quota counts per (product, business, month), with top-ups (5.2). Over quota falls back to email.
   If there is no email, the owner is told.
 - Delivery-status webhooks from providers reach `hooks.` and are signature-verified (3.3).
 
-| Template                                                                 | To                                                         | When                                           |
-| ------------------------------------------------------------------------ | ---------------------------------------------------------- | ---------------------------------------------- |
-| `request.received`                                                       | owner; customer gets an acknowledgement linking to the job | job created                                    |
-| `quote.sent`                                                             | customer                                                   | quote sent or revised                          |
-| `quote.response`                                                         | owner                                                      | accepted, rejected, countered                  |
-| `appointment.confirmed`, `appointment.reminder`, `technician.on_the_way` | customer                                                   | planned; 24 h before; tapped by the technician |
-| `change_order.proposed`                                                  | customer                                                   | technician or owner proposes                   |
-| `invoice.issued`, `payment.received`                                     | customer; owner                                            | complete; payment recorded                     |
-| `review.request`, `review.held`                                          | customer; owner                                            | invoice paid; low rating                       |
+| Template                                                                 | To                                              | When                                           |
+| ------------------------------------------------------------------------ | ----------------------------------------------- | ---------------------------------------------- |
+| `request.received`, `request.acknowledged`                               | owner; customer (linking to their request page) | a customer sends a request (not a phone entry) |
+| `request.edited`                                                         | owner                                           | the customer saves a change to the request     |
+| `quote.sent`                                                             | customer                                        | quote sent or revised                          |
+| `quote.response`                                                         | owner                                           | accepted, rejected, countered                  |
+| `quote.expired`                                                          | owner                                           | a sent quote is still unanswered at its expiry |
+| `appointment.confirmed`, `appointment.reminder`, `technician.on_the_way` | customer                                        | planned; 24 h before; tapped by the technician |
+| `change_order.proposed`                                                  | customer                                        | technician or owner proposes                   |
+| `invoice.issued`, `payment.received`                                     | customer; owner                                 | complete; payment recorded                     |
+| `review.request`, `review.held`                                          | customer; owner                                 | invoice paid; low rating                       |
 
 Sign-in OTPs go straight from identity to its own channel, inside platform, not through the outbox. Technician
 invites in 0.7 are shared by the owner: copy the link, or a `wa.me` share. Sending them by notify waits for 3.2.
@@ -473,13 +480,13 @@ them in its README.
 | `tenancy`          | `createBusiness`, `addMember`, `createInvite`, `acceptInvite`, `memberFor(identityId)`, `requireRole`, `defineRoute({ scope, … })`, route-scope test kit | `tenancy.*`                                                                       | 0.4  |
 | `audit`            | `record(tx, event)`, `recordStrict(tx, event)`                                                                                                           | `audit.event`                                                                     | 0.4  |
 | `tokens`           | `signRequest`, `verifyRequest` (0.5); `issue`, `resolve`, `revoke` for invite links (0.7; job links 2.1–3.2f)                                            | `tokens.token`                                                                    | 0.5  |
-| `jobs`             | `createJobs(pool)`, `defineJob(name, zodPayload, handler)`, `send(tx, …)`, `sendAt`                                                                      | `pgboss.*`                                                                        | 0.5  |
+| `jobs`             | `createJobs(pool)`, `defineJob(name, zodPayload, handler)`, `send(tx, …, { startAfter })`, `schedule(type, cron, payload)` (3.2b)                        | `pgboss.*`                                                                        | 0.5  |
 | `outbox`           | `enqueue(tx, topic, payload, key)`, `startDelivery`, `receive(source, key, tx, fn)`                                                                      | `outbox.message`, `outbox.inbox`                                                  | 0.5  |
 | `auth` (app side)  | `createAuth(options)` → `startLogin`, `handleCallback`, `getSession`, `signOut`; `SignInRefused`, `SignInUnavailable`                                    | `auth.login_attempt`, `auth.session`                                              | 0.6  |
 | `storage`          | `checkImage(bytes)`, `createStorage(cfg)` → `putImage(tx, image, by)`, `signedUrl(object)`; `remove` comes with its first use                            | `storage.object`                                                                  | 2.2  |
 | `rate-limit`       | `redisLimiter(url, log)` → `limit(key, rule)`, `close()`                                                                                                 | — (Redis)                                                                         | 2.2  |
 | `money`            | `money(minor, cur)`, `lineTotals(lines, cur)`, `formatMoney`, `minorDigits`, `parseDecimal`, `formatDecimal`; `add` with payments (4.1)                  | —                                                                                 | 2.4  |
-| `notify` (client)  | `send(tx, message)`, through the outbox                                                                                                                  | — (server tables in platform)                                                     | 3.2  |
+| `notify` (client)  | `send(tx, message, key)`, through the outbox; a member is addressed `to: { identityId }` (3.2b)                                                          | — (server tables in platform)                                                     | 3.2  |
 | `payments`         | `connectAccount`, `createPaymentLink(tx, …)`, `handleWebhook(req)` → typed events, `recordManual(tx, …)`                                                 | `payments.account`, `payments.link`, `payments.payment`, `payments.webhook_event` | 4.1  |
 | `billing` (client) | `status(businessId)` → `{ plan, live, limits }`, `assertWithin(limit)`, event handler for status updates                                                 | `billing.status`                                                                  | 5.1  |
 

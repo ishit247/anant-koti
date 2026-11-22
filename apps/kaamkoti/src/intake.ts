@@ -22,6 +22,7 @@ import {
 } from "./address-book.ts";
 import { businessProfile } from "./business-profile.ts";
 import { customerFor, type SpaceCustomer } from "./customer-space.ts";
+import type { Notices } from "./notices.ts";
 import { phone } from "./phone.ts";
 
 /** Up to this many photos per request, across its work items (docs/architecture.md 10). */
@@ -165,11 +166,15 @@ export async function checkItemPhotos(
 /** The same name, whatever the case and spacing the customer typed it with. */
 export const sameName = (name: string) => name.trim().replace(/\s+/g, " ").toLowerCase();
 
-/** Creates a request from the signed-in customer to the business with this slug. */
+/**
+ * Creates a request from the signed-in customer to the business with this slug, and queues its notices in the
+ * same transaction.
+ */
 export async function submitRequest(
   db: Db,
   storage: Storage,
   audit: Audit,
+  notices: Pick<Notices, "requestReceived">,
   slug: string,
   session: CustomerSession,
   input: IntakeInput,
@@ -238,6 +243,7 @@ export async function submitRequest(
         );
       }
     }
+    await notices.requestReceived(client, job.id);
     return { ok: true, jobId: job.id, number: job.number };
   });
 }

@@ -39,7 +39,10 @@ export async function POST(
       read.quoteId,
       read.answer,
     );
-    if (answered.ok) return `${page}?answer=${read.answer.kind}`;
+    if (answered.ok) {
+      await server().notices.quoteAnswered(client, read.quoteId);
+      return `${page}?answer=${read.answer.kind}`;
+    }
     if (answered.error === "not_found") return new Response("No such request.\n", { status: 404 });
     return `${page}?answer=${answered.error}`;
   });

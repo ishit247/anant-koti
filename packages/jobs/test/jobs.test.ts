@@ -83,6 +83,41 @@ describe("jobs", () => {
     await until(() => dead.includes("undeliverable"), "the dead letter");
   });
 
+  it("holds a job sent with startAfter until that moment", async () => {
+    const at = new Date(Date.now() + 2_000);
+    await app.tx((client) => jobs.send(client, noted, { text: "later" }, { startAfter: at }));
+    await app.tx((client) => jobs.send(client, noted, { text: "now" }));
+    await until(() => seen.includes("now"), "the job sent without a delay");
+    expect(seen).not.toContain("later");
+    await until(() => seen.includes("later"), "the delayed job");
+    expect(Date.now()).toBeGreaterThanOrEqual(at.getTime());
+  });
+
+  it("records a schedule once however often a process sets it", async () => {
+    await jobs.schedule(noted, "0 3 * * *", { text: "nightly" });
+    await jobs.schedule(noted, "0 3 * * *", { text: "nightly" });
+    const { rows } = await app.tx((client) =>
+      client.query("select cron, data, options->>'tz' as tz from pgboss.schedule where name = $1", [
+        noted.name,
+      ]),
+    );
+    expect(rows).toEqual([{ cron: "0 3 * * *", data: { text: "nightly" }, tz: "UTC" }]);
+  });
+
+  it("refuses a schedule from a send-only process", async () => {
+    const web = createJobs({
+      url: database.url("kaamkoti_app"),
+      log: createLogger({ service: "test", write: () => {} }),
+      sendOnly: true,
+    });
+    await web.start([noted]);
+    try {
+      await expect(web.schedule(noted, "0 3 * * *", { text: "x" })).rejects.toThrow("send-only");
+    } finally {
+      await web.stop();
+    }
+  });
+
   it("lets a send-only process send while its start is still running", async () => {
     const web = createJobs({
       url: database.url("kaamkoti_app"),

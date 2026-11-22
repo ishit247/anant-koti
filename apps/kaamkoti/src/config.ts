@@ -40,6 +40,9 @@ export const webConfig = z.object({
 export const workerConfig = z.object({
   /** Connects as the runtime role, kaamkoti_app. */
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
+  /** The bases of the links in the messages the worker's jobs send (a quote's expiry). */
+  APP_ORIGIN: webConfig.shape.APP_ORIGIN,
+  PUBLIC_ORIGIN: webConfig.shape.PUBLIC_ORIGIN,
   /** Platform as this app reaches it on the internal network; outbox messages go to its internal API. */
   PLATFORM_INTERNAL_URL: origin(/^https?$/),
   /** Signs outbox deliveries; must match `kaamkoti` in platform's SERVICE_CLIENTS. */

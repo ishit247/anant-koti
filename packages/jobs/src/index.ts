@@ -39,6 +39,11 @@ export function defineJob<P extends object>(
   return { name, payload, retry: options.retry, deadLetter: options.deadLetter };
 }
 
+export interface SendOptions {
+  /** Not run before this moment (a notice at a quote's expiry). */
+  readonly startAfter?: Date;
+}
+
 export interface JobContext {
   readonly id: string;
   /** 0 on the first attempt. */
@@ -55,7 +60,18 @@ export interface Jobs {
    * Queues a job in the caller's transaction: it is created only if that transaction commits. Fails if `start`
    * was never called, or failed.
    */
-  send<P extends object>(client: DbClient, type: JobType<P>, payload: P): Promise<void>;
+  send<P extends object>(
+    client: DbClient,
+    type: JobType<P>,
+    payload: P,
+    options?: SendOptions,
+  ): Promise<void>;
+  /**
+   * Runs a job of `type` with `payload` on a cron expression (UTC), from whichever worker process is up; calling
+   * it again replaces the schedule, so a process may call it on every start. Needs a process that is not
+   * `sendOnly`, after `start`.
+   */
+  schedule<P extends object>(type: JobType<P>, cron: string, payload: P): Promise<void>;
   /**
    * Runs `handler` for each job of `type`, one at a time. A handler that throws fails the attempt and the job is
    * retried by its policy. The stored payload is parsed with the type's schema before the handler sees it.
@@ -118,12 +134,19 @@ export function createJobs(config: JobsConfig): Jobs {
       })();
       return started;
     },
-    async send(client, type, payload) {
+    async send(client, type, payload, options) {
       if (!started) throw new Error(`jobs: ${type.name} sent before start`);
       await started;
       await boss.send(type.name, payload, {
         db: { executeSql: (text, values) => client.query(text, values) },
+        ...(options?.startAfter && { startAfter: options.startAfter }),
       });
+    },
+    async schedule(type, cron, payload) {
+      if (config.sendOnly) throw new Error(`jobs: ${type.name} scheduled from a send-only process`);
+      if (!started) throw new Error(`jobs: ${type.name} scheduled before start`);
+      await started;
+      await boss.schedule(type.name, cron, payload, { tz: "UTC" });
     },
     async work(type, handler) {
       await boss.work<unknown>(

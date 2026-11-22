@@ -108,8 +108,10 @@ describe("the request form", () => {
   });
   afterAll(() => database.drop());
 
+  // The notices a request queues are tested in notices.test.ts.
+  const notices = { requestReceived: async () => {} };
   const submit = (input: IntakeInput, slug = "sharma-cooling", session = VIKRAM) =>
-    submitRequest(app, storage, audit, slug, session, input);
+    submitRequest(app, storage, audit, notices, slug, session, input);
   /** A request as its sender sees it on their own request page at Sharma. */
   const ownRequest = (jobId: string, session = VIKRAM) =>
     app.withTenant(SHARMA, async (c) => {

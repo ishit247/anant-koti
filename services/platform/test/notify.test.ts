@@ -1,6 +1,6 @@
 import { createAudit } from "@bodhchakra/audit";
 import { type Db, type TestDb, testDb } from "@bodhchakra/db";
-import { createJobs, type Jobs } from "@bodhchakra/jobs";
+import { createJobs, type Jobs, type JobType } from "@bodhchakra/jobs";
 import { createLogger } from "@bodhchakra/log";
 import { NOTIFY_TOPIC, type NotifyMessage } from "@bodhchakra/notify";
 import { signRequest } from "@bodhchakra/tokens";
@@ -31,7 +31,7 @@ const quoteSent = (email: string | undefined, customerName = "Anita Deshpande"):
     businessName: "Sharma Cooling Services",
     total: "₹295.00",
     validUntil: "29 Nov 2026",
-    link: "http://127.0.0.1:45450/j/test-link",
+    link: "http://localhost:45450/b/sharma-cooling/requests/test-job",
   },
 });
 
@@ -40,6 +40,7 @@ describe("notify", () => {
   let platform: Db;
   let owner: Db;
   let jobs: Jobs;
+  let jobTypes: readonly JobType<object>[];
   let handler: (request: Request) => Promise<Response>;
   const lines: string[] = [];
   const log = createLogger({ service: "test", write: (line) => lines.push(line) });
@@ -117,7 +118,8 @@ describe("notify", () => {
       sendEmail,
       retry: { retryLimit: RETRY_LIMIT, retryDelay: 1 },
     });
-    await jobs.start(notify.jobTypes);
+    jobTypes = notify.jobTypes;
+    await jobs.start(jobTypes);
     await notify.startSending();
     handler = createHandler({
       db: platform,
@@ -141,7 +143,7 @@ describe("notify", () => {
     expect(message?.attempts).toBe(1);
     const email = sent.find((e) => e.to === "anita@example.com");
     expect(email?.subject).toBe("Your quote from Sharma Cooling Services: ₹295.00");
-    expect(email?.text).toContain("http://127.0.0.1:45450/j/test-link");
+    expect(email?.text).toContain("http://localhost:45450/b/sharma-cooling/requests/test-job");
     expect(await audited(message?.id ?? "")).toEqual([
       { action: "notify.sent", data: { template: "quote.sent", attempts: 1 } },
     ]);
@@ -211,6 +213,85 @@ describe("notify", () => {
 
     expect(await again.json()).toEqual({ status: "duplicate" });
     expect(await row("lakshmi@example.com")).toHaveLength(1);
+  });
+
+  it("sends a member's message to the email of their identity", async () => {
+    const identityId = "00000000-0000-4000-8000-0000000000c1";
+    await owner.tx((client) =>
+      client.query(
+        `insert into identity."user" (id, name, email, "emailVerified") values ($1, 'Ravi Sharma', 'ravi@example.com', true)`,
+        [identityId],
+      ),
+    );
+    await post("to-owner", {
+      businessId: BUSINESS,
+      template: "quote.response",
+      to: { identityId },
+      vars: {
+        answer: "countered",
+        customerName: "Anita Deshpande",
+        number: "#12",
+        total: "₹295.00",
+        offered: "₹250.00",
+        link: "http://127.0.0.1:45450/jobs/x",
+      },
+    });
+
+    await until(async () => (await row("ravi@example.com"))[0]?.status === "sent", "the send");
+    const email = sent.find((e) => e.to === "ravi@example.com");
+    expect(email?.subject).toBe("Anita Deshpande offered a different price (#12)");
+    expect(email?.text).toContain("offered ₹250.00 for your quote of ₹295.00");
+  });
+
+  it("records a message to an unknown identity as having no channel", async () => {
+    await post("to-nobody", {
+      businessId: BUSINESS,
+      template: "request.edited",
+      to: { identityId: "00000000-0000-4000-8000-0000000000c9" },
+      vars: { customerName: "Nobody Known", number: "#3", link: "http://127.0.0.1:45450/jobs/y" },
+    });
+    const { rows } = await owner.tx((client) =>
+      client.query<{ status: string }>(
+        "select status from notify.message where vars->>'customerName' = 'Nobody Known'",
+      ),
+    );
+    expect(rows).toEqual([{ status: "no_channel" }]);
+  });
+
+  it("purges messages older than 30 days and keeps the rest", async () => {
+    await owner.tx((client) =>
+      client.query(
+        `insert into notify.message (product, business_id, template, channel, recipient, vars, status, created_at)
+         select 'kaamkoti', $1, 'quote.sent', null, '{}', jsonb_build_object('customerName', name), 'no_channel',
+                now() - make_interval(days => age)
+         from (values ('Old Message', 31), ('Recent Message', 29)) as m(name, age)`,
+        [BUSINESS],
+      ),
+    );
+    const purge = jobTypes.find((type) => type.name === "notify.purge");
+    if (!purge) throw new Error("notify has no purge job");
+    await platform.tx((client) => jobs.send(client, purge, {}));
+
+    const left = async () =>
+      (
+        await owner.tx((client) =>
+          client.query<{ name: string }>(
+            "select vars->>'customerName' as name from notify.message where vars->>'customerName' like '% Message'",
+          ),
+        )
+      ).rows.map((r) => r.name);
+    await until(async () => !(await left()).includes("Old Message"), "the purge");
+    expect(await left()).toEqual(["Recent Message"]);
+  });
+
+  it("schedules the purge daily, and leaves the runtime role no delete of its own", async () => {
+    const { rows } = await owner.tx((client) =>
+      client.query("select cron from pgboss.schedule where name = 'notify.purge'"),
+    );
+    expect(rows).toEqual([{ cron: "30 21 * * *" }]);
+    await expect(
+      platform.tx((client) => client.query("delete from notify.message")),
+    ).rejects.toThrow("permission denied");
   });
 
   it("refuses a template the product does not have, and variables it does not take", async () => {

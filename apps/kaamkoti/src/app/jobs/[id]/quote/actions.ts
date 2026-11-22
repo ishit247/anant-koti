@@ -5,7 +5,6 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requestPageUrl } from "../../../../customer-space.ts";
 import { requireMember } from "../../../../guard.ts";
-import { noticeQuoteSent } from "../../../../notices.ts";
 import { type QuoteError, saveDraft, sendQuote } from "../../../../quote.ts";
 import { readQuoteForm, type TypedQuote } from "../../../../quote-form.ts";
 import { server } from "../../../../server.ts";
@@ -49,7 +48,7 @@ export async function saveQuoteAction(
   if (!target.success) return { error: MESSAGE.not_found };
   const { jobId, quoteId } = target.data;
   const owner = await requireMember(route, `/jobs/${jobId}/quote`);
-  const { db, audit, notify, publicOrigin } = server();
+  const { db, audit, notices, publicOrigin } = server();
   const state = await db.withTenant(owner.businessId, async (client): Promise<QuoteEditorState> => {
     const { currency, slug } = await currentBusiness(client);
     const parsed = readQuoteForm(form, currency);
@@ -65,7 +64,7 @@ export async function saveQuoteAction(
     if (!parsed.send) return { typed, totals };
     const sent = await sendQuote(client, audit, owner, quoteId, parsed.validDays);
     if (!sent.ok) return { error: MESSAGE[sent.error], typed, totals };
-    await noticeQuoteSent(client, notify, { quoteId, publicOrigin });
+    await notices.quoteSent(client, quoteId);
     const link = requestPageUrl(publicOrigin, slug, sent.jobId);
     return { typed, totals, sent: { version: sent.version, link } };
   });

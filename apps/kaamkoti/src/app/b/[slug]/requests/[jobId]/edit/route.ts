@@ -37,7 +37,7 @@ export async function POST(
   const refusal = (error: keyof typeof REFUSED) =>
     json ? Response.json({ error }, { status: 422 }) : `${page}?error=${error}`;
 
-  const { storage, audit, limiter } = server();
+  const { storage, audit, limiter, notices } = server();
   const refused = await overLimit(limiter.limit, [
     [`intake-ip:${clientIp(request.headers)}`, LIMITS.intakePerIp],
   ]);
@@ -65,6 +65,7 @@ export async function POST(
     );
     if (outcome === "not_found") return new Response("No such request.\n", { status: 404 });
     if (outcome in REFUSED) return refusal(outcome as keyof typeof REFUSED);
+    if (outcome === "saved") await notices.requestEdited(client, jobId);
     const location = `${page}?result=${outcome}`;
     return json ? Response.json({ location }) : location;
   });

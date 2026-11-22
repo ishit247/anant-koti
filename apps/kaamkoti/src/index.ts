@@ -79,7 +79,7 @@ export {
   workItems,
 } from "./job.ts";
 export { CLIENT_IP_HEADER, clientIp, LIMITS, overLimit } from "./limits.ts";
-export { noticeQuoteSent } from "./notices.ts";
+export { createNotices, type Notices } from "./notices.ts";
 export { toE164 } from "./phone.ts";
 export { type PublicPage, publicPage } from "./public-page.ts";
 export {

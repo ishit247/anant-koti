@@ -19,7 +19,7 @@ const seeOther = (location: string) => new Response(null, { status: 303, headers
 
 export async function POST(request: Request, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const { db, storage, audit, limiter, customerAuth } = server();
+  const { db, storage, audit, notices, limiter, customerAuth } = server();
   // The cookie is SameSite=Lax already; this refuses another site's post outright, as sign-out does.
   if (!fromOwnPages(request)) return new Response(null, { status: 403 });
   const form = `/b/${encodeURIComponent(slug)}/request`;
@@ -49,7 +49,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
     // Documented fallback: a body that is not a form is the sender's mistake, answered as such.
     return new Response("Expected a form.\n", { status: 400 });
   }
-  const result = await submitRequest(db, storage, audit, slug, session, await readIntakeForm(body));
+  const input = await readIntakeForm(body);
+  const result = await submitRequest(db, storage, audit, notices, slug, session, input);
   if (result.ok) return go(`/b/${encodeURIComponent(slug)}/requests`);
   if (result.error === "not_found") return new Response("No such business.\n", { status: 404 });
   return json

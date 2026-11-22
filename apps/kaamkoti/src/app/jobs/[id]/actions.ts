@@ -29,16 +29,18 @@ export async function planVisitAction(
   const jobId = z.uuid().safeParse(form.get("jobId"));
   if (!jobId.success) return { error: VISIT_ERROR.not_found };
   const owner = await requireMember(route, `/jobs/${jobId.data}`);
-  const { db, audit } = server();
-  const result = await db.withTenant(owner.businessId, (client) =>
-    planVisit(client, audit, owner, {
+  const { db, audit, notices } = server();
+  const result = await db.withTenant(owner.businessId, async (client) => {
+    const planned = await planVisit(client, audit, owner, {
       jobId: jobId.data,
       kind: String(form.get("kind")) as VisitKind,
       technicianId: String(form.get("technicianId")),
       start: String(form.get("start")),
       minutes: form.get("minutes"),
-    }),
-  );
+    });
+    if (planned.ok) await notices.visitPlanned(client, planned.appointmentId);
+    return planned;
+  });
   if (!result.ok) return { error: VISIT_ERROR[result.error] };
   redirect(`/jobs/${jobId.data}`);
 }

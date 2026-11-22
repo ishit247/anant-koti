@@ -1,7 +1,8 @@
 // Notify's server side (docs/architecture.md 9.2). An app's `notify.send` arrives through the internal API and is
 // recorded in notify.message, with its delivery job, in the transaction that records it in the inbox. The job
 // renders the product's template and sends it, retrying with backoff; once the retries are spent the message is
-// marked failed and an operator is alerted. Email is the one channel until WhatsApp (3.3).
+// marked failed and an operator is alerted. Email is the one channel until WhatsApp (3.3). A message to a member
+// names their identity, and its address is looked up here. Messages are kept 30 days, then purged.
 // Personal data stays in the row: logs and audit events carry the message id and template, never the recipient,
 // the variables or a provider's error text (which can quote the address).
 import type { Audit } from "@bodhchakra/audit";
@@ -54,9 +55,12 @@ export interface NotifyService {
   readonly jobTypes: readonly JobType<object>[];
   /** `notify.send`, for the internal API. */
   readonly topic: Topic<NotifyMessage>;
-  /** Starts sending. Call after `jobs.start`. */
+  /** Starts sending, and the daily purge of messages older than 30 days. Call after `jobs.start`. */
   startSending(): Promise<void>;
 }
+
+/** Daily, at a quiet hour in India (UTC). */
+const PURGE_CRON = "30 21 * * *";
 
 const messageRef = z.object({ messageId: z.uuid() });
 const stored = z.object({
@@ -89,6 +93,23 @@ export function createNotifyService(deps: NotifyDeps): NotifyService {
     retry: deps.retry ?? SEND_RETRY,
     deadLetter: failed,
   });
+  // A missed run is caught up by the next day's, so a failure only waits for it.
+  const purge = defineJob("notify.purge", z.object({}), {
+    retry: { retryLimit: 0, retryDelay: 0 },
+  });
+
+  /**
+   * A member's addresses, from their identity: the email they sign in with (a phone joins in 3.3). An identity
+   * that is gone leaves only the id, which is a message with no channel.
+   */
+  async function memberAddress(client: DbClient, identityId: string): Promise<NotifyMessage["to"]> {
+    const { rows } = await client.query<{ email: string }>(
+      'select email from identity."user" where id = $1',
+      [identityId],
+    );
+    const email = rows[0]?.email;
+    return { identityId, ...(email && { email }) };
+  }
 
   /** The audit row of a message's outcome, in the business's audit log. */
   async function recordOutcome(
@@ -122,7 +143,10 @@ export function createNotifyService(deps: NotifyDeps): NotifyService {
         const paths = vars.error.issues.map((issue) => issue.path.join(".")).join(", ");
         throw new Error(`notify: ${product} ${message.template} has bad variables (${paths})`);
       }
-      const channel = message.to.email ? "email" : null;
+      const to = message.to.identityId
+        ? await memberAddress(client, message.to.identityId)
+        : message.to;
+      const channel = to.email ? "email" : null;
       const { rows } = await client.query<{ id: string }>(
         `insert into notify.message (product, business_id, template, channel, recipient, vars, status)
          values ($1, $2, $3, $4, $5, $6, $7)
@@ -132,7 +156,7 @@ export function createNotifyService(deps: NotifyDeps): NotifyService {
           message.businessId,
           message.template,
           channel,
-          message.to,
+          to,
           message.vars,
           channel ? "queued" : "no_channel",
         ],
@@ -142,8 +166,7 @@ export function createNotifyService(deps: NotifyDeps): NotifyService {
         await jobs.send(client, send, { messageId: id });
         return;
       }
-      // Until WhatsApp (3.3) a customer with only a phone gets nothing; the owner still shares the link.
-      log.warn("notify: no channel for message", { messageId: id, template: message.template });
+      // Until WhatsApp (3.3) a customer with only a phone gets nothing; the owner still shares the link.      log.warn("notify: no channel for message", { messageId: id, template: message.template });
       await recordOutcome(
         client,
         { id, businessId: message.businessId, template: message.template },
@@ -188,10 +211,18 @@ export function createNotifyService(deps: NotifyDeps): NotifyService {
   }
 
   return {
-    jobTypes: [failed, send],
+    jobTypes: [failed, send, purge],
     topic,
 
     async startSending() {
+      await jobs.work(purge, async () => {
+        const { rows } = await db.tx((client) =>
+          client.query<{ purged: string }>("select notify.purge_messages() as purged"),
+        );
+        log.info("notify: purged old messages", { count: Number(rows[0]?.purged ?? 0) });
+      });
+      await jobs.schedule(purge, PURGE_CRON, {});
+
       await jobs.work(send, async ({ messageId }, job) => {
         const message = await load(messageId);
         if (message.status !== "queued") return;

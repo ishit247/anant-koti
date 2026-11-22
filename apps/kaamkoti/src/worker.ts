@@ -5,16 +5,25 @@ import { defineConfig } from "@bodhchakra/config";
 import { createPool } from "@bodhchakra/db";
 import { createJobs } from "@bodhchakra/jobs";
 import { createLogger } from "@bodhchakra/log";
+import { createNotify } from "@bodhchakra/notify";
 import { createOutbox } from "@bodhchakra/outbox";
 import { workerConfig } from "./config.ts";
+import { createNotices } from "./notices.ts";
 
 const config = defineConfig(workerConfig);
 const log = createLogger({ service: "kaamkoti-worker" });
 const db = createPool({ url: config.DATABASE_URL, log });
 const jobs = createJobs({ url: config.DATABASE_URL, log });
 const outbox = createOutbox({ jobs, log });
+const notices = createNotices({
+  notify: createNotify(outbox),
+  jobs,
+  appOrigin: config.APP_ORIGIN,
+  publicOrigin: config.PUBLIC_ORIGIN,
+});
 
-await jobs.start(outbox.jobTypes);
+await jobs.start([...outbox.jobTypes, ...notices.jobTypes]);
+await notices.startWorking(db);
 await outbox.startDelivery(db, {
   url: config.PLATFORM_INTERNAL_URL,
   client: "kaamkoti",

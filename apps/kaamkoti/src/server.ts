@@ -7,12 +7,13 @@ import { defineConfig } from "@bodhchakra/config";
 import { createPool, type Db } from "@bodhchakra/db";
 import { createJobs } from "@bodhchakra/jobs";
 import { createLogger, type Logger } from "@bodhchakra/log";
-import { createNotify, type Notify } from "@bodhchakra/notify";
+import { createNotify } from "@bodhchakra/notify";
 import { createOutbox } from "@bodhchakra/outbox";
 import { type Limiter, redisLimiter } from "@bodhchakra/rate-limit";
 import { createStorage, type Storage } from "@bodhchakra/storage";
 import { PRIVATE_BUCKET, webConfig } from "./config.ts";
 import { type Geocoder, nominatim } from "./geocode.ts";
+import { createNotices, type Notices } from "./notices.ts";
 
 export interface Server {
   readonly db: Db;
@@ -27,7 +28,7 @@ export interface Server {
   /** The address of a point a customer picked (D16). */
   readonly geocode: Geocoder;
   /** Messages to customers and owners, through the outbox; the worker delivers them to platform. */
-  readonly notify: Notify;
+  readonly notices: Notices;
   /** Where browsers reach this app: the base of every link sent to a customer. */
   readonly origin: string;
   /** The bare domain: public pages and the customer space. */
@@ -80,7 +81,15 @@ function build(): Server {
   // if it failed, that send fails with its error.
   const jobs = createJobs({ url: config.DATABASE_URL, log, sendOnly: true });
   const outbox = createOutbox({ jobs, log });
-  jobs.start(outbox.jobTypes).catch((error: unknown) => log.error("jobs start failed", { error }));
+  const notices = createNotices({
+    notify: createNotify(outbox),
+    jobs,
+    appOrigin: config.APP_ORIGIN,
+    publicOrigin: config.PUBLIC_ORIGIN,
+  });
+  jobs
+    .start([...outbox.jobTypes, ...notices.jobTypes])
+    .catch((error: unknown) => log.error("jobs start failed", { error }));
   return {
     db,
     auth,
@@ -90,7 +99,7 @@ function build(): Server {
     limiter: redisLimiter(config.REDIS_URL, log),
     audit: createAudit(log),
     geocode: nominatim(config.GEOCODER_URL, log),
-    notify: createNotify(outbox),
+    notices,
     origin: config.APP_ORIGIN,
     publicOrigin: config.PUBLIC_ORIGIN,
   };

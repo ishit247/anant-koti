@@ -1,5 +1,6 @@
 // Phase-end browser check: `pnpm run check:browser`, against the running dev stack (`pnpm run up:fresh`,
-// the platform container, `pnpm --filter kaamkoti dev`). Chromium lives on D: (set
+// the platform container, `pnpm --filter kaamkoti dev` and `pnpm --filter kaamkoti dev:worker`, which carries
+// the notices whose emails are looked for in Mailpit). Chromium lives on D: (set
 // PLAYWRIGHT_BROWSERS_PATH=D:\playwright-browsers; install with `pnpm exec playwright install chromium-headless-shell`). A new owner signs in with an email code read from
 // Mailpit, creates a business, picks a trade, edits a price, and the public page is opened without cookies. A
 // new customer signs in on the bare domain to send a request with a photo, lands on their work list, and finds
@@ -25,6 +26,7 @@ const WIDTHS = {
 
 const run = Date.now().toString(36);
 const email = `owner-${run}@example.test`;
+const customerEmail = `customer-${run}@example.test`;
 const businessName = `Check Cooling ${run}`;
 const slug = businessName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 const problems: string[] = [];
@@ -43,6 +45,21 @@ async function signInCode(to = email): Promise<string> {
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
   throw new Error(`no sign-in code arrived for ${to}`);
+}
+
+/**
+ * Records a problem unless an email to `to` whose subject matches arrives: the whole path of a notice, from the
+ * app's outbox through its worker and platform to SMTP (3.2b).
+ */
+async function expectMail(to: string, subject: RegExp, what: string): Promise<void> {
+  for (let tries = 0; tries < 100; tries++) {
+    const found = await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:"${to}"`)}`);
+    if (!found.ok) throw new Error(`mailpit search failed: ${found.status}`);
+    const { messages } = (await found.json()) as { messages: { Subject: string }[] };
+    if (messages.some((message) => subject.test(message.Subject))) return;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  problems.push(`no email for ${what} arrived (is the worker running?)`);
 }
 
 /** The platform sign-in page: the email and "Get code", then the code and "Sign in". */
@@ -179,7 +196,7 @@ try {
   watchConsole(form, "request form");
   await form.goto(`${APP}/b/sharma-cooling`);
   await form.getByRole("link", { name: "New work" }).click();
-  await signInAs(form, `customer-${run}@example.test`);
+  await signInAs(form, customerEmail);
   await form.waitForURL(`${PUBLIC}/b/sharma-cooling/request`);
   await shoot(form, "11-request-form");
   // A first-time customer sees only the fields (3.2g), and their entry also becomes their own name and mobile.
@@ -338,6 +355,9 @@ try {
   if (!sentItem?.includes("Hall fan hums") || !sentItem.includes("1 photo"))
     problems.push(`the customer's request page shows the item as ${JSON.stringify(sentItem)}`);
   await shoot(form, "13a-customer-request-page");
+  // The owner is told by the email of their identity; the customer gets an acknowledgement.
+  await expectMail(email, /^New request #\d+ from Quote Check$/, "the owner's new request");
+  await expectMail(customerEmail, /has your request #\d+$/, "the customer's acknowledgement");
 
   // The owner prices the item, adds a discount, has a deposit above the total refused without losing the
   // lines, and sends; the link to pass on is her request page, which needs her sign-in.
@@ -411,6 +431,7 @@ try {
   if (await form.getByRole("button", { name: /Accept quote/ }).count())
     problems.push("a countered quote still offers acceptance");
   await shoot(form, "13f-customer-countered");
+  await expectMail(email, /^Quote Check offered a different price/, "the owner's counter notice");
   await page.goto(jobUrl);
   if (!(await page.getByText("offered ₹400.00").count()))
     problems.push("the owner does not see the counter-offer");
@@ -422,6 +443,8 @@ try {
   await form.goto(requestPage);
   await form.getByRole("button", { name: /Accept quote/ }).click();
   await form.getByRole("status").filter({ hasText: "has your acceptance" }).waitFor();
+  await expectMail(email, /^Quote Check accepted your quote/, "the owner's acceptance notice");
+  await expectMail(customerEmail, /^Your quote from /, "the customer's quote");
   if (await form.locator("button.tile.wrap").count())
     problems.push("an accepted request still offers its items for editing");
   if (!(await form.getByText("Hall fan hums").count()))

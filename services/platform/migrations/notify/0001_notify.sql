@@ -23,8 +23,18 @@ create table notify.message (
   check ((channel is null) = (status = 'no_channel')),
   check ((finished_at is null) = (status in ('queued', 'no_channel')))
 );
--- The 30-day purge (3.2b) reads by age.
+-- The 30-day purge reads by age.
 create index message_created on notify.message (created_at);
+
+-- The purge (architecture 9.2), run daily by notify's scheduled job: the one delete there is. The runtime role
+-- has no DELETE on the table, so it can remove messages only by age, through this function, never by id.
+create function notify.purge_messages() returns bigint
+  language sql security definer set search_path = pg_catalog
+as $$
+  with gone as (delete from notify.message where created_at < now() - interval '30 days' returning 1)
+  select count(*) from gone
+$$;
+revoke execute on function notify.purge_messages() from public;
 
 -- A GRANT never withholds, so the rights the runtime role must not have are revoked explicitly.
 do $$
@@ -34,4 +44,5 @@ begin
   execute format('grant usage on schema notify to %I', runtime);
   execute format('grant select, insert, update on notify.message to %I', runtime);
   execute format('revoke delete, truncate on notify.message from %I', runtime);
+  execute format('grant execute on function notify.purge_messages() to %I', runtime);
 end $$;

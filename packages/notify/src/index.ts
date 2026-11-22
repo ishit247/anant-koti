@@ -20,8 +20,13 @@ export const notifyMessage = z.object({
     .string()
     .max(80)
     .regex(/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/),
-  /** Every address the app has; platform chooses among them. Neither is a message nobody can receive. */
+  /**
+   * Every address the app has; platform chooses among them. None is a message nobody can receive. A member (an
+   * owner) is named by `identityId`, the identity's `sub`: their addresses live in platform, which uses them in
+   * place of any given here.
+   */
   to: z.object({
+    identityId: z.uuid().optional(),
     email: z.email().max(254).optional(),
     phone: z
       .string()

@@ -239,8 +239,8 @@ export async function saveDraft(
 
 /**
  * Sends the draft: the version out with the customer before it becomes `superseded`, this one `sent` and
- * valid for `validDays`, its tasks `quoted`, the job `quoted`. The caller issues a fresh customer link in the
- * same transaction for the message that carries the quote (a link cannot be sent twice; architecture.md 7).
+ * valid for `validDays`, its tasks `quoted`, the job `quoted`. The caller queues the customer's notice in the
+ * same transaction (`Notices.quoteSent`).
  */
 export async function sendQuote(
   client: DbClient,
@@ -312,7 +312,8 @@ const ANSWERED: Record<QuoteAnswer["kind"], QuoteStatus> = {
  * The customer's answer to the version they were sent (scope `customer`: the caller, `answerRequestQuote`, found
  * this job under the signed-in customer). Only the job's current, unexpired `sent` quote takes an answer, once. Accepting locks the quote,
  * records it as the job's accepted quote and approves the tasks it prices; rejecting or countering leaves the
- * job `quoted` for the owner to revise. A deposit link (4.x) and the owner's notice (3.2) come later.
+ * job `quoted` for the owner to revise. The caller queues the owner's notice (`Notices.quoteAnswered`); a
+ * deposit link comes in 4.x.
  */
 export async function answerQuote(
   client: DbClient,
