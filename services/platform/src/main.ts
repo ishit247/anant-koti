@@ -1,13 +1,17 @@
 // The platform container's entry point. Migrations are run by the deploy (and by `pnpm run up` in development),
 // as platform_owner; this process connects only as platform_app.
+import { createAudit } from "@bodhchakra/audit";
 import { defineConfig } from "@bodhchakra/config";
 import { createPool } from "@bodhchakra/db";
+import { createJobs } from "@bodhchakra/jobs";
 import { createLogger } from "@bodhchakra/log";
+import { NOTIFY_TOPIC } from "@bodhchakra/notify";
 import { redisLimiter } from "@bodhchakra/rate-limit";
 import pg from "pg";
 import { platformConfig } from "./config.ts";
 import { createIdentity, registerClients } from "./identity.ts";
-import { codeMailer } from "./mail.ts";
+import { codeMailer, emailSender } from "./mail.ts";
+import { createNotifyService } from "./notify.ts";
 import { createHandler, listen } from "./server.ts";
 
 const config = defineConfig(platformConfig);
@@ -18,7 +22,17 @@ const identityPool = new pg.Pool({ connectionString: config.DATABASE_URL, max: 5
 identityPool.on("error", (error) => log.error("postgres idle connection failed", { error }));
 const limiter = redisLimiter(config.REDIS_URL, log);
 
-const sendCode = codeMailer(config.SMTP_URL, config.EMAIL_FROM);
+const sendCode = codeMailer(emailSender(config.SMTP_URL, config.EMAIL_FROM));
+const jobs = createJobs({ url: config.DATABASE_URL, log });
+const notify = createNotifyService({
+  db,
+  jobs,
+  log,
+  audit: createAudit(log),
+  sendEmail: emailSender(config.SMTP_URL, config.NOTIFY_EMAIL_FROM),
+});
+await jobs.start(notify.jobTypes);
+await notify.startSending();
 
 await registerClients(identityPool, config.SIGN_IN_CLIENTS);
 const identity = createIdentity(
@@ -32,10 +46,14 @@ const identity = createIdentity(
   log,
 );
 
-// No topics yet: the first, notify.send, arrives with step 3.2. Until then every internal call is answered 404
-// after its signature is checked.
 const server = await listen(
-  createHandler({ db, log, clients: config.SERVICE_CLIENTS, topics: {}, identity }),
+  createHandler({
+    db,
+    log,
+    clients: config.SERVICE_CLIENTS,
+    topics: { [NOTIFY_TOPIC]: notify.topic },
+    identity,
+  }),
   log,
   config.PORT,
 );
@@ -44,13 +62,17 @@ log.info("platform listening", { port: config.PORT, clients: Object.keys(config.
 const shutdown = () => {
   log.info("platform stopping");
   server.close(() => {
-    Promise.all([db.end(), identityPool.end(), limiter.close()]).then(
-      () => process.exit(0),
-      (error: unknown) => {
-        log.error("closing the database pool failed", { error });
-        process.exit(1);
-      },
-    );
+    // Jobs first: a send in progress finishes on the pool before it closes.
+    jobs
+      .stop()
+      .then(() => Promise.all([db.end(), identityPool.end(), limiter.close()]))
+      .then(
+        () => process.exit(0),
+        (error: unknown) => {
+          log.error("closing the database pool failed", { error });
+          process.exit(1);
+        },
+      );
   });
 };
 process.once("SIGTERM", shutdown);

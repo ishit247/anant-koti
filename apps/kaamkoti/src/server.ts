@@ -5,7 +5,10 @@ import { type Audit, createAudit } from "@bodhchakra/audit";
 import { type Auth, createAuth } from "@bodhchakra/auth";
 import { defineConfig } from "@bodhchakra/config";
 import { createPool, type Db } from "@bodhchakra/db";
+import { createJobs } from "@bodhchakra/jobs";
 import { createLogger, type Logger } from "@bodhchakra/log";
+import { createNotify, type Notify } from "@bodhchakra/notify";
+import { createOutbox } from "@bodhchakra/outbox";
 import { type Limiter, redisLimiter } from "@bodhchakra/rate-limit";
 import { createStorage, type Storage } from "@bodhchakra/storage";
 import { PRIVATE_BUCKET, webConfig } from "./config.ts";
@@ -17,6 +20,8 @@ export interface Server {
   readonly storage: Storage;
   readonly limiter: Limiter;
   readonly audit: Audit;
+  /** Messages to customers and owners, through the outbox; the worker delivers them to platform. */
+  readonly notify: Notify;
   /** Where browsers reach this app: the base of every link sent to a customer. */
   readonly origin: string;
 }
@@ -51,6 +56,11 @@ function build(): Server {
     secretAccessKey: config.S3_SECRET_ACCESS_KEY,
     bucket: PRIVATE_BUCKET,
   });
+  // The web only queues jobs; the worker runs them. Started in the background: the first send waits for it, and
+  // if it failed, that send fails with its error.
+  const jobs = createJobs({ url: config.DATABASE_URL, log, sendOnly: true });
+  const outbox = createOutbox({ jobs, log });
+  jobs.start(outbox.jobTypes).catch((error: unknown) => log.error("jobs start failed", { error }));
   return {
     db,
     auth,
@@ -58,6 +68,7 @@ function build(): Server {
     storage,
     limiter: redisLimiter(config.REDIS_URL, log),
     audit: createAudit(log),
+    notify: createNotify(outbox),
     origin: config.APP_ORIGIN,
   };
 }

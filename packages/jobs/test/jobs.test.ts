@@ -83,6 +83,32 @@ describe("jobs", () => {
     await until(() => dead.includes("undeliverable"), "the dead letter");
   });
 
+  it("lets a send-only process send while its start is still running", async () => {
+    const web = createJobs({
+      url: database.url("kaamkoti_app"),
+      log: createLogger({ service: "test", write: () => {} }),
+      sendOnly: true,
+    });
+    const starting = web.start([noted]);
+    try {
+      await app.tx((client) => web.send(client, noted, { text: "from-web" }));
+      await until(() => seen.includes("from-web"), "the worker to run the web's job");
+    } finally {
+      await starting;
+      await web.stop();
+    }
+  });
+
+  it("refuses a send before start", async () => {
+    const unstarted = createJobs({
+      url: database.url("kaamkoti_app"),
+      log: createLogger({ service: "test", write: () => {} }),
+    });
+    await expect(
+      app.tx((client) => unstarted.send(client, noted, { text: "never" })),
+    ).rejects.toThrow("sent before start");
+  });
+
   it("gives the runtime role no DDL and no truncate on the pg-boss schema", async () => {
     for (const sql of [
       "truncate pgboss.job",

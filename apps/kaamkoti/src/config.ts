@@ -28,3 +28,13 @@ export const webConfig = z.object({
   S3_ACCESS_KEY_ID: z.string().regex(/^GK[0-9a-f]{24}$/),
   S3_SECRET_ACCESS_KEY: z.string().regex(/^[0-9a-f]{64}$/),
 });
+
+/** What the worker process reads: it runs the jobs and delivers the outbox to platform. */
+export const workerConfig = z.object({
+  /** Connects as the runtime role, kaamkoti_app. */
+  DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
+  /** Platform as this app reaches it on the internal network; outbox messages go to its internal API. */
+  PLATFORM_INTERNAL_URL: origin(/^https?$/),
+  /** Signs outbox deliveries; must match `kaamkoti` in platform's SERVICE_CLIENTS. */
+  SERVICE_SECRET: z.string().min(MIN_SECRET_LENGTH),
+});

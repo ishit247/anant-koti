@@ -47,6 +47,7 @@ services:
       REDIS_URL: redis://redis:6379
       SMTP_URL: smtp://mailpit:1025
       EMAIL_FROM: Bodhchakra <sign-in@localhost>
+      NOTIFY_EMAIL_FROM: Kaam Koti <messages@localhost>
     ports:
       - "127.0.0.1:45443:3000"
     networks: [internal]

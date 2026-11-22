@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireMember } from "../../../../guard.ts";
 import { issueJobLink } from "../../../../job-link.ts";
+import { noticeQuoteSent } from "../../../../notices.ts";
 import { type QuoteError, saveDraft, sendQuote } from "../../../../quote.ts";
 import { readQuoteForm, type TypedQuote } from "../../../../quote-form.ts";
 import { server } from "../../../../server.ts";
@@ -48,7 +49,7 @@ export async function saveQuoteAction(
   if (!target.success) return { error: MESSAGE.not_found };
   const { jobId, quoteId } = target.data;
   const owner = await requireMember(route, `/jobs/${jobId}/quote`);
-  const { db, audit } = server();
+  const { db, audit, notify, origin } = server();
   const state = await db.withTenant(owner.businessId, async (client): Promise<QuoteEditorState> => {
     const { currency } = await currentBusiness(client);
     const parsed = readQuoteForm(form, currency);
@@ -66,6 +67,7 @@ export async function saveQuoteAction(
     if (!sent.ok) return { error: MESSAGE[sent.error], typed, totals };
     // Each message carries a fresh link (architecture.md 7); this one carries the quote.
     const { secret } = await issueJobLink(client, sent.jobId);
+    await noticeQuoteSent(client, notify, { quoteId, secret, origin });
     return { typed, totals, sent: { version: sent.version, secret } };
   });
   revalidatePath(`/jobs/${jobId}`);

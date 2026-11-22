@@ -50,7 +50,10 @@ export const platformConfig = z.object({
   SIGN_IN_CLIENTS: signInClients,
   /** Rate-limit counters only; nothing that must survive a restart. */
   REDIS_URL: z.url({ protocol: /^rediss?$/ }),
-  /** Sign-in codes go out by SMTP until notify (3.2) delivers them. */
+  /** Sign-in codes and notify's email channel. */
   SMTP_URL: z.url({ protocol: /^smtps?$/ }),
+  /** The sign-in codes' sender. */
   EMAIL_FROM: z.string().min(3),
+  /** The sender of notify's emails to customers and owners. */
+  NOTIFY_EMAIL_FROM: z.string().min(3),
 });

@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "next dev -p 45450 -H 127.0.0.1",
+    "dev:worker": "node --env-file=.env.development src/worker.ts",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc -p .",
@@ -21,6 +22,7 @@
     "@bodhchakra/jobs": "workspace:*",
     "@bodhchakra/log": "workspace:*",
     "@bodhchakra/money": "workspace:*",
+    "@bodhchakra/notify": "workspace:*",
     "@bodhchakra/outbox": "workspace:*",
     "@bodhchakra/rate-limit": "workspace:*",
     "@bodhchakra/storage": "workspace:*",

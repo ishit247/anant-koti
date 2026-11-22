@@ -4,8 +4,19 @@ What we are building: [product-brief.md](product-brief.md). Shared modules:
 [platform-modules.md](platform-modules.md). The design is in [architecture.md](architecture.md);
 its first table says which sections each step reads.
 
-**Current position:** Step 3.1 done (2026-11-22). Next: step 3.2 (STANDARD: `notify` email channel through the
-outbox), best in a fresh session. Step 3.1: migration `0008_appointment.sql` (`kk.appointment`; `EXCLUDE USING gist`
+**Current position:** Step 3.2 done (2026-11-22). Next: step 3.2b (STANDARD: the remaining notify messages and
+the 30-day purge), best in a fresh session. Step 3.2 (split: 3.2b added): `@bodhchakra/notify` (client:
+`createNotify(outbox).send(client, message, key)`, schema `notifyMessage`; the product is the signed client id).
+Platform: `src/notify.ts` (topic `notify.send` → `notify.message` + `notify.deliver` job in the inbox's
+transaction; email by SMTP, 10 attempts over ~4 h, then `failed` and an error log; `no_channel` without an email;
+audit `notify.sent|failed|no_channel`; logs carry id, template and nodemailer's code only), templates in
+`src/templates/kaamkoti.ts` (`quote.sent`), migration folder `notify`, platform now also migrates `audit` and
+`jobs`; config `NOTIFY_EMAIL_FROM`. `jobs`: `sendOnly` and `send` waits for `start`. Kaam Koti: `src/worker.ts`
+(`pnpm --filter kaamkoti dev:worker`, needs `SERVICE_SECRET`) delivers the outbox; the web queues only;
+`noticeQuoteSent` in `src/notices.ts` is called by the send-quote action. Verified: `validate quick`, tests of
+jobs/outbox/notify/platform/kaamkoti on real Postgres (187), one mutant (rethrowing the provider's error, which
+quotes the address) killed by the log test; end to end after `up:fresh`: a queued `quote.sent` went app outbox →
+worker → platform → Mailpit. The quote editor was NOT clicked through in a browser. Earlier, step 3.1: migration `0008_appointment.sql` (`kk.appointment`; `EXCLUDE USING gist`
 on technician and time range for planned visits, so a double booking is refused by the database; no delete for the
 app role) and `unique (business_id, id)` added to `tenancy.member` in place. `src/schedule.ts`: `planVisit` (a
 `work` visit needs an `accepted` job and moves it to `scheduled` through `transitionJob`; a `site_visit` is allowed
@@ -165,11 +176,12 @@ also write the module's README, and their tests run through the module's public 
 
 ## Phase 3: Scheduling and notifications
 
-| Id  | Step                                                                                                                                                                                                                                                                          | Size | Model    | Status | Done when                                                                                                      |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | -------- | ------ | -------------------------------------------------------------------------------------------------------------- |
-| 3.1 | Scheduling: slots, technician assignment, conflict check                                                                                                                                                                                                                      | M    | STANDARD | done   | Double-booking a technician is refused                                                                         |
-| 3.2 | `[module]` `notify`, served from the shared `platform` container through the outbox: templates, email channel, retries, audit log                                                                                                                                             | M    | STANDARD | todo   | A failed send retries and is logged without personal data                                                      |
-| 3.3 | `[module]` `notify` WhatsApp channel (D7): confirmations, reminders, "on the way"; per-business monthly quota; sign-in by phone code (moved from 0.6a: needs this channel, and better-auth's phone plugin stores codes in plain text, so its codes need our own hashed store) | M    | HIGH     | todo   | Quota is enforced; delivery webhook is signature-verified; a phone sign-in issues the same `sub` flow as email |
+| Id   | Step                                                                                                                                                                                                                                                                                                                    | Size | Model    | Status | Done when                                                                                                               |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | -------- | ------ | ----------------------------------------------------------------------------------------------------------------------- |
+| 3.1  | Scheduling: slots, technician assignment, conflict check                                                                                                                                                                                                                                                                | M    | STANDARD | done   | Double-booking a technician is refused                                                                                  |
+| 3.2  | `[module]` `notify`, served from the shared `platform` container through the outbox: templates, email channel, retries, audit log                                                                                                                                                                                       | M    | STANDARD | done   | A failed send retries and is logged without personal data                                                               |
+| 3.2b | `[module]` notify's remaining Kaam Koti messages: `request.received` (owner and customer), `quote.response` (owner), `appointment.confirmed` (customer), the quote expiry notice; owner recipients resolved in platform from the identity `sub`; the 30-day purge of `notify.message` (needs a scheduled job in `jobs`) | M    | STANDARD | todo   | Each message in architecture 9.2's table up to scheduling is queued by its change; a message older than 30 days is gone |
+| 3.3  | `[module]` `notify` WhatsApp channel (D7): confirmations, reminders, "on the way"; per-business monthly quota; sign-in by phone code (moved from 0.6a: needs this channel, and better-auth's phone plugin stores codes in plain text, so its codes need our own hashed store)                                           | M    | HIGH     | todo   | Quota is enforced; delivery webhook is signature-verified; a phone sign-in issues the same `sub` flow as email          |
 
 ## Phase 4: Jobs, invoices and payments
 

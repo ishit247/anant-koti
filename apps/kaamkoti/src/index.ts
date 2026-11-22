@@ -66,6 +66,7 @@ export {
   revokeJobLinks,
 } from "./job-link.ts";
 export { CLIENT_IP_HEADER, clientIp, LIMITS, overLimit } from "./limits.ts";
+export { noticeQuoteSent } from "./notices.ts";
 export { type PublicPage, publicPage } from "./public-page.ts";
 export {
   type AnswerError,

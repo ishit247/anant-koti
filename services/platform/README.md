@@ -13,7 +13,18 @@ The shared container: identity (0.6), billing (5.x) and notify (3.2). Design:
 | `GET /sign-in`                          | Browsers, sent by authorize  | The sign-in page: email, then a 6-digit code.                                                                                                                       |
 | `/api/auth/*`                           | Browsers and apps            | better-auth, limited to the `ROUTES` list in `src/identity.ts`: authorize, token, end-session, jwks, send code, sign in with code, error. Anything else is 404.     |
 
-There are no topics yet: the first, `notify.send`, comes in step 3.2. Bodies over 64 KB are refused (413).
+Topics: `notify.send` (below). Bodies over 64 KB are refused (413).
+
+## Notify
+
+- `src/notify.ts`: `notify.send` records the message in `notify.message` and queues its `notify.deliver` job in
+  the inbox's transaction. The job renders the product's template (`src/templates/<product>.ts`, the product
+  being the signed client id) and sends it by email; WhatsApp joins in 3.3. Ten attempts over about four hours,
+  then `failed` and an error log. A message with no email is `no_channel`.
+- Each outcome is an `audit.event` (`notify.sent`, `notify.failed`, `notify.no_channel`). Logs carry the message
+  id, template and nodemailer's error code; never the recipient, the variables or the provider's text.
+- Sign-in codes do not go through it: they are mailed directly (`src/mail.ts`), because a code waiting for a
+  retry is useless.
 
 ## Identity
 
@@ -35,17 +46,18 @@ There are no topics yet: the first, `notify.send`, comes in step 3.2. Bodies ove
 
 ## Config
 
-| Variable          | Meaning                                                                                                                        |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `DATABASE_URL`    | `platform` database as `platform_app`.                                                                                         |
-| `PORT`            | Default 3000.                                                                                                                  |
-| `SERVICE_CLIENTS` | JSON object of client id to shared secret, e.g. `{"kaamkoti":"…"}`. Each secret is at least 43 characters.                     |
-| `IDENTITY_ORIGIN` | Public origin of the sign-in host, `https://id.<platform-tld>`; the ID tokens' `iss`.                                          |
-| `IDENTITY_SECRET` | better-auth's secret: cookies, sealed signing keys, code HMAC. At least 43 characters.                                         |
-| `SIGN_IN_CLIENTS` | JSON object of client id to `{ secret, redirectUris, postLogoutRedirectUris }`.                                                |
-| `REDIS_URL`       | Rate-limit counters.                                                                                                           |
-| `SMTP_URL`        | Where sign-in codes are mailed from until notify (3.2) delivers them. Mailpit in development (inbox `http://127.0.0.1:45446`). |
-| `EMAIL_FROM`      | The codes' sender.                                                                                                             |
+| Variable            | Meaning                                                                                                    |
+| ------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`      | `platform` database as `platform_app`.                                                                     |
+| `PORT`              | Default 3000.                                                                                              |
+| `SERVICE_CLIENTS`   | JSON object of client id to shared secret, e.g. `{"kaamkoti":"…"}`. Each secret is at least 43 characters. |
+| `IDENTITY_ORIGIN`   | Public origin of the sign-in host, `https://id.<platform-tld>`; the ID tokens' `iss`.                      |
+| `IDENTITY_SECRET`   | better-auth's secret: cookies, sealed signing keys, code HMAC. At least 43 characters.                     |
+| `SIGN_IN_CLIENTS`   | JSON object of client id to `{ secret, redirectUris, postLogoutRedirectUris }`.                            |
+| `REDIS_URL`         | Rate-limit counters.                                                                                       |
+| `SMTP_URL`          | Sign-in codes and notify's email. Mailpit in development (inbox `http://127.0.0.1:45446`).                 |
+| `EMAIL_FROM`        | The codes' sender.                                                                                         |
+| `NOTIFY_EMAIL_FROM` | The sender of notify's emails.                                                                             |
 
 Bad config stops start-up.
 
@@ -60,4 +72,4 @@ Bad config stops start-up.
 - The package exports the identity pieces (`createIdentity`, `registerClients`, `createHandler`, `listen`,
   `redisLimiter`) so an app's test can sign in against a real platform in process.
 - Tests: `pnpm --filter platform test` (needs `pnpm run up`: Postgres, Redis). They include an app's outbox
-  delivering after platform comes back, and a full sign-in over HTTP.
+  delivering after platform comes back, a full sign-in over HTTP, and notify's send, retry and give-up.

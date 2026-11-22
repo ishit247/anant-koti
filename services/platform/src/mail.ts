@@ -1,14 +1,20 @@
-// Sign-in codes by email over SMTP (Mailpit in development). Notify (3.2) takes over delivery; until then this is
-// the one message platform sends.
+// Email over SMTP (Mailpit in development). Sign-in codes go out here directly, not through notify's queue: a code
+// that waits for a retry is useless, and the person is on the sign-in page to ask for another.
 import nodemailer from "nodemailer";
 import type { SendCode } from "./identity.ts";
+import type { SendEmail } from "./notify.ts";
 
-/** Awaited, so a mail failure fails the request instead of vanishing. */
-export function codeMailer(smtpUrl: string, from: string): SendCode {
+/** Awaited, so a mail failure fails the caller instead of vanishing. */
+export function emailSender(smtpUrl: string, from: string): SendEmail {
   const transport = nodemailer.createTransport(smtpUrl);
-  return async (to, code) => {
-    await transport.sendMail({
-      from,
+  return async ({ to, subject, text }) => {
+    await transport.sendMail({ from, to, subject, text });
+  };
+}
+
+export function codeMailer(sendEmail: SendEmail): SendCode {
+  return (to, code) =>
+    sendEmail({
       to: to.email,
       subject: `${code} is your sign-in code`,
       text:
@@ -16,5 +22,4 @@ export function codeMailer(smtpUrl: string, from: string): SendCode {
         "It works once and expires in 10 minutes. If you did not ask for it, ignore this email: " +
         "nobody can sign in without the code.",
     });
-  };
 }

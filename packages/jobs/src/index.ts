@@ -45,9 +45,15 @@ export interface JobContext {
 }
 
 export interface Jobs {
-  /** Starts pg-boss and creates or updates the queues for `types`. Call once, before `send` or `work`. */
+  /**
+   * Starts pg-boss and creates or updates the queues for `types`. Call once. `send` waits for it, so a process
+   * may start in the background and send at once; `work` must come after it resolves.
+   */
   start(types: readonly JobType<object>[]): Promise<void>;
-  /** Queues a job in the caller's transaction: it is created only if that transaction commits. */
+  /**
+   * Queues a job in the caller's transaction: it is created only if that transaction commits. Fails if `start`
+   * was never called, or failed.
+   */
   send<P extends object>(client: DbClient, type: JobType<P>, payload: P): Promise<void>;
   /**
    * Runs `handler` for each job of `type`, one at a time. A handler that throws fails the attempt and the job is
@@ -67,6 +73,11 @@ export interface JobsConfig {
   log: Logger;
   /** How often an idle worker looks for jobs; pg-boss's floor is 0.5. */
   pollingIntervalSeconds?: number;
+  /**
+   * A process that only queues jobs (the web process) leaves maintenance to the worker: no supervision and no
+   * cron scheduling, so it holds no timers of its own.
+   */
+  sendOnly?: boolean;
 }
 
 export function createJobs(config: JobsConfig): Jobs {
@@ -78,28 +89,37 @@ export function createJobs(config: JobsConfig): Jobs {
     migrate: false,
     createSchema: false,
     reindex: false,
+    supervise: !config.sendOnly,
+    schedule: !config.sendOnly,
   });
+  let started: Promise<void> | undefined;
   // pg-boss reports its own background failures as events; an unheard `error` event would crash the process.
   boss.on("error", (error) => config.log.error("jobs: pg-boss error", { error }));
   boss.on("warning", (warning) => config.log.warn("jobs: pg-boss warning", { warning }));
 
   return {
-    async start(types) {
-      await boss.start();
-      // A dead-letter queue must exist before a queue that names it.
-      const ordered = [...types].sort(
-        (a, b) => Number(Boolean(a.deadLetter)) - Number(Boolean(b.deadLetter)),
-      );
-      for (const type of ordered) {
-        const options = type.deadLetter
-          ? { ...type.retry, deadLetter: type.deadLetter.name }
-          : type.retry;
-        // createQueue leaves an existing queue alone, so the policy in code is applied with updateQueue.
-        await boss.createQueue(type.name, options);
-        await boss.updateQueue(type.name, options);
-      }
+    start(types) {
+      if (started) throw new Error("jobs: start called twice");
+      started = (async () => {
+        await boss.start();
+        // A dead-letter queue must exist before a queue that names it.
+        const ordered = [...types].sort(
+          (a, b) => Number(Boolean(a.deadLetter)) - Number(Boolean(b.deadLetter)),
+        );
+        for (const type of ordered) {
+          const options = type.deadLetter
+            ? { ...type.retry, deadLetter: type.deadLetter.name }
+            : type.retry;
+          // createQueue leaves an existing queue alone, so the policy in code is applied with updateQueue.
+          await boss.createQueue(type.name, options);
+          await boss.updateQueue(type.name, options);
+        }
+      })();
+      return started;
     },
     async send(client, type, payload) {
+      if (!started) throw new Error(`jobs: ${type.name} sent before start`);
+      await started;
       await boss.send(type.name, payload, {
         db: { executeSql: (text, values) => client.query(text, values) },
       });

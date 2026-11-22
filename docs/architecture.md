@@ -345,12 +345,21 @@ receiver code handles provider webhooks, with the provider's signature in place 
 
 ### 9.2 Notify (platform)
 
-- The app sends `notify.send` with `{ product, businessId, template, to: { phone?, email? }, vars, locale }`.
-  Platform picks the channel: WhatsApp if there is a phone and quota left, otherwise email. SMS comes later.
-- Templates live in `services/platform/notify/templates/<product>/` with one version per channel. WhatsApp
-  templates mirror the ones Meta has approved (D7, 3.3).
-- `notify.message` keeps the recipient for retries and status, and is purged after 30 days. Logs carry the
-  message id and template, never the recipient or the text.
+- The app sends `notify.send` with `{ businessId, template, to: { phone?, email? }, vars }`
+  (`@bodhchakra/notify`). The product is the signed client id, not a field, so an app reaches only its own
+  templates. `vars` are display strings the app formatted (money, dates in the business's time zone). A locale
+  joins when a second language does. Platform picks the channel: WhatsApp if there is a phone and quota left,
+  otherwise email. SMS comes later. No address on any channel there is records the message as `no_channel`.
+- Templates live in `services/platform/src/templates/<product>.ts`, each with its variables' schema and one
+  version per channel. WhatsApp templates mirror the ones Meta has approved (D7, 3.3). An unknown template or
+  bad variables are refused (500), so the app's outbox retries and then alerts.
+- `notify.message` keeps the recipient for retries and status (`queued`, `sent`, `failed`, `no_channel`) and is
+  purged after 30 days (3.2b). It has no RLS: only notify's code reaches it, by id. The send job retries ten
+  times over about four hours, then marks the message `failed` and logs an alert. Each outcome is an
+  `audit.event` (`notify.sent`, `notify.failed`, `notify.no_channel`) in the business's log. Logs and audit
+  carry the message id and template, never the recipient, the text or a provider's error text (it can quote
+  the address); a failed send logs nodemailer's code only.
+- Kaam Koti's worker (`src/worker.ts`) delivers the outbox; the web only queues (`sendOnly` jobs).
 - The WhatsApp quota counts per (product, business, month), with top-ups (5.2). Over quota falls back to email.
   If there is no email, the owner is told.
 - Delivery-status webhooks from providers reach `hooks.` and are signature-verified (3.3).
