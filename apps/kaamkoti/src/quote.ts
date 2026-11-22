@@ -2,12 +2,13 @@
 // has numbered versions. The owner edits one draft at a time, which starts from the request's tasks or from the
 // version before; sending it supersedes that version and moves the job to `quoted`. Amounts are computed here
 // with @bodhchakra/money and restated by the database's CHECKs and triggers, which also keep a sent quote frozen.
-// Customer answers (accept, reject, counter) are step 2.5.
+// The customer answers the version they were sent: accept (which locks it), reject or counter. Every job move
+// goes through transitionJob.
 import type { Audit } from "@bodhchakra/audit";
 import type { DbClient } from "@bodhchakra/db";
 import { lineTotals, type Money, money, type Totals } from "@bodhchakra/money";
 import { currentBusiness } from "@bodhchakra/tenancy";
-import { jobTasks } from "./job.ts";
+import { jobTasks, transitionJob } from "./job.ts";
 import type { UNITS } from "./trade-template.ts";
 
 export const QUOTE_STATUSES = [
@@ -59,8 +60,18 @@ export interface Quote {
   readonly tax: Money;
   readonly total: Money;
   readonly deposit: Money;
+  /** When the customer accepted, rejected or countered it. */
+  readonly decidedAt: Date | null;
+  /** A counter-offer's price and words, as the customer gave them; null unless they countered. */
+  readonly counter: { readonly total: Money; readonly note: string | null } | null;
   readonly lines: readonly QuoteLine[];
 }
+
+/** The customer's answer to a sent quote. A counter names the total they would pay, and may say why. */
+export type QuoteAnswer =
+  | { readonly kind: "accept" }
+  | { readonly kind: "reject" }
+  | { readonly kind: "counter"; readonly totalMinor: number; readonly note: string | null };
 
 export type QuoteError =
   /** No such job or quote in this business. */
@@ -81,6 +92,19 @@ export type QuoteError =
 export type QuoteResult<T> =
   | ({ readonly ok: true } & T)
   | { readonly ok: false; readonly error: QuoteError };
+
+/** Why a customer's answer was refused. */
+export type AnswerError =
+  /** No such quote shown on this job (another job's, or a draft). */
+  | "not_found"
+  /** The job has moved past quoting (cancelled…). */
+  | "closed"
+  /** The business has sent a newer version since. */
+  | "replaced"
+  /** This version was answered already. */
+  | "answered"
+  /** The quote is past its validity. */
+  | "expired";
 
 interface Owner {
   readonly businessId: string;
@@ -180,6 +204,11 @@ export async function saveDraft(
   const quote = await lockQuote(client, quoteId);
   if (!quote) return { ok: false, error: "not_found" };
   if (quote.status !== "draft") return { ok: false, error: "sent" };
+  // A draft left open when the customer accepted an earlier version can never be sent; it stays as it was.
+  const job = await client.query<{ status: string }>("select status from kk.job where id = $1", [
+    quote.jobId,
+  ]);
+  if (!QUOTABLE.includes(job.rows[0]?.status ?? "")) return { ok: false, error: "closed" };
   if (input.lines.length > MAX_QUOTE_LINES) return { ok: false, error: "lines" };
 
   // The foreign keys refuse these too; checking first turns a forged id into a plain answer, not a crash.
@@ -233,16 +262,30 @@ export async function sendQuote(
   const quote = await lockQuote(client, quoteId);
   if (!jobRow || !quote) return { ok: false, error: "not_found" };
   if (quote.status !== "draft") return { ok: false, error: "sent" };
-  if (!QUOTABLE.includes(jobRow.status)) return { ok: false, error: "closed" };
   const lines = await client.query("select 1 from kk.quote_line where quote_id = $1 limit 1", [
     quoteId,
   ]);
   if (lines.rowCount === 0) return { ok: false, error: "empty" };
 
-  const superseded = await client.query<{ version: number }>(
+  const previous = await client.query<{ version: number }>(
+    "select max(version) as version from kk.quote where job_id = $1 and status in ('sent', 'rejected', 'countered')",
+    [jobRow.id],
+  );
+  const moved = await transitionJob(client, audit, jobRow.id, {
+    event: jobRow.status === "requested" ? "quote_sent" : "revise",
+    actor: { role: "owner", memberId: owner.memberId },
+    data: {
+      quoteId,
+      version: quote.version,
+      totalMinor: quote.totalMinor,
+      superseded: previous.rows[0]?.version ?? null,
+    },
+  });
+  if (!moved.ok) return { ok: false, error: "closed" };
+
+  await client.query(
     `update kk.quote set status = 'superseded'
-     where job_id = $1 and status in ('sent', 'rejected', 'countered')
-     returning version`,
+     where job_id = $1 and status in ('sent', 'rejected', 'countered')`,
     [jobRow.id],
   );
   await client.query(
@@ -256,20 +299,67 @@ export async function sendQuote(
        and id in (select job_task_id from kk.quote_line where quote_id = $2)`,
     [jobRow.id, quoteId],
   );
-  await client.query("update kk.job set status = 'quoted' where id = $1", [jobRow.id]);
-  await audit.record(client, {
-    businessId: owner.businessId,
-    actor: { kind: "member", id: owner.memberId },
-    action: "quote.sent",
-    entity: "quote",
-    entityId: quoteId,
-    data: {
-      version: quote.version,
-      totalMinor: quote.totalMinor,
-      superseded: superseded.rows[0]?.version ?? null,
-    },
-  });
   return { ok: true, jobId: jobRow.id, version: quote.version };
+}
+
+const ANSWERED: Record<QuoteAnswer["kind"], QuoteStatus> = {
+  accept: "accepted",
+  reject: "rejected",
+  counter: "countered",
+};
+
+/**
+ * The customer's answer to the version they were sent (scope `customer-token`: the caller resolved the link to
+ * this job). Only the job's current, unexpired `sent` quote takes an answer, once. Accepting locks the quote,
+ * records it as the job's accepted quote and approves the tasks it prices; rejecting or countering leaves the
+ * job `quoted` for the owner to revise. A deposit link (4.x) and the owner's notice (3.2) come later.
+ */
+export async function answerQuote(
+  client: DbClient,
+  audit: Audit,
+  jobId: string,
+  quoteId: string,
+  answer: QuoteAnswer,
+): Promise<{ readonly ok: true } | { readonly ok: false; readonly error: AnswerError }> {
+  // Job first, then quote, as in sendQuote, so an answer and a revision of the same job cannot deadlock.
+  const job = await client.query("select 1 from kk.job where id = $1 for update", [jobId]);
+  if (job.rowCount === 0) return { ok: false, error: "not_found" };
+  const { rows } = await client.query<{ status: QuoteStatus; version: number; expired: boolean }>(
+    `select status, version, valid_until <= now() as expired
+     from kk.quote where id = $1 and job_id = $2
+     for update`,
+    [quoteId, jobId],
+  );
+  const quote = rows[0];
+  // A draft was never shown to the customer, so it is as unknown as another job's quote.
+  if (!quote || quote.status === "draft") return { ok: false, error: "not_found" };
+  if (quote.status === "superseded") return { ok: false, error: "replaced" };
+  if (quote.status !== "sent") return { ok: false, error: "answered" };
+  if (quote.expired) return { ok: false, error: "expired" };
+
+  const counter = answer.kind === "counter" ? answer : null;
+  const moved = await transitionJob(client, audit, jobId, {
+    event: answer.kind,
+    actor: { role: "customer" },
+    ...(answer.kind === "accept" ? { acceptedQuoteId: quoteId } : {}),
+    data: { quoteId, version: quote.version, counterTotalMinor: counter?.totalMinor ?? null },
+  });
+  if (!moved.ok) return { ok: false, error: "closed" };
+
+  await client.query(
+    `update kk.quote set status = $2, decided_at = now(), counter_total_minor = $3, counter_note = $4
+     where id = $1`,
+    [quoteId, ANSWERED[answer.kind], counter?.totalMinor ?? null, counter?.note ?? null],
+  );
+  if (answer.kind === "accept") {
+    await client.query(
+      `update kk.job_task set status = 'approved'
+       where job_id = $1 and status in ('requested', 'quoted')
+         and id in (select job_task_id from kk.quote_line where quote_id = $2)`,
+      [jobId, quoteId],
+    );
+  }
+  return { ok: true };
 }
 
 /** Every version of the job's quote, newest first, with lines; empty if the job has none (or is not here). */
@@ -368,8 +458,12 @@ async function loadQuotes(
     tax_minor: string;
     total_minor: string;
     deposit_minor: string;
+    decided_at: Date | null;
+    counter_total_minor: string | null;
+    counter_note: string | null;
   }>(
-    `select id, version, status, sent_at, valid_until, net_minor, tax_minor, total_minor, deposit_minor
+    `select id, version, status, sent_at, valid_until, net_minor, tax_minor, total_minor, deposit_minor,
+            decided_at, counter_total_minor, counter_note
      from kk.quote
      where job_id = $1 and ($2 = false or status not in ('draft', 'superseded'))
      order by version desc
@@ -411,6 +505,11 @@ async function loadQuotes(
     tax: amount(q.tax_minor),
     total: amount(q.total_minor),
     deposit: amount(q.deposit_minor),
+    decidedAt: q.decided_at,
+    counter:
+      q.counter_total_minor === null
+        ? null
+        : { total: amount(q.counter_total_minor), note: q.counter_note },
     lines: lines.rows
       .filter((l) => l.quote_id === q.id)
       .map((l) => ({

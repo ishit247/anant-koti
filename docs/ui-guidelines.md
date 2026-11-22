@@ -41,12 +41,13 @@ Contrast: text on `--paper` and `--card` meets WCAG AA; keep it so when adding a
 | A thing, or a group of facts | `.card`; a clickable one is `<a className="card">`                                  |
 | A list of things             | `<ul className="cards"><li><a className="card">…</a></li></ul>`; row inside: `.row` |
 | Label and value pairs        | `<dl className="facts card">` with `dt` and `dd`                                    |
-| Status                       | `.chip` plus `new`, `go` or `wait` (`statusTone()` in `src/job-labels.ts`)          |
+| Status                       | `.chip` plus `new`, `go` or `wait` (`statusTone()`, `quoteTone()`, job-labels.ts)   |
 | Headline number / entry card | `.card.stat` (brand colour, count on the right)                                     |
 | Two or three buttons         | `.actions` (equal-width grid that wraps)                                            |
 | Photos                       | `.photos` (square thumbnails, `loading="lazy"`)                                     |
 | Priced lines and totals      | `QuoteSummary`: `ul.lines` of `.row`s, `.row.total`, figures in `.amount`           |
 | Nothing here yet             | `<p className="empty">` with the next step in words                                 |
+| A rare or second action      | `<details className="card">` with a `summary` verb, the form inside (no JavaScript) |
 | Link to pass on              | `ShareLink` (copy and WhatsApp), never a hand-built share row                       |
 | Member navigation            | `OwnerNav` at the end of every owner page, with `current` set                       |
 

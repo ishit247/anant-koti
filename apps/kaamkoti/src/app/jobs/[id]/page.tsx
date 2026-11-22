@@ -8,6 +8,7 @@ import {
   formatDay,
   formatWhen,
   quoteLabel,
+  quoteTone,
   SOURCE_LABEL,
   STATUS_LABEL,
   statusTone,
@@ -80,11 +81,24 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
         <>
           <div className="row">
             <strong>Version {current.version}</strong>
-            <span className={`chip ${current.expired ? "" : "wait"}`}>{quoteLabel(current)}</span>
+            <span className={`chip ${quoteTone(current)}`}>{quoteLabel(current)}</span>
           </div>
           {current.sentAt && current.validUntil ? (
             <p className="muted small">
               Sent {formatWhen(current.sentAt)} · valid until {formatDay(current.validUntil)}
+            </p>
+          ) : null}
+          {current.decidedAt ? (
+            <p role="status" className="card">
+              {current.status === "accepted"
+                ? `${job.customerName} accepted this quote`
+                : current.counter
+                  ? `${job.customerName} offered ${formatMoney(current.counter.total)}`
+                  : `${job.customerName} turned this quote down`}{" "}
+              on {formatWhen(current.decidedAt)}.
+              {current.counter?.note ? (
+                <span className="muted">"{current.counter.note}"</span>
+              ) : null}
             </p>
           ) : null}
           <QuoteSummary quote={current} />
@@ -92,7 +106,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
       ) : draft ? null : (
         <p className="empty">No quote yet. Price the work asked for and send it to the customer.</p>
       )}
-      {draft ? (
+      {draft && quotable ? (
         <p>
           <a className="button" href={`/jobs/${job.id}/quote`}>
             Continue the draft (version {draft.version})

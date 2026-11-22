@@ -88,7 +88,7 @@ switch (command) {
     compose("down", "-v");
     await up();
     await kaamkoti.seed(KAAMKOTI_OWNER_URL, log);
-    log.info("seeded", { database: "kaamkoti", businesses: 2, members: 4, customers: 6, jobs: 4 });
+    log.info("seeded", { database: "kaamkoti", businesses: 2, members: 4, customers: 6, jobs: 5 });
     await platform.seed(PLATFORM_OWNER_URL, log);
     log.info("seeded", { database: "platform", identities: 4 });
     break;

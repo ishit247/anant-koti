@@ -29,6 +29,15 @@ export function quoteLabel(quote: Pick<Quote, "status" | "expired">): string {
   return QUOTE_LABEL[quote.status];
 }
 
+/** The quote chip's colour: accepted is green, out with the customer or answered is amber, the rest plain. */
+export function quoteTone(quote: Pick<Quote, "status" | "expired">): "go" | "wait" | "" {
+  if (quote.status === "accepted") return "go";
+  if (quote.expired) return "";
+  return quote.status === "sent" || quote.status === "rejected" || quote.status === "countered"
+    ? "wait"
+    : "";
+}
+
 const QUOTE_LABEL: Record<QuoteStatus, string> = {
   draft: "Draft",
   sent: "Sent",

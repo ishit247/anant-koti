@@ -1,5 +1,5 @@
--- The job: a customer's request and everything after it (docs/architecture.md 5.3, 6). Quote links arrive
--- with 2.4.
+-- The job: a customer's request and everything after it (docs/architecture.md 5.3, 6). Its link to the
+-- accepted quote, accepted_quote_id, is added by 0007_quote.sql, which creates the table it refers to.
 create table kk.job (
   id uuid primary key default gen_random_uuid(),
   business_id uuid not null references tenancy.business (id),

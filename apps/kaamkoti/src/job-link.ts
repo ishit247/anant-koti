@@ -61,33 +61,42 @@ interface JobRow {
   customer_name: string;
 }
 
+/** The one job a live job link opens, and its business; null for anything else. */
+export async function resolveJobLink(
+  db: Db,
+  secret: string,
+): Promise<{ readonly businessId: string; readonly jobId: string } | null> {
+  const link = await db.tx((client) => resolve(client, secret));
+  return link?.purpose === "job" ? { businessId: link.businessId, jobId: link.subjectId } : null;
+}
+
 /** What the customer sees for a link, or null if the link is not a live job link. */
 export async function openJobLink(db: Db, secret: string): Promise<CustomerJobView | null> {
-  const link = await db.tx((client) => resolve(client, secret));
-  if (link?.purpose !== "job") return null;
+  const link = await resolveJobLink(db, secret);
+  if (!link) return null;
   return db.withTenant(link.businessId, async (client) => {
     const { rows } = await client.query<JobRow>(
       `select j.number, j.status, j.created_at, c.name as customer_name
        from kk.job j
        join kk.customer c on c.business_id = j.business_id and c.id = j.customer_id
        where j.id = $1`,
-      [link.subjectId],
+      [link.jobId],
     );
     const job = rows[0];
     if (!job) return null;
     const business = await currentBusiness(client);
-    const tasks = await jobTasks(client, link.subjectId);
+    const tasks = await jobTasks(client, link.jobId);
     const photos = await client.query<{ key: string }>(
       `select o.key from kk.job_photo p
        join storage.object o on o.business_id = p.business_id and o.id = p.object_id
        where p.job_id = $1 and p.kind = 'request'
        order by p.created_at, p.id`,
-      [link.subjectId],
+      [link.jobId],
     );
     return {
       tasks: tasks.map((t) => t.title),
       photos: photos.rows,
-      quote: await customerQuote(client, link.subjectId),
+      quote: await customerQuote(client, link.jobId),
       businessName: business.name,
       businessPhone: business.phone,
       number: job.number,

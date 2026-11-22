@@ -161,11 +161,43 @@ try {
     problems.push("the customer's quote lacks the discount line");
   await shoot(readerPage, "7d4-customer-quote");
   if ((await reader.cookies()).length > 0) problems.push("customer quote context holds cookies");
+
+  // Negotiation: the customer offers a lower price; the owner sees it and revises; the customer accepts the
+  // new version, after which the owner is offered no revision.
+  await readerPage.getByText("Offer a different price").click();
+  await readerPage.fill("input[name=total]", "400");
+  await readerPage.fill("textarea[name=note]", "Can you do it for 400?");
+  await readerPage.getByRole("button", { name: "Send my price" }).click();
+  await readerPage.getByRole("status").filter({ hasText: "Your price is sent" }).waitFor();
+  if (await readerPage.getByRole("button", { name: /Accept quote/ }).count())
+    problems.push("a countered quote still offers acceptance");
+  await shoot(readerPage, "7d5-customer-countered");
+  if ((await reader.cookies()).length > 0) problems.push("customer counter context holds cookies");
   await reader.close();
   await page.goto(jobUrl);
-  if (!(await page.getByRole("button", { name: "Revise the quote" }).count()))
-    problems.push("a quoted request offers no revision");
-  await shoot(page, "7d5-job-quoted");
+  if (!(await page.getByText("offered ₹400.00").count()))
+    problems.push("the owner does not see the counter-offer");
+  await shoot(page, "7d6-job-countered");
+  await page.getByRole("button", { name: "Revise the quote" }).click();
+  await page.waitForURL(/\/quote$/);
+  await page.getByRole("button", { name: "Send quote" }).click();
+  await page.getByRole("status").filter({ hasText: "is sent" }).waitFor();
+  const revisedLink = await page.getByLabel("Customer link").inputValue();
+  const accepter = await browser.newContext({ viewport: WIDTHS.phone });
+  const accepterPage = await accepter.newPage();
+  watchConsole(accepterPage, "customer accept");
+  await accepterPage.goto(revisedLink);
+  await accepterPage.getByRole("button", { name: /Accept quote/ }).click();
+  await accepterPage.getByRole("status").filter({ hasText: "has your acceptance" }).waitFor();
+  await shoot(accepterPage, "7d7-customer-accepted");
+  if ((await accepter.cookies()).length > 0) problems.push("customer accept context holds cookies");
+  await accepter.close();
+  await page.goto(jobUrl);
+  if (!(await page.getByText("accepted this quote").count()))
+    problems.push("the owner does not see the acceptance");
+  if (await page.getByRole("button", { name: "Revise the quote" }).count())
+    problems.push("an accepted quote still offers a revision");
+  await shoot(page, "7d8-job-accepted");
   await tabs.getByRole("link", { name: "Requests" }).click();
   await page.waitForURL(`${APP}/jobs`);
   if (!(await page.getByText("Phone Caller").count()))

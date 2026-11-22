@@ -207,9 +207,14 @@ Rules the database enforces, not just the code:
 - **Sent quotes are immutable** (`kk.quote_guard`, `kk.quote_line_guard`, 2.4). A quote is born a `draft`. Lines
   may be inserted, changed or deleted only while their quote is a draft (the line trigger locks the quote `FOR
   SHARE`, so a line write and a send wait for each other). Leaving `draft` needs at least one line, and stored
-  totals equal to the sums of the lines. After that only `status` may change, never back to `draft`; 2.5 adds
-  `decided_at` and the counter columns by name. The runtime role cannot delete a quote. Partial unique indexes
-  allow at most one `draft` and one `sent` quote per job.
+  totals equal to the sums of the lines. After that only `status` moves, forward (2.5): `sent → accepted |
+  rejected | countered` is the customer's answer, the only write of `decided_at` and the counter columns, and
+  is refused once `valid_until` has passed; `sent | rejected | countered → superseded` is the owner's next
+  version, status only. **An accepted quote is locked**: nothing on it or its lines changes again. A counter
+  names a total (`counter_total_minor`); its note is optional. The runtime role cannot delete a quote. Partial
+  unique indexes allow at most one `draft` and one `sent` quote per job.
+- **The accepted quote belongs to its job.** `job.accepted_quote_id` (added in `0007`) has a composite key to
+  `quote (business_id, job_id, id)`; a job from `accepted` to `completed` has one, a job before acceptance none.
 - **Line amounts are restated.** `CHECK`s on `quote_line` recompute net and tax with `round(numeric)`, the same
   rule as `lineTotals` (section 8), so a line with wrong arithmetic cannot be stored.
 - **No double booking.** `EXCLUDE USING gist (technician_member_id WITH =, tstzrange(starts_at, ends_at) WITH &&)
@@ -265,9 +270,16 @@ requested ──send quote──▶ quoted ──customer accepts──▶ accep
   `in_progress` or `completed` and the invoice is not yet issued. The invoice includes only `approved` change
   orders (4.3).
 - A paid invoice is derived, not a job state. It drives the review request (6.1).
-- Each transition is one function, `transitionJob(tx, job, event, actor)`, backed by the table above. It writes
-  the change and an audit event, and enqueues outbox messages, in one transaction. 2.5 tests every row of the
-  table and asserts that every pair not in the table is refused.
+- Each transition is one function, `transitionJob(tx, audit, jobId, { event, actor, acceptedQuoteId?, data? })`
+  in `src/job.ts`, backed by the table above (`jobTransition(from, event, role)`; roles `owner`, `technician`,
+  `customer`). It locks the job, writes the change and an audit event `job.<event>` (the customer is named by
+  the job's `customer_id`), on the caller's transaction; the caller runs its side effects only after it
+  succeeds. Outbox messages join it with notify (3.2). 2.5 tests every row of the table and asserts that every
+  other state, event and role is refused.
+- **Answering a quote** (`answerQuote`, 2.5). The customer answers the version on their page: the form names
+  it, and a version replaced or answered since is refused, as is an expired one. Accepting approves the tasks
+  the quote prices. A draft the owner left open when the customer accepted stays as it was and can be neither
+  saved nor sent.
 
 ## 7. Customer access by link (`tokens`)
 
@@ -288,7 +300,8 @@ Customers never have accounts. They open their job by a link: `https://kaamkoti.
   app's proxy (`src/proxy.ts`, matcher `/j/:path*`), which answers 429; the address is `x-client-ip`, which
   Caddy sets.
 - Customer actions are form posts carrying the token. With no cookies there is no ambient authority, and so
-  no CSRF.
+  no CSRF. The quote answer posts to the route handler `/j/<token>/answer` (2.5), which resolves the token
+  again and answers with a 303 back to the page and `?answer=<outcome>`.
 - **Lapsed business** (section 13): the link still opens, but shows a contact card and allows no actions.
 
 ## 8. Money

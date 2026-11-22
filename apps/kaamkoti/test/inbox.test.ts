@@ -50,7 +50,7 @@ describe("the owner's inbox on the seeded database", () => {
       [1, "public_form", "Anita Deshpande"],
     ]);
     expect(rows[1]?.tasks).toEqual(["AC gas refill", "AC general service"]);
-    expect(await app.withTenant(KAVERI, listInbox)).toHaveLength(2);
+    expect(await app.withTenant(KAVERI, listInbox)).toHaveLength(3);
   });
 
   it("counts requests that still wait for a quote", async () => {

@@ -215,15 +215,22 @@ describe("quotes on the seeded database", () => {
       const { rows } = await owner.tx((c) =>
         c.query(
           `select j.status, array(select distinct t.status from kk.job_task t where t.job_id = j.id) as tasks,
-                  (select data from audit.event where entity_id = $2 and action = 'quote.sent') as audit
+                  (select data from audit.event where entity_id = $1 and action = 'job.quote_sent') as audit
            from kk.job j where j.id = $1`,
-          [jobId, quoteId],
+          [jobId],
         ),
       );
       expect(rows[0]).toEqual({
         status: "quoted",
         tasks: ["quoted"],
-        audit: { version: 1, totalMinor: 295_000, superseded: null },
+        audit: {
+          quoteId,
+          version: 1,
+          totalMinor: 295_000,
+          superseded: null,
+          from: "requested",
+          to: "quoted",
+        },
       });
     });
 

@@ -4,8 +4,29 @@ What we are building: [product-brief.md](product-brief.md). Shared modules:
 [platform-modules.md](platform-modules.md). The design is in [architecture.md](architecture.md);
 its first table says which sections each step reads.
 
-**Current position:** Step 2.4 done (2026-11-22). Next: step 2.5 (HIGH: negotiation; start it on Opus or Fable,
-in a fresh session). `@bodhchakra/money` (foundation): `lineTotals` in `BigInt` with line-level rounding, halves
+**Current position:** Step 2.5 done (2026-11-22); phase 2 closing (`validate full`, tag `phase-2-done`). Next:
+step 3.1 (STANDARD: scheduling), best in a fresh session. Negotiation: the job state machine in `src/job.ts`
+(`jobTransition` is section 6's table; `transitionJob` locks the job, moves it and audits `job.<event>`, naming
+the customer when they act by link; `sendQuote` now moves the job through it, `quote_sent` or `revise`, so the
+old `quote.sent` audit is `job.quote_sent`). `answerQuote` in `src/quote.ts`: the customer answers the version
+on their page; replaced, already answered, expired and draft versions are refused; accept sets
+`job.accepted_quote_id` and approves the priced tasks; `saveDraft` refuses once the job is past quoting.
+Migration `0007` (edited in place): `decided_at`, `counter_total_minor` (required for a counter),
+`counter_note`; `quote_guard` allows only `sent → accepted|rejected|countered` (answer columns only, refused
+past `valid_until`) and `sent|rejected|countered → superseded`; **an accepted quote is locked**;
+`job.accepted_quote_id` with a composite key to a quote of the same job and `CHECK`s tying it to the job's
+state. Customer side: route handler `/j/[secret]/answer` (scope `customer-token`, 16 KB body, 303 back with
+`?answer=`), `resolveJobLink`, `readAnswerForm` in `src/quote-form.ts`; `/j/` shows Accept, and "Offer a
+different price" / "Turn down this quote" as `details` disclosures (no JavaScript; new building block in
+ui-guidelines.md). Owner's `/jobs/[id]` shows the answer and counter, `quoteTone` colours the quote chip.
+Seeds: Kaveri #3 negotiated v1 countered → v2 accepted. Handed on: deposit link on accept (4.x), owner's
+notice of an answer (3.2), decline / close as lost / cancel buttons (they are in the table, no screen yet).
+Verified: `validate standard` (kaamkoti 130 tests), `up:fresh` (6.7 s), 8 mutants killed (accepted quote
+supersedable; guard without expiry; answer may change other columns; accepted-quote key not composite; accepted
+job without quote; answer to a non-sent quote; quote of another job; transition ignoring the role),
+`check:browser` extended with counter → owner sees it → revise → customer accepts → no revision offered, at
+375 px and 1280 px, screenshots viewed. Note: after `up:fresh` restart the platform container, or sign-in fails
+with "client not found" (its client is registered at boot). Step 2.4 before it: `@bodhchakra/money` (foundation): `lineTotals` in `BigInt` with line-level rounding, halves
 away from zero; `formatMoney`, `minorDigits`, `parseDecimal`/`formatDecimal` (the catalogue form now uses them);
 `currentBusiness` returns `currency`. Quotes: migration `0007_quote.sql` (`kk.quote`, `kk.quote_line`; `job_task`
 gained `unique (business_id, job_id, id)` in place), triggers `quote_guard` (born a draft; leaving draft needs
@@ -131,7 +152,7 @@ also write the module's README, and their tests run through the module's public 
 | 2.2 | `[module]` `storage`; request intake: public form (pick one or more catalogue tasks), trade questions, photo upload (type and size checks, private storage); the app's per-IP rate limiter, for intake and for `/j/` lookups | M    | HIGH     | done   | Upload rejects wrong types and sizes; photos are not publicly listable; intake and `/j/` answer 429 past the limit |
 | 2.3 | Owner inbox: new requests, log a phone enquiry; a link to the owner's public page from home; on a job, "revoke links and send a new one" (`revokeJobLinks` + `issueJobLink`, audited)                                        | S    | STANDARD | done   | Both request sources appear in one list                                                                            |
 | 2.4 | `[module]` `money`; quotes (`job_task` came in 2.2): lines from the catalogue at task or request level, versions, expiry                                                                                                     | M    | HIGH     | done   | Totals and tax are tested; old versions are immutable                                                              |
-| 2.5 | Negotiation: customer accepts, rejects or counters; owner revises; accepted quote locked                                                                                                                                     | M    | HIGH     | todo   | State machine test covers every transition; a locked quote cannot be edited                                        |
+| 2.5 | Negotiation: customer accepts, rejects or counters; owner revises; accepted quote locked                                                                                                                                     | M    | HIGH     | done   | State machine test covers every transition; a locked quote cannot be edited                                        |
 
 ## Phase 3: Scheduling and notifications
 

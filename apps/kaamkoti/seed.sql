@@ -1,8 +1,8 @@
 -- Development seed, run by `pnpm run up:fresh` as kaamkoti_owner in one transaction. Fixed ids so tests and
 -- manual checks can name rows. Two businesses with three customers each, so isolation always has rows on both
 -- sides. Phone numbers are in the fictional +91 90000 range; emails use example.com.
--- Grows with the schema: two requests per business, one of Sharma's quoted; jobs across the other states of
--- section 6 arrive with the steps that move them there.
+-- Grows with the schema: two requests per business, one of Sharma's quoted, and Kaveri's #3 negotiated to
+-- acceptance; jobs across the other states of section 6 arrive with the steps that move them there.
 insert into tenancy.business (id, slug, name, phone, city) values
   ('10000000-0000-4000-8000-000000000001', 'sharma-cooling', 'Sharma Cooling Services', '+919000000101', 'Pune'),
   ('20000000-0000-4000-8000-000000000002', 'kaveri-electricals', 'Kaveri Electricals', '+919000000202', 'Bengaluru');
@@ -111,6 +111,49 @@ update kk.quote set status = 'sent', sent_at = now(), valid_until = now() + inte
   where id = '10000000-0000-4000-8000-000000100001';
 update kk.job_task set status = 'quoted' where id = '10000000-0000-4000-8000-0000000f0003';
 update kk.job set status = 'quoted' where id = '10000000-0000-4000-8000-0000000e0002';
+
+-- A negotiation that ended in acceptance: Kaveri's request #3 had version 1 (₹472) countered at ₹400, then
+-- version 2 with a discount bringing it to ₹400, accepted. Each step is the update the app makes, in order,
+-- because the quote trigger allows only those moves. The job is `accepted` and its task `approved`.
+insert into kk.job (id, business_id, customer_id, number, source, answers, address, preferred_window) values
+  ('20000000-0000-4000-8000-0000000e0003', '20000000-0000-4000-8000-000000000002',
+   '20000000-0000-4000-8000-0000000c0002', 3, 'public_form', '{}', '3 MG Road, Bengaluru', 'Saturday morning');
+insert into kk.job_task (id, business_id, job_id, catalogue_item_id, title, added_by) values
+  ('20000000-0000-4000-8000-0000000f0003', '20000000-0000-4000-8000-000000000002',
+   '20000000-0000-4000-8000-0000000e0003', '20000000-0000-4000-8000-0000000b0001', 'Fan installation', 'customer');
+insert into kk.quote (id, business_id, job_id, version, net_minor, tax_minor, total_minor) values
+  ('20000000-0000-4000-8000-000000100002', '20000000-0000-4000-8000-000000000002',
+   '20000000-0000-4000-8000-0000000e0003', 1, 40000, 7200, 47200);
+insert into kk.quote_line (business_id, job_id, quote_id, position, job_task_id, catalogue_item_id, description,
+                           unit, quantity_milli, unit_price_minor, tax_rate_bp, net_minor, tax_minor) values
+  ('20000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-0000000e0003',
+   '20000000-0000-4000-8000-000000100002', 0, '20000000-0000-4000-8000-0000000f0003',
+   '20000000-0000-4000-8000-0000000b0001', 'Fan installation', 'unit', 1000, 40000, 1800, 40000, 7200);
+update kk.quote set status = 'sent', sent_at = now(), valid_until = now() + interval '7 days'
+  where id = '20000000-0000-4000-8000-000000100002';
+update kk.job_task set status = 'quoted' where id = '20000000-0000-4000-8000-0000000f0003';
+update kk.job set status = 'quoted' where id = '20000000-0000-4000-8000-0000000e0003';
+update kk.quote set status = 'countered', decided_at = now(), counter_total_minor = 40000,
+                    counter_note = 'Can you do it for 400 all in? I have the fan already.'
+  where id = '20000000-0000-4000-8000-000000100002';
+insert into kk.quote (id, business_id, job_id, version, net_minor, tax_minor, total_minor) values
+  ('20000000-0000-4000-8000-000000100003', '20000000-0000-4000-8000-000000000002',
+   '20000000-0000-4000-8000-0000000e0003', 2, 33898, 6102, 40000);
+insert into kk.quote_line (business_id, job_id, quote_id, position, job_task_id, catalogue_item_id, description,
+                           unit, quantity_milli, unit_price_minor, tax_rate_bp, net_minor, tax_minor) values
+  ('20000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-0000000e0003',
+   '20000000-0000-4000-8000-000000100003', 0, '20000000-0000-4000-8000-0000000f0003',
+   '20000000-0000-4000-8000-0000000b0001', 'Fan installation', 'unit', 1000, 40000, 1800, 40000, 7200),
+  ('20000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-0000000e0003',
+   '20000000-0000-4000-8000-000000100003', 1, null, null, 'Customer supplies the fan', 'job', 1000, -6102,
+   1800, -6102, -1098);
+update kk.quote set status = 'superseded' where id = '20000000-0000-4000-8000-000000100002';
+update kk.quote set status = 'sent', sent_at = now(), valid_until = now() + interval '7 days'
+  where id = '20000000-0000-4000-8000-000000100003';
+update kk.quote set status = 'accepted', decided_at = now() where id = '20000000-0000-4000-8000-000000100003';
+update kk.job_task set status = 'approved' where id = '20000000-0000-4000-8000-0000000f0003';
+update kk.job set status = 'accepted', accepted_quote_id = '20000000-0000-4000-8000-000000100003'
+  where id = '20000000-0000-4000-8000-0000000e0003';
 
 -- One customer link per business to its request #1, with a fixed development secret (stored, as always, only
 -- as its SHA-256) so manual and browser checks can open /j/<secret>. Real links come from issueJobLink.

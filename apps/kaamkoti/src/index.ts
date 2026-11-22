@@ -44,17 +44,32 @@ export {
   submitRequest,
   toE164,
 } from "./intake.ts";
-export { JOB_STATUSES, type JobStatus, jobTasks } from "./job.ts";
+export {
+  JOB_EVENTS,
+  JOB_STATUSES,
+  type JobActor,
+  type JobChange,
+  type JobEvent,
+  type JobRole,
+  type JobStatus,
+  type JobTransitionResult,
+  jobTasks,
+  jobTransition,
+  transitionJob,
+} from "./job.ts";
 export {
   type CustomerJobView,
   issueJobLink,
   JOB_LINK_DAYS,
   openJobLink,
+  resolveJobLink,
   revokeJobLinks,
 } from "./job-link.ts";
 export { CLIENT_IP_HEADER, clientIp, LIMITS, overLimit } from "./limits.ts";
 export { type PublicPage, publicPage } from "./public-page.ts";
 export {
+  type AnswerError,
+  answerQuote,
   customerQuote,
   MAX_QUOTE_LINES,
   openDraft,
@@ -62,6 +77,7 @@ export {
   QUOTE_STATUSES,
   QUOTE_VALID_DAYS,
   type Quote,
+  type QuoteAnswer,
   type QuoteError,
   type QuoteLine,
   type QuoteLineInput,
@@ -70,7 +86,7 @@ export {
   saveDraft,
   sendQuote,
 } from "./quote.ts";
-export { type QuoteForm, readQuoteForm } from "./quote-form.ts";
+export { type AnswerForm, type QuoteForm, readAnswerForm, readQuoteForm } from "./quote-form.ts";
 export {
   latestTradeTemplate,
   listTradeTemplates,

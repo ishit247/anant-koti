@@ -17,11 +17,22 @@ create table kk.quote (
   tax_minor bigint not null default 0,
   total_minor bigint not null default 0 check (total_minor >= 0),
   deposit_minor bigint not null default 0,
+  -- The customer's answer (2.5): when they accepted, rejected or countered, and a counter's price and words.
+  decided_at timestamptz,
+  counter_total_minor bigint check (counter_total_minor >= 0),
+  counter_note text check (length(counter_note) between 1 and 500),
   created_at timestamptz not null default now(),
   check (total_minor = net_minor + tax_minor),
   check (deposit_minor between 0 and total_minor),
   check ((status = 'draft') = (sent_at is null)),
   check (sent_at is null or valid_until > sent_at),
+  -- An answered quote says when; one not yet answered has no answer. A superseded quote may be either.
+  check (status not in ('accepted', 'rejected', 'countered') or decided_at is not null),
+  check (status not in ('draft', 'sent') or decided_at is null),
+  -- Only a counter carries a counter, and a counter names the price the customer would pay; words are optional.
+  check (status in ('countered', 'superseded') or (counter_total_minor is null and counter_note is null)),
+  check (status <> 'countered' or counter_total_minor is not null),
+  check (counter_note is null or counter_total_minor is not null),
   -- Also the index for the job foreign key and for listing a job's versions.
   unique (business_id, job_id, version),
   -- Target of the composite foreign key from quote_line.
@@ -31,6 +42,15 @@ create table kk.quote (
 -- One draft to edit, and at most one quote out with the customer, per job.
 create unique index quote_one_draft on kk.quote (business_id, job_id) where status = 'draft';
 create unique index quote_one_sent on kk.quote (business_id, job_id) where status = 'sent';
+
+-- The quote the customer accepted (section 6). It is a job column, added here because it refers to kk.quote;
+-- the composite key keeps it a quote of this same job. A job past acceptance has one, a job before it none
+-- (a cancelled job keeps whatever it had).
+alter table kk.job
+  add column accepted_quote_id uuid,
+  add foreign key (business_id, id, accepted_quote_id) references kk.quote (business_id, job_id, id),
+  add check (status not in ('accepted', 'scheduled', 'in_progress', 'completed') or accepted_quote_id is not null),
+  add check (status not in ('requested', 'quoted', 'declined', 'lost') or accepted_quote_id is null);
 
 create table kk.quote_line (
   id uuid primary key default gen_random_uuid(),
@@ -63,8 +83,11 @@ create index quote_line_job_task on kk.quote_line (business_id, job_id, job_task
 create index quote_line_catalogue_item on kk.quote_line (business_id, catalogue_item_id);
 
 -- A quote is born a draft. While it is one, anything may change; leaving draft requires lines whose sums are
--- the stored totals. After that only the status moves, never back to draft. Negotiation (2.5) widens the
--- columns that may change after sending, by name.
+-- the stored totals. After that only the status moves, forward along section 6, never back to draft:
+--   sent → accepted | rejected | countered   the customer's answer, which alone writes the answer's columns,
+--                                            and only while the quote is valid (expiry is computed, not stored)
+--   sent | rejected | countered → superseded  the owner sent a new version
+-- An accepted or superseded quote never changes again: the accepted one is what the job is done for.
 create function kk.quote_guard() returns trigger
   language plpgsql set search_path = ''
 as $$
@@ -72,6 +95,7 @@ declare
   line_count integer;
   line_net bigint;
   line_tax bigint;
+  answer constant text[] := array['status', 'decided_at', 'counter_total_minor', 'counter_note'];
 begin
   if tg_op = 'INSERT' then
     if new.status <> 'draft' then
@@ -90,10 +114,21 @@ begin
     end if;
     return new;
   end if;
-  if new.status = 'draft' or (to_jsonb(new) - 'status') is distinct from (to_jsonb(old) - 'status') then
-    raise exception 'quote %: a sent quote cannot change', old.id using errcode = 'check_violation';
+  if old.status = 'accepted' then
+    raise exception 'quote %: an accepted quote is locked', old.id using errcode = 'check_violation';
   end if;
-  return new;
+  if old.status = 'sent' and new.status in ('accepted', 'rejected', 'countered')
+     and (to_jsonb(new) - answer) is not distinct from (to_jsonb(old) - answer) then
+    if old.valid_until <= now() then
+      raise exception 'quote %: an expired quote cannot be answered', old.id using errcode = 'check_violation';
+    end if;
+    return new;
+  end if;
+  if old.status in ('sent', 'rejected', 'countered') and new.status = 'superseded'
+     and (to_jsonb(new) - 'status') is not distinct from (to_jsonb(old) - 'status') then
+    return new;
+  end if;
+  raise exception 'quote %: a sent quote cannot change', old.id using errcode = 'check_violation';
 end $$;
 create trigger quote_guard before insert or update on kk.quote
   for each row execute function kk.quote_guard();

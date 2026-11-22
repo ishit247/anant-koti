@@ -3,7 +3,12 @@
 // lines for saveDraft, or one plain message for the owner. Amounts are typed in rupees and percent.
 import { minorDigits, parseDecimal } from "@bodhchakra/money";
 import { z } from "zod";
-import { MAX_QUOTE_LINES, QUOTE_VALID_DAYS, type QuoteLineInput } from "./quote.ts";
+import {
+  MAX_QUOTE_LINES,
+  QUOTE_VALID_DAYS,
+  type QuoteAnswer,
+  type QuoteLineInput,
+} from "./quote.ts";
 import { UNITS } from "./trade-template.ts";
 
 const FIELDS = ["task", "item", "description", "unit", "quantity", "price", "tax"] as const;
@@ -104,5 +109,42 @@ export function readQuoteForm(form: FormData, currency: string): QuoteForm {
     validDays: valid.data,
     send: form.get("intent") === "send",
     typed,
+  };
+}
+
+export type AnswerForm =
+  | { readonly ok: true; readonly quoteId: string; readonly answer: QuoteAnswer }
+  /** `form`: not a form this page sends; `counter`: the counter's price or note is not usable. */
+  | { readonly ok: false; readonly error: "form" | "counter" };
+
+/**
+ * The customer's answer from their job page: which version they were looking at, the button pressed, and for
+ * a counter the total they would pay (typed in rupees) and an optional note.
+ */
+export function readAnswerForm(form: FormData, currency: string): AnswerForm {
+  const head = z
+    .object({ quote: z.uuid(), answer: z.enum(["accept", "reject", "counter"]) })
+    .safeParse({ quote: form.get("quote"), answer: form.get("answer") });
+  if (!head.success) return { ok: false, error: "form" };
+  const { quote, answer } = head.data;
+  if (answer !== "counter") return { ok: true, quoteId: quote, answer: { kind: answer } };
+  const counter = z
+    .object({
+      total: decimal(minorDigits(currency), 0, 100_000_000_000),
+      note: z
+        .string()
+        .trim()
+        .max(500)
+        .transform((note) => note || null),
+    })
+    .safeParse({
+      total: String(form.get("total") ?? "").trim(),
+      note: String(form.get("note") ?? ""),
+    });
+  if (!counter.success) return { ok: false, error: "counter" };
+  return {
+    ok: true,
+    quoteId: quote,
+    answer: { kind: "counter", totalMinor: counter.data.total, note: counter.data.note },
   };
 }

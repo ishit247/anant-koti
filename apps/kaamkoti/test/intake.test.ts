@@ -188,7 +188,8 @@ describe("the public request form", () => {
       request({ tasks: [KAVERI_FAN], answers: {} }),
       "kaveri-electricals",
     );
-    expect(result).toMatchObject({ ok: true, number: 3 });
+    // Kaveri's seed has requests #1 to #3.
+    expect(result).toMatchObject({ ok: true, number: 4 });
   });
 
   it("refuses a file that is not an image, and more than six photos", async () => {
