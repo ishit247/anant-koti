@@ -308,7 +308,7 @@ try {
     problems.push("a price-list title does not show its price");
   await editor().getByLabel("Details (optional)").fill("Bedroom split AC, not cooling.");
   await editor()
-    .getByLabel("Photos (optional)")
+    .locator('input[type="file"][name$=".photo"]')
     .setInputFiles({
       name: "ac.png",
       mimeType: "image/png",

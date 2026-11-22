@@ -58,9 +58,6 @@ export default async function RequestPage({
     <>
       <BusinessHeader business={page} home={{ href: space }}>
         <h1>New work</h1>
-        <p className="muted">
-          Tell {page.name} what needs doing. You will get a quote before any work starts.
-        </p>
       </BusinessHeader>
       <RequestForm
         own={own}

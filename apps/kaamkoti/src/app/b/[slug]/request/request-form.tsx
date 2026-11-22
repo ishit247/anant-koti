@@ -126,6 +126,29 @@ export function RequestForm({
     setItems((list) => list.map((item) => (item.key === key ? { ...item, ...update } : item)));
   const drop = (key: number) => setItems((list) => list.filter((item) => item.key !== key));
 
+  // The item's hidden file input is what the post carries, so photos are added to and removed from it.
+  const setPhotos = (key: number, photos: File[]) => {
+    const input = files.current.get(key);
+    if (!input) return;
+    const transfer = new DataTransfer();
+    for (const photo of photos) transfer.items.add(photo);
+    input.files = transfer.files;
+    change(key, { previews: photos.map((f) => URL.createObjectURL(f)) });
+  };
+  /** Moves the gallery next to a button by one step, as a swipe would. */
+  const stepBy = (button: HTMLElement, direction: -1 | 1) => {
+    const row = button.parentElement?.querySelector(".steps");
+    row?.scrollBy({ left: direction * row.clientWidth, behavior: "smooth" });
+  };
+  const photosOf = (key: number) => Array.from(files.current.get(key)?.files ?? []);
+  const addPhotos = (key: number, added: FileList | null) =>
+    setPhotos(key, [...photosOf(key), ...Array.from(added ?? [])]);
+  const removePhoto = (key: number, n: number) =>
+    setPhotos(
+      key,
+      photosOf(key).filter((_, at) => at !== n),
+    );
+
   const add = () => {
     if (items.length >= limits.items) {
       setProblem(`A request can have up to ${limits.items} work items.`);
@@ -316,7 +339,7 @@ export function RequestForm({
             const price = priceOf(item.title);
             const [first] = item.previews;
             return (
-              <button key={item.key} type="button" className="tile" onClick={() => open(item)}>
+              <button key={item.key} type="button" className="tile wrap" onClick={() => open(item)}>
                 {first ? (
                   // biome-ignore lint/performance/noImgElement: a local preview (object URL), never served
                   <img className="thumb" src={first} alt="" />
@@ -327,14 +350,17 @@ export function RequestForm({
                 )}
                 <span className="text">
                   <strong>{item.title}</strong>
-                  <span className="muted small">
-                    {item.details ||
-                      (item.kept + item.previews.length > 0
-                        ? `${item.kept + item.previews.length} photo${item.kept + item.previews.length === 1 ? "" : "s"}`
-                        : "Tap to add details")}
+                  <span className="meta">
+                    <span className={price ? "price" : "price ask"}>{price ?? "Quote"}</span>
+                    {item.kept + item.previews.length > 0 ? (
+                      <span className="muted small">
+                        {item.kept + item.previews.length} photo
+                        {item.kept + item.previews.length === 1 ? "" : "s"}
+                      </span>
+                    ) : null}
                   </span>
+                  {item.details ? <span className="muted small">{item.details}</span> : null}
                 </span>
-                <span className={price ? "price" : "price ask"}>{price ?? "Quote"}</span>
                 <Icon name="chevron" size={18} />
               </button>
             );
@@ -345,7 +371,7 @@ export function RequestForm({
           </button>
         </section>
 
-        <div className="dock">
+        <div className="dock stacked">
           <button type="submit" disabled={sending}>
             {sending ? (edit ? "Saving…" : "Sending…") : edit ? "Save changes" : "Send request"}
           </button>
@@ -354,9 +380,7 @@ export function RequestForm({
               Changing the place or a work item withdraws the quote, and the business quotes again.
               Saving without a change keeps it.
             </p>
-          ) : edit ? null : (
-            <p className="muted small">Free to ask. You get a quote before any work starts.</p>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -411,12 +435,32 @@ export function RequestForm({
                   onChange={(e) => change(item.key, { details: e.target.value })}
                 />
               </label>
-              <label className="drop">
-                <Icon name="camera" size={28} />
-                <span>Photos (optional)</span>
+              <div className="field">
+                <span className="field-head">
+                  Photos (optional)
+                  {photosIn(items) < limits.photos ? (
+                    <label className="icon upload" title="Upload photos">
+                      <Icon name="upload" size={20} />
+                      <span className="visually-hidden">Upload photos</span>
+                      <input
+                        className="visually-hidden"
+                        type="file"
+                        accept={imageTypes}
+                        multiple
+                        onChange={(e) => {
+                          addPhotos(item.key, e.target.files);
+                          e.target.value = "";
+                        }}
+                      />
+                    </label>
+                  ) : null}
+                </span>
                 <span className="muted small">
                   Up to {limits.photos} in all. A photo helps the quote.
+                  {item.kept > 0 ? ` ${item.kept} already sent.` : ""}
+                  {item.previews.length > 0 ? " Swipe to see more." : ""}
                 </span>
+                {/* Holds every chosen photo for the post; the add step below feeds it. */}
                 <input
                   ref={(el) => {
                     if (el) files.current.set(item.key, el);
@@ -427,36 +471,79 @@ export function RequestForm({
                   name={`item.${i}.photo`}
                   accept={imageTypes}
                   multiple
-                  onChange={(e) =>
-                    change(item.key, {
-                      previews: Array.from(e.target.files ?? [], (f) => URL.createObjectURL(f)),
-                    })
-                  }
+                  tabIndex={-1}
+                  aria-hidden="true"
                 />
-              </label>
-              {item.previews.length > 0 ? (
-                <div className="thumbs">
-                  {item.previews.map((src, n) => (
-                    // biome-ignore lint/performance/noImgElement: a local preview (object URL), never served
-                    <img key={src} src={src} alt={`Chosen ${n + 1} of ${item.previews.length}`} />
-                  ))}
+                <div className="gallery">
+                  {item.previews.length > 0 ? (
+                    <>
+                      <button
+                        type="button"
+                        className="icon nav prev"
+                        aria-label="Previous photo"
+                        onClick={(e) => stepBy(e.currentTarget, -1)}
+                      >
+                        ‹
+                      </button>
+                      <button
+                        type="button"
+                        className="icon nav next"
+                        aria-label="Next photo"
+                        onClick={(e) => stepBy(e.currentTarget, 1)}
+                      >
+                        ›
+                      </button>
+                    </>
+                  ) : null}
+                  <div className="steps">
+                    {item.previews.map((src, n) => (
+                      <div key={src} className="step">
+                        {/* biome-ignore lint/performance/noImgElement: a local preview (object URL), never served */}
+                        <img src={src} alt={`Chosen ${n + 1} of ${item.previews.length}`} />
+                        <button
+                          type="button"
+                          className="icon"
+                          aria-label={`Remove photo ${n + 1}`}
+                          onClick={() => removePhoto(item.key, n)}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                    {photosIn(items) < limits.photos ? (
+                      <label className="step drop">
+                        <Icon name="camera" size={28} />
+                        <span>{item.previews.length > 0 ? "Add another" : "Add photo"}</span>
+                        <input
+                          className="visually-hidden"
+                          type="file"
+                          accept={imageTypes}
+                          multiple
+                          onChange={(e) => {
+                            addPhotos(item.key, e.target.files);
+                            e.target.value = "";
+                          }}
+                        />
+                      </label>
+                    ) : null}
+                  </div>
                 </div>
-              ) : null}
+              </div>
             </div>
             {itemProblem ? (
               <p className="error" role="alert">
                 {itemProblem}
               </p>
             ) : null}
-            <div className="dock">
+            <div className="dock stacked row">
+              {before.current ? (
+                <button type="button" className="danger" onClick={remove}>
+                  Remove
+                </button>
+              ) : null}
               <button type="button" onClick={save}>
                 Save
               </button>
-              {before.current ? (
-                <button type="button" className="danger" onClick={remove}>
-                  Remove this item
-                </button>
-              ) : null}
             </div>
           </fieldset>
         );
