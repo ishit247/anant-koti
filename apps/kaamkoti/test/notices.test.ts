@@ -157,6 +157,8 @@ describe("notices", () => {
     const [toCustomer] = await queued(`notify:request.acknowledged:${SHARMA_JOB_1}`);
     expect(toCustomer?.payload).toMatchObject({
       to: { email: "anita@example.com", phone: "+919000001001" },
+      // Told by platform if the customer gets nothing because the WhatsApp messages ran out.
+      owner: ownerIdentity,
       vars: {
         businessName: "Sharma Cooling Services",
         link: `${PUBLIC_ORIGIN}/b/sharma-cooling/requests/${SHARMA_JOB_1}`,

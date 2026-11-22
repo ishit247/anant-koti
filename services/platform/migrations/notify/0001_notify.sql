@@ -39,6 +39,8 @@ create table notify.quota (
   -- The first day of the month.
   month date not null check (extract(day from month) = 1),
   used int not null check (used >= 0),
+  -- The owner has been told this month's messages ran out (3.3d): once a month, on the first message lost to it.
+  owner_told boolean not null default false,
   primary key (product, business_id, month)
 );
 

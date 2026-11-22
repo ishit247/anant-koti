@@ -407,8 +407,9 @@ receiver code handles provider webhooks, with the provider's signature in place 
 
 - The app sends `notify.send` with `{ businessId, template, to: { identityId?, phone?, email? }, vars }`
   (`@bodhchakra/notify`). A customer is given the addresses on their row; an owner is named by `identityId`
-  (the `sub`), and platform uses that identity's email (and phone, 3.3), so members' addresses never leave
-  platform (3.2b). The product is the signed client id, not a field, so an app reaches only its own
+  (the `sub`), and platform uses that identity's verified email and phone, so members' addresses never leave
+  platform (3.2b, 3.3d). A customer's message also names the owner (`owner`), whom platform tells when the
+  quota leaves that customer with nothing (below). The product is the signed client id, not a field, so an app reaches only its own
   templates. `vars` are display strings the app formatted (money, dates in the business's time zone). A locale
   joins when a second language does. Platform picks the channel: WhatsApp if there is a phone and quota left,
   otherwise email. SMS comes later. No address on any channel there is records the message as `no_channel`.
@@ -425,14 +426,16 @@ receiver code handles provider webhooks, with the provider's signature in place 
 - Kaam Koti's worker (`src/worker.ts`) delivers the outbox; the web only queues (`sendOnly` jobs). The app's
   messages are queued by `Notices` (`src/notices.ts`), each in the transaction of its change; a sent quote also
   queues `kaamkoti.quote_expiry` at its `valid_until`, which the worker runs (section 6).
-- WhatsApp is Meta's Cloud API (D7, 3.3a). Only templates with a WhatsApp version go there (the customer's
-  messages; owners' join when members' phones do, 3.3d); each version holds the body submitted to Meta, with
+- WhatsApp is Meta's Cloud API (D7, 3.3a). Only templates with a WhatsApp version go there (every Kaam Koti
+  template has one since 3.3d; the owner's end "replies here are not read"); each version holds the body submitted to Meta, with
   `{{n}}` placeholders, and is sent by name with its parameters. The channel is off until all its settings are
   given (no Meta account in development).
 - The WhatsApp quota (`notify.quota`) counts per (product, business, UTC calendar month) when a message is queued
   for WhatsApp, with top-ups (5.2); until plans carry it (5.1) it is platform config. Over quota falls back to
-  email. If there is no email, the owner is told (3.3d). A member's email is used only if verified: an
-  identity made by phone has a placeholder (section 3).
+  email. If there is no email, the message is `no_channel` and the owner is told by `notify.quota_used`, once per
+  business and month (`notify.quota.owner_told`, set under the row's lock), on any channel and not counted
+  against the quota. A member's email and phone are used only if verified: an identity made by phone has a
+  placeholder email (section 3).
 - Meta's status webhook reaches `hooks.` at `/hooks/whatsapp`, verified by `X-Hub-Signature-256` (HMAC of the
   raw body with the app secret); a bad signature is 401. `delivered`/`read` mark a sent message `delivered`;
   `failed` marks it `failed`, audited, with Meta's numeric code logged. Each change is guarded by the status it

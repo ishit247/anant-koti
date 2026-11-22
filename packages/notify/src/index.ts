@@ -34,6 +34,11 @@ export const notifyMessage = z.object({
       .optional(),
   }),
   vars: z.record(z.string().regex(/^[a-z][a-zA-Z0-9]{0,39}$/), z.string().max(1000)),
+  /**
+   * The business's owner, by identity, on a message to a customer: when the business's WhatsApp messages for the
+   * month have run out and the customer has no email, so gets nothing, platform tells the owner (once a month).
+   */
+  owner: z.uuid().optional(),
 });
 export type NotifyMessage = z.infer<typeof notifyMessage>;
 

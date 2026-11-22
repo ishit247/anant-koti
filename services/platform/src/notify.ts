@@ -3,8 +3,9 @@
 // renders the product's template and sends it, retrying with backoff; once the retries are spent the message is
 // marked failed and an operator is alerted. WhatsApp goes first when the message has a phone, its template a
 // WhatsApp version and the business quota left this month; otherwise email. Meta's status webhook then marks a
-// WhatsApp message delivered, or failed. A message to a member names their identity, and its address is looked
-// up here. Messages are kept 30 days, then purged.
+// WhatsApp message delivered, or failed. A message to a member names their identity, and its addresses are looked
+// up here. A customer's message lost to the quota tells the owner, once a month. Messages are kept 30 days, then
+// purged.
 // Personal data stays in the row: logs and audit events carry the message id and template, never the recipient,
 // the variables or a provider's error text (which can quote the address).
 import { timingSafeEqual } from "node:crypto";
@@ -81,6 +82,9 @@ export interface NotifyService {
   startSending(): Promise<void>;
 }
 
+/** The owner's notice that this month's WhatsApp messages ran out; each product has it among its templates. */
+const QUOTA_USED = "notify.quota_used";
+
 /** Daily, at a quiet hour in India (UTC). */
 const PURGE_CRON = "30 21 * * *";
 
@@ -125,17 +129,23 @@ export function createNotifyService(deps: NotifyDeps): NotifyService {
   });
 
   /**
-   * A member's addresses, from their identity: the email they sign in with, if verified (an identity made by
-   * phone has a placeholder; its phone joins in 3.3d). An identity that is gone leaves only the id, which is a
+   * A member's addresses, from their identity: the email and the mobile they sign in with, each only if verified
+   * (an identity made by phone has a placeholder email). An identity that is gone leaves only the id, which is a
    * message with no channel.
    */
   async function memberAddress(client: DbClient, identityId: string): Promise<NotifyMessage["to"]> {
-    const { rows } = await client.query<{ email: string }>(
-      'select email from identity."user" where id = $1 and "emailVerified"',
+    const { rows } = await client.query<{ email: string | null; phone: string | null }>(
+      `select case when "emailVerified" then email end as email,
+              case when "phoneNumberVerified" then "phoneNumber" end as phone
+       from identity."user" where id = $1`,
       [identityId],
     );
-    const email = rows[0]?.email;
-    return { identityId, ...(email && { email }) };
+    const found = rows[0];
+    return {
+      identityId,
+      ...(found?.email && { email: found.email }),
+      ...(found?.phone && { phone: found.phone }),
+    };
   }
 
   /**
@@ -157,6 +167,10 @@ export function createNotifyService(deps: NotifyDeps): NotifyService {
     return rowCount === 1;
   }
 
+  /**
+   * WhatsApp if the message can go there and the quota allows, otherwise email. `overQuota` says the quota is what
+   * kept it off WhatsApp. The owner's notice that the quota ran out is not counted against it.
+   */
   async function chooseChannel(
     client: DbClient,
     product: string,
@@ -164,16 +178,96 @@ export function createNotifyService(deps: NotifyDeps): NotifyService {
     // biome-ignore lint/suspicious/noExplicitAny: the template's variables were checked by the caller.
     template: Template<any>,
     to: NotifyMessage["to"],
-  ): Promise<"whatsapp" | "email" | null> {
+    counted: boolean,
+  ): Promise<{ channel: "whatsapp" | "email" | null; overQuota: boolean }> {
     const whatsapp = deps.whatsapp;
-    if (
-      to.phone &&
-      template.whatsapp &&
-      whatsapp &&
-      (await takeQuota(client, product, businessId, whatsapp.monthlyQuota))
-    )
-      return "whatsapp";
-    return to.email ? "email" : null;
+    const byEmail = to.email ? "email" : null;
+    if (!(to.phone && template.whatsapp && whatsapp)) return { channel: byEmail, overQuota: false };
+    if (!counted || (await takeQuota(client, product, businessId, whatsapp.monthlyQuota)))
+      return { channel: "whatsapp", overQuota: false };
+    return { channel: byEmail, overQuota: true };
+  }
+
+  /**
+   * Records a message and queues its delivery, or records it as having no channel. Returns whether the quota is
+   * what left it with none.
+   */
+  async function record(
+    client: DbClient,
+    product: string,
+    message: Pick<NotifyMessage, "businessId" | "template" | "vars">,
+    // biome-ignore lint/suspicious/noExplicitAny: as above.
+    template: Template<any>,
+    to: NotifyMessage["to"],
+    counted: boolean,
+  ): Promise<{ lostToQuota: boolean }> {
+    const { channel, overQuota } = await chooseChannel(
+      client,
+      product,
+      message.businessId,
+      template,
+      to,
+      counted,
+    );
+    const { rows } = await client.query<{ id: string }>(
+      `insert into notify.message (product, business_id, template, channel, recipient, vars, status)
+       values ($1, $2, $3, $4, $5, $6, $7)
+       returning id`,
+      [
+        product,
+        message.businessId,
+        message.template,
+        channel,
+        to,
+        message.vars,
+        channel ? "queued" : "no_channel",
+      ],
+    );
+    const id = (rows[0] as { id: string }).id;
+    if (channel) {
+      await jobs.send(client, send, { messageId: id });
+      return { lostToQuota: false };
+    }
+    log.warn("notify: no channel for message", { messageId: id, template: message.template });
+    await recordOutcome(
+      client,
+      { id, businessId: message.businessId, template: message.template },
+      "notify.no_channel",
+      0,
+    );
+    return { lostToQuota: overQuota };
+  }
+
+  /**
+   * A customer got nothing because this month's WhatsApp messages ran out: the owner is told, on the first such
+   * message of the month only (the quota row's flag, set under its lock). The quota row exists, since taking from
+   * it was refused.
+   */
+  async function tellOwnerQuotaUsed(
+    client: DbClient,
+    product: string,
+    businessId: string,
+    ownerId: string,
+  ): Promise<void> {
+    const { rows } = await client.query<{ resumes: string }>(
+      `update notify.quota set owner_told = true
+       where product = $1 and business_id = $2
+         and month = date_trunc('month', now() at time zone 'UTC')::date and not owner_told
+       returning to_char(month + interval '1 month', 'FMDD FMMonth') as resumes`,
+      [product, businessId],
+    );
+    const resumes = rows[0]?.resumes;
+    if (!resumes) return;
+    const template = templateFor(product, QUOTA_USED);
+    if (!template) throw new Error(`notify: ${product} has no template ${QUOTA_USED}`);
+    await record(
+      client,
+      product,
+      { businessId, template: QUOTA_USED, vars: { resumes } },
+      template,
+      await memberAddress(client, ownerId),
+      false,
+    );
   }
 
   /** The audit row of a message's outcome, in the business's audit log. */
@@ -211,35 +305,11 @@ export function createNotifyService(deps: NotifyDeps): NotifyService {
       const to = message.to.identityId
         ? await memberAddress(client, message.to.identityId)
         : message.to;
-      const channel = await chooseChannel(client, product, message.businessId, template, to);
-      const { rows } = await client.query<{ id: string }>(
-        `insert into notify.message (product, business_id, template, channel, recipient, vars, status)
-         values ($1, $2, $3, $4, $5, $6, $7)
-         returning id`,
-        [
-          product,
-          message.businessId,
-          message.template,
-          channel,
-          to,
-          message.vars,
-          channel ? "queued" : "no_channel",
-        ],
-      );
-      const id = (rows[0] as { id: string }).id;
-      if (channel) {
-        await jobs.send(client, send, { messageId: id });
-        return;
-      }
-      // A customer with only a phone, when WhatsApp is off or over quota, gets nothing; the owner still shares the
-      // link. Telling the owner when the quota runs out waits for 3.3d.
-      log.warn("notify: no channel for message", { messageId: id, template: message.template });
-      await recordOutcome(
-        client,
-        { id, businessId: message.businessId, template: message.template },
-        "notify.no_channel",
-        0,
-      );
+      const { lostToQuota } = await record(client, product, message, template, to, true);
+      // A customer with only a phone gets nothing while WhatsApp is off or over quota; the owner still shares the
+      // link, and is told when it is the quota.
+      if (lostToQuota && message.owner)
+        await tellOwnerQuotaUsed(client, product, message.businessId, message.owner);
     },
   };
 

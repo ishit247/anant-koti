@@ -71,20 +71,31 @@ async function jobFacts(client: DbClient, jobId: string): Promise<JobFacts> {
   return job;
 }
 
-const customerTo = (job: JobFacts): NotifyMessage["to"] => ({
-  ...(job.email && { email: job.email }),
-  phone: job.phone_e164,
-});
-
-/** The business's owner, by identity (one owner per business, architecture 4.1). */
-async function ownerTo(client: DbClient): Promise<NotifyMessage["to"]> {
+/** The business's owner's identity (one owner per business, architecture 4.1). */
+async function ownerId(client: DbClient): Promise<string> {
   const { rows } = await client.query<{ identity_id: string }>(
     "select identity_id from tenancy.member where role = 'owner' and removed_at is null",
   );
   const owner = rows[0];
   if (!owner) throw new Error("notices: the business has no owner");
-  return { identityId: owner.identity_id };
+  return owner.identity_id;
 }
+
+const ownerTo = async (client: DbClient): Promise<NotifyMessage["to"]> => ({
+  identityId: await ownerId(client),
+});
+
+/**
+ * A message to the customer: every address their row has, and the owner, whom platform tells if the business's
+ * WhatsApp messages ran out and so the customer got nothing.
+ */
+const forCustomer = async (
+  client: DbClient,
+  job: JobFacts,
+): Promise<Pick<NotifyMessage, "to" | "owner">> => ({
+  to: { ...(job.email && { email: job.email }), phone: job.phone_e164 },
+  owner: await ownerId(client),
+});
 
 const quoteExpiry = z.object({ businessId: z.uuid(), quoteId: z.uuid() });
 // The time is part of the payload: a visit moved since is no longer the one this reminder was queued for.
@@ -188,7 +199,7 @@ export function createNotices(deps: NoticesDeps): Notices {
         {
           businessId: job.business_id,
           template: "request.acknowledged",
-          to: customerTo(job),
+          ...(await forCustomer(client, job)),
           vars: {
             customerName: job.customer_name,
             businessName: job.business_name,
@@ -227,7 +238,7 @@ export function createNotices(deps: NoticesDeps): Notices {
         {
           businessId: quote.business_id,
           template: "quote.sent",
-          to: customerTo(quote),
+          ...(await forCustomer(client, quote)),
           vars: {
             customerName: quote.customer_name,
             businessName: quote.business_name,
@@ -281,7 +292,7 @@ export function createNotices(deps: NoticesDeps): Notices {
         {
           businessId: visit.business_id,
           template: "appointment.confirmed",
-          to: customerTo(visit),
+          ...(await forCustomer(client, visit)),
           vars: visitVars(visit),
         },
         // A moved visit is told again; the same time twice is one message.
@@ -313,7 +324,7 @@ export function createNotices(deps: NoticesDeps): Notices {
         {
           businessId: visit.business_id,
           template: "appointment.on_the_way",
-          to: customerTo(visit),
+          ...(await forCustomer(client, visit)),
           vars: { customerName, businessName, link },
         },
         // Once per visit time: a second tap does not message the customer again.
@@ -330,7 +341,7 @@ export function createNotices(deps: NoticesDeps): Notices {
         {
           businessId: visit.business_id,
           template: "appointment.proposed",
-          to: customerTo(visit),
+          ...(await forCustomer(client, visit)),
           vars: {
             customerName: visit.customer_name,
             businessName: visit.business_name,
@@ -405,7 +416,7 @@ export function createNotices(deps: NoticesDeps): Notices {
             {
               businessId,
               template: "appointment.reminder",
-              to: customerTo(visit),
+              ...(await forCustomer(client, visit)),
               vars: visitVars(visit),
             },
             `appointment.reminder:${appointmentId}:${startsAt}`,

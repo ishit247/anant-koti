@@ -1,8 +1,7 @@
 // Kaam Koti's message templates (docs/architecture.md 9.2), one version per channel. Variables arrive as display
-// text the app formatted; a template only places them. The customer's messages also have a WhatsApp version,
-// mirroring the template submitted to Meta; owners' go by email until members' phones reach notify (3.3c).
-// Customers' links open their own page on the bare domain, behind their sign-in; owners' links open
-// the job in the app.
+// text the app formatted; a template only places them. Each also has a WhatsApp version, mirroring the template
+// submitted to Meta. Customers' links open their own page on the bare domain, behind their sign-in; owners' links
+// open the job in the app.
 import { z } from "zod";
 import { defineTemplate } from "./template.ts";
 
@@ -17,10 +16,25 @@ const SIGN_IN = "Sign in there with this email address to see it.";
  * no address, since the customer may sign in with their email or (3.3c) this number.
  */
 const WA_SIGN_IN = "Sign in on that page to see it.";
+/** The owner's WhatsApp messages end on this line: the business's number does not read replies. */
+const WA_OWNER_END = "Answer in Kaam Koti; replies here are not read.";
+
+/** What the customer did with a quote, as the owner's message says it. */
+const quoteAnswer = (
+  v:
+    | { answer: "accepted" | "rejected"; total: string }
+    | { answer: "countered"; total: string; offered: string },
+) =>
+  v.answer === "countered"
+    ? `offered ${v.offered} for your quote of ${v.total}`
+    : v.answer === "accepted"
+      ? `accepted your quote of ${v.total}`
+      : `turned down your quote of ${v.total}`;
 
 export const kaamkoti = {
   /** To the owner: a customer sent a request from the business's page. */
   "request.received": defineTemplate({
+    // One work item per line, each starting "- ".
     vars: z.object({ customerName: text, number, items: z.string().min(1).max(600), link }),
     email: (v) => ({
       subject: `New request ${v.number} from ${v.customerName}`,
@@ -28,6 +42,20 @@ export const kaamkoti = {
         `${v.customerName} has sent request ${v.number}:\n${v.items}\n\n` +
         `Open it to quote:\n${v.link}`,
     }),
+    whatsapp: {
+      name: "kaamkoti_request_received",
+      body: `New request {{1}} from {{2}}: {{3}}.\n\nOpen it to quote: {{4}}\n\n${WA_OWNER_END}`,
+      // A parameter holds no line breaks, so the items become one line.
+      params: (v) => [
+        v.number,
+        v.customerName,
+        v.items
+          .split("\n")
+          .map((item) => item.replace(/^- /, ""))
+          .join("; "),
+        v.link,
+      ],
+    },
   }),
   /** To the customer: the business has their request. */
   "request.acknowledged": defineTemplate({
@@ -56,6 +84,13 @@ export const kaamkoti = {
         `${v.customerName} has changed request ${v.number}. ` +
         `A quote they had not answered no longer counts: see the changes and quote again.\n\n${v.link}`,
     }),
+    whatsapp: {
+      name: "kaamkoti_request_edited",
+      body:
+        "Request {{1}} was changed by {{2}}. A quote they had not answered no longer counts: " +
+        `see the changes and quote again: {{3}}\n\n${WA_OWNER_END}`,
+      params: (v) => [v.number, v.customerName, v.link],
+    },
   }),
   "quote.sent": defineTemplate({
     vars: z.object({
@@ -100,16 +135,21 @@ export const kaamkoti = {
       }),
     ]),
     email: (v) => {
-      const [headline, said] =
+      const headline =
         v.answer === "countered"
-          ? ["offered a different price", `offered ${v.offered} for your quote of ${v.total}`]
+          ? "offered a different price"
           : v.answer === "accepted"
-            ? ["accepted your quote", `accepted your quote of ${v.total}`]
-            : ["turned down your quote", `turned down your quote of ${v.total}`];
+            ? "accepted your quote"
+            : "turned down your quote";
       return {
         subject: `${v.customerName} ${headline} (${v.number})`,
-        text: `${v.customerName} has ${said} on request ${v.number}.\n\n${v.link}`,
+        text: `${v.customerName} has ${quoteAnswer(v)} on request ${v.number}.\n\n${v.link}`,
       };
+    },
+    whatsapp: {
+      name: "kaamkoti_quote_response",
+      body: `On request {{1}}, {{2}} has {{3}}.\n\nOpen it: {{4}}\n\n${WA_OWNER_END}`,
+      params: (v) => [v.number, v.customerName, quoteAnswer(v), v.link],
     },
   }),
   /** To the owner: a quote nobody answered ran out (the job at its `valid_until`). */
@@ -121,6 +161,13 @@ export const kaamkoti = {
         `${v.customerName} did not answer your quote of ${v.total} on request ${v.number} in time, ` +
         `so it can no longer be accepted. Send a new one if the work is still wanted:\n${v.link}`,
     }),
+    whatsapp: {
+      name: "kaamkoti_quote_expired",
+      body:
+        "Your quote of {{1}} to {{2}} on request {{3}} was not answered in time, so it can no longer be " +
+        `accepted. Send a new one if the work is still wanted: {{4}}\n\n${WA_OWNER_END}`,
+      params: (v) => [v.total, v.customerName, v.number, v.link],
+    },
   }),
   /** To the customer: the business proposes a time for the work, to confirm or change on their page. */
   "appointment.proposed": defineTemplate({
@@ -165,6 +212,18 @@ export const kaamkoti = {
               `${v.customerName} cannot do ${v.when} for request ${v.number}` +
               `${v.note ? ` and says:\n"${v.note}"` : "."}\n\nPropose another time:\n${v.link}`,
           },
+    whatsapp: {
+      name: "kaamkoti_appointment_response",
+      body: `On request {{1}}, {{2}} {{3}}.\n\nOpen it: {{4}}\n\n${WA_OWNER_END}`,
+      params: (v) => [
+        v.number,
+        v.customerName,
+        v.answer === "confirmed"
+          ? `has confirmed the work on ${v.when}`
+          : `cannot do ${v.when} and asks for another time${v.note ? `, saying "${v.note}"` : ""}`,
+        v.link,
+      ],
+    },
   }),
   /** To the customer: a visit was planned, or moved to another time. */
   "appointment.confirmed": defineTemplate({
@@ -226,6 +285,28 @@ export const kaamkoti = {
       name: "kaamkoti_appointment_on_the_way",
       body: `Hello {{1}}, {{2}} has set out and is on the way to you.\n\nYour request: {{3}}\n\n${WA_SIGN_IN}`,
       params: (v) => [v.customerName, v.businessName, v.link],
+    },
+  }),
+  /**
+   * To the owner, from platform itself: this month's WhatsApp messages ran out and a customer with no email got
+   * nothing (architecture 9.2). `resumes` is the first day of next month ("1 December").
+   */
+  "notify.quota_used": defineTemplate({
+    vars: z.object({ resumes: text }),
+    email: (v) => ({
+      subject: "This month's WhatsApp messages are used up",
+      text:
+        "Your business has used this month's WhatsApp messages. " +
+        `Until ${v.resumes}, customers get their messages by email, and a customer who gave only a mobile ` +
+        "number gets none: share the link to their request with them yourself.",
+    }),
+    whatsapp: {
+      name: "kaamkoti_quota_used",
+      body:
+        "Your business has used this month's WhatsApp messages. Until {{1}}, customers get their messages " +
+        "by email, and a customer who gave only a mobile number gets none: share the link to their request " +
+        "with them yourself.",
+      params: (v) => [v.resumes],
     },
   }),
 };

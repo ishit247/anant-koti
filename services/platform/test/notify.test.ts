@@ -310,7 +310,7 @@ describe("notify", () => {
     expect(email?.text).toContain("offered ₹250.00 for your quote of ₹295.00");
   });
 
-  it("never sends to the placeholder email of an identity made by phone", async () => {
+  it("sends a member's message to the verified phone of their identity, never to its placeholder email", async () => {
     const identityId = "00000000-0000-4000-8000-0000000000c2";
     await owner.tx((client) =>
       client.query(
@@ -329,12 +329,41 @@ describe("notify", () => {
         link: "http://127.0.0.1:45450/jobs/z",
       },
     });
+
+    await until(async () => (await byName("Phone Owner Case"))[0]?.status === "sent", "the send");
+    const wa = waSent.find((m) => m.to === "+919000000301");
+    expect(wa).toMatchObject({
+      name: "kaamkoti_request_edited",
+      params: ["#4", "Phone Owner Case", "http://127.0.0.1:45450/jobs/z"],
+    });
     const { rows } = await owner.tx((client) =>
-      client.query<{ status: string }>(
-        "select status from notify.message where vars->>'customerName' = 'Phone Owner Case'",
+      client.query("select recipient from notify.message where vars->>'customerName' = $1", [
+        "Phone Owner Case",
+      ]),
+    );
+    expect(rows).toEqual([{ recipient: { identityId, phone: "+919000000301" } }]);
+  });
+
+  it("does not use a member's phone that is not verified", async () => {
+    const identityId = "00000000-0000-4000-8000-0000000000c3";
+    await owner.tx((client) =>
+      client.query(
+        `insert into identity."user" (id, name, email, "emailVerified", "phoneNumber", "phoneNumberVerified")
+         values ($1, 'Meena Iyer', 'meena@example.com', true, '+919000000302', false)`,
+        [identityId],
       ),
     );
-    expect(rows).toEqual([{ status: "no_channel" }]);
+    await post("to-unverified-phone", {
+      businessId: BUSINESS,
+      template: "request.edited",
+      to: { identityId },
+      vars: {
+        customerName: "Unverified Phone",
+        number: "#5",
+        link: "http://127.0.0.1:45450/jobs/u",
+      },
+    });
+    expect((await byName("Unverified Phone")).map((m) => m.channel)).toEqual(["email"]);
   });
 
   it("records a message to an unknown identity as having no channel", async () => {
@@ -470,11 +499,91 @@ describe("notify", () => {
       expect(rows).toEqual([{ used: QUOTA }]);
     });
 
-    it("sends a template with no WhatsApp version by email, without using the quota", async () => {
+    describe("when the quota runs out", () => {
+      const ownerIdentity = "00000000-0000-4000-8000-0000000008c1";
+      const noticesTo = async (businessId: string) =>
+        (
+          await owner.tx((client) =>
+            client.query<{ channel: string | null }>(
+              "select channel from notify.message where business_id = $1 and template = 'notify.quota_used'",
+              [businessId],
+            ),
+          )
+        ).rows;
+
+      beforeAll(async () => {
+        // An owner who signed in by phone: no email to fall back on.
+        await owner.tx((client) =>
+          client.query(
+            `insert into identity."user" (id, name, email, "emailVerified", "phoneNumber", "phoneNumberVerified")
+             values ($1, '+919000000801', '919000000801@phone.invalid', false, '+919000000801', true)`,
+            [ownerIdentity],
+          ),
+        );
+      });
+
+      const toCustomer = (key: string, name: string, email: string | undefined, n: number) =>
+        post(key, {
+          ...quoteSent(email, name, `+91900000081${n}`, business(8)),
+          owner: ownerIdentity,
+        });
+
+      it("tells the owner once a month, by WhatsApp outside the quota, when a customer with no email gets nothing", async () => {
+        for (const n of [1, 2]) await toCustomer(`lost-used-${n}`, "Used Up", undefined, n);
+        await toCustomer("lost-1", "Lost Customer", undefined, 3);
+        await toCustomer("lost-2", "Lost Customer", undefined, 4);
+
+        expect((await byName("Lost Customer")).map((m) => m.status)).toEqual([
+          "no_channel",
+          "no_channel",
+        ]);
+        expect((await noticesTo(business(8))).map((m) => m.channel)).toEqual(["whatsapp"]);
+        await until(async () => waSent.some((m) => m.to === "+919000000801"), "the notice");
+        const notice = waSent.find((m) => m.to === "+919000000801");
+        expect(notice?.name).toBe("kaamkoti_quota_used");
+        expect(notice?.params).toEqual([expect.stringMatching(/^1 [A-Z][a-z]+$/)]);
+        const { rows } = await owner.tx((client) =>
+          client.query("select used from notify.quota where business_id = $1", [business(8)]),
+        );
+        expect(rows).toEqual([{ used: QUOTA }]);
+      });
+
+      it("does not tell the owner when the customer still gets the message by email", async () => {
+        for (const n of [1, 2])
+          await post(`email-fill-${n}`, {
+            ...quoteSent(undefined, "Fill Nine", `+91900000092${n}`, business(9)),
+            owner: ownerIdentity,
+          });
+        await post("email-over", {
+          ...quoteSent("over@example.com", "Over By Email", "+919000000929", business(9)),
+          owner: ownerIdentity,
+        });
+
+        expect((await byName("Over By Email")).map((m) => m.channel)).toEqual(["email"]);
+        expect(await noticesTo(business(9))).toEqual([]);
+      });
+
+      it("does not tell the owner of a message with no address, even with the quota used", async () => {
+        for (const n of [1, 2])
+          await post(
+            `none-fill-${n}`,
+            quoteSent(undefined, "Fill Ten", `+91900000100${n}`, business(10)),
+          );
+        await post("none-address", {
+          ...quoteSent(undefined, "No Address", undefined, business(10)),
+          owner: ownerIdentity,
+        });
+
+        expect((await byName("No Address")).map((m) => m.status)).toEqual(["no_channel"]);
+        expect(await noticesTo(business(10))).toEqual([]);
+      });
+    });
+
+    it("sends a message with no phone by email, without using the quota", async () => {
       await post("wa-email-only", {
         businessId: business(4),
         template: "quote.expired",
-        to: { email: "owner4@example.com", phone: "+919000000401" },
+        to: { email: "owner4@example.com" },
         vars: {
           customerName: "Expired Quote",
           number: "#4",
