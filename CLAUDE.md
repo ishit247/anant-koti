@@ -94,6 +94,12 @@ The product must be efficient and easy to maintain. These apply to every step.
 - **Readable code.** Names from the domain (site, draft, version, owner, plan). Comments say
   why, not what. No dead code, and no TODO without a plan step id.
 
+## UI
+
+Build mobile first, modern, fast and usable (asked 2026-11-22). The rules, tokens and building blocks
+are in [docs/ui-guidelines.md](docs/ui-guidelines.md); read it before any screen work and reuse its
+classes and components.
+
 ## Editing files
 
 - Change files with the Edit tool, or Write for new ones. Do not patch files
