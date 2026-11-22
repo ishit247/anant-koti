@@ -2,6 +2,7 @@
 // business transaction; a job delivers it as a signed POST and retries with backoff for about a day; the
 // receiver records (source, key) in its inbox in the transaction that handles it. At-least-once delivery plus an
 // idempotent receiver: each message takes effect exactly once, and a receiver that is down only delays it.
+import { pathToFileURL } from "node:url";
 import type { Db, DbClient, MigrationFolder } from "@bodhchakra/db";
 import { defineJob, type Jobs, type JobType, type RetryPolicy } from "@bodhchakra/jobs";
 import type { Logger } from "@bodhchakra/log";
@@ -158,5 +159,7 @@ export async function receive(
 /** The outbox and inbox tables; an app lists this after `jobs` and before its own folder. */
 export const migrations: MigrationFolder = {
   name: "outbox",
-  dir: new URL("../migrations/", import.meta.url),
+  // Built from a path, as storage and audit do: the web bundler tries to resolve `new URL(…, import.meta.url)`
+  // as a module and fails on a folder.
+  dir: pathToFileURL(`${import.meta.dirname}/../migrations/`),
 };

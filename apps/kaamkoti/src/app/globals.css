@@ -35,6 +35,11 @@ body {
   color: var(--ink);
   background: var(--paper);
 }
+[hidden] {
+  /* biome-ignore lint/complexity/noImportantStyles: a class that sets `display` must not reveal what a
+     script hid (the request form's two views), whatever its specificity. */
+  display: none !important;
+}
 main {
   max-width: 34rem;
   margin: 0 auto;
@@ -66,7 +71,8 @@ a {
   outline: 3px solid var(--brand);
   outline-offset: 2px;
 }
-form {
+form,
+.stack {
   display: grid;
   gap: 0.85rem;
 }

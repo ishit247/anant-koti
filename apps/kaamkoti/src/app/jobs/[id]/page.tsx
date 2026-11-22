@@ -19,6 +19,7 @@ import { assignableMembers, plannedVisits } from "../../../schedule.ts";
 import { server } from "../../../server.ts";
 import { OwnerNav } from "../../owner-nav.tsx";
 import { QuoteSummary } from "../../quote-summary.tsx";
+import { WorkItems } from "../../work-items.tsx";
 import { PlanVisit } from "./plan-visit.tsx";
 import { ResendLink } from "./resend-link.tsx";
 import { StartQuote } from "./start-quote.tsx";
@@ -76,15 +77,12 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
       </div>
 
       <h2>Work asked for</h2>
-      <ul className="cards">
-        {job.tasks.map((task, i) => (
-          // Titles may repeat (two custom tasks of one name); their order is fixed.
-          // biome-ignore lint/suspicious/noArrayIndexKey: the list is static for this render
-          <li key={i} className="card">
-            {task}
-          </li>
-        ))}
-      </ul>
+      {/* Signed after the job was found in this business: each URL opens one object for five minutes. */}
+      <WorkItems
+        items={job.items}
+        sign={(photo) => storage.signedUrl(photo)}
+        photoAlt="Sent with the request"
+      />
 
       <h2>Quote</h2>
       {current ? (
@@ -156,51 +154,21 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
         <PlanVisit jobId={job.id} workable={job.status === "accepted"} team={team} />
       ) : null}
 
-      <h2>Where and when</h2>
-      <dl className="facts card">
-        <div>
-          <dt>Address</dt>
-          <dd>{job.address ?? "Not given"}</dd>
-        </div>
-        {job.preferredWindow ? (
-          <div>
-            <dt>Preferred time</dt>
-            <dd>{job.preferredWindow}</dd>
-          </div>
+      <h2>Where</h2>
+      <div className="card">
+        <span>{job.address ?? "No address given"}</span>
+        {job.location ? (
+          // The owner's own map app opens it; nothing is sent anywhere until they tap.
+          <a
+            className="button quiet"
+            href={`https://www.google.com/maps/search/?api=1&query=${job.location.latitude},${job.location.longitude}`}
+            rel="noreferrer"
+            target="_blank"
+          >
+            Open in Maps
+          </a>
         ) : null}
-      </dl>
-
-      {job.answers.length > 0 ? (
-        <>
-          <h2>Details</h2>
-          <dl className="facts card">
-            {job.answers.map((a) => (
-              <div key={a.question}>
-                <dt>{a.question}</dt>
-                <dd>{a.answer}</dd>
-              </div>
-            ))}
-          </dl>
-        </>
-      ) : null}
-
-      {job.photos.length > 0 ? (
-        <>
-          <h2>Photos</h2>
-          <div className="photos">
-            {job.photos.map((photo) => (
-              // Signed after the job was found in this business: each URL opens one object for five minutes.
-              // biome-ignore lint/performance/noImgElement: a presigned URL, not an asset Next can optimise
-              <img
-                key={photo.key}
-                src={storage.signedUrl(photo)}
-                alt="Sent with the request"
-                loading="lazy"
-              />
-            ))}
-          </div>
-        </>
-      ) : null}
+      </div>
 
       <h2>Customer link</h2>
       <p className="muted small">

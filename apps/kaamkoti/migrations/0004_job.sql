@@ -10,11 +10,12 @@ create table kk.job (
   status text not null default 'requested' check (status in (
     'requested', 'quoted', 'accepted', 'scheduled', 'in_progress', 'completed', 'declined', 'lost', 'cancelled'
   )),
-  -- The intake answers, keyed by the business's question keys at the time (src/intake.ts parses them).
-  answers jsonb not null default '{}' check (jsonb_typeof(answers) = 'object'),
   -- Where the work is; this request's, so a customer's later request elsewhere does not rewrite it.
   address text check (length(address) between 1 and 500),
-  preferred_window text check (length(preferred_window) between 1 and 200),
+  -- The spot the customer picked with their phone's location, if they did; the owner opens it in a map.
+  latitude double precision check (latitude between -90 and 90),
+  longitude double precision check (longitude between -180 and 180),
+  check ((latitude is null) = (longitude is null)),
   cancel_reason text check (length(cancel_reason) between 1 and 500),
   created_at timestamptz not null default now(),
   -- Also the index for the business_id foreign key.

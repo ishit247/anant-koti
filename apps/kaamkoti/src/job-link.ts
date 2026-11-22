@@ -4,7 +4,7 @@
 import type { Db, DbClient } from "@bodhchakra/db";
 import { currentBusiness } from "@bodhchakra/tenancy";
 import { issue, resolve, revokeFor } from "@bodhchakra/tokens";
-import { type JobStatus, jobTasks } from "./job.ts";
+import { type JobStatus, type WorkItem, workItems } from "./job.ts";
 import { customerQuote, type Quote } from "./quote.ts";
 
 export const JOB_LINK_DAYS = 30;
@@ -46,10 +46,8 @@ export interface CustomerJobView {
   readonly status: JobStatus;
   readonly customerName: string;
   readonly requestedAt: Date;
-  /** Titles of the tasks the request names, in the order they were added. */
-  readonly tasks: readonly string[];
-  /** The customer's own request photos; the page signs a URL for each (storage keys). */
-  readonly photos: readonly { readonly key: string }[];
+  /** The work items the request names, in the order they were added, with the customer's photos. */
+  readonly items: readonly WorkItem[];
   /** The quote the business sent, newest version only; never a draft. */
   readonly quote: Quote | null;
 }
@@ -85,17 +83,8 @@ export async function openJobLink(db: Db, secret: string): Promise<CustomerJobVi
     const job = rows[0];
     if (!job) return null;
     const business = await currentBusiness(client);
-    const tasks = await jobTasks(client, link.jobId);
-    const photos = await client.query<{ key: string }>(
-      `select o.key from kk.job_photo p
-       join storage.object o on o.business_id = p.business_id and o.id = p.object_id
-       where p.job_id = $1 and p.kind = 'request'
-       order by p.created_at, p.id`,
-      [link.jobId],
-    );
     return {
-      tasks: tasks.map((t) => t.title),
-      photos: photos.rows,
+      items: await workItems(client, link.jobId),
       quote: await customerQuote(client, link.jobId),
       businessName: business.name,
       businessPhone: business.phone,

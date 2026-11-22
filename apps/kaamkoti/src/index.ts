@@ -39,10 +39,10 @@ export {
   type IntakeInput,
   type IntakeResult,
   MAX_REQUEST_PHOTOS,
-  parseAnswers,
   readIntakeForm,
   submitRequest,
   toE164,
+  type WorkItemInput,
 } from "./intake.ts";
 export {
   JOB_EVENTS,
@@ -56,6 +56,8 @@ export {
   jobTasks,
   jobTransition,
   transitionJob,
+  type WorkItem,
+  workItems,
 } from "./job.ts";
 export {
   type CustomerJobView,

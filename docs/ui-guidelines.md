@@ -48,6 +48,7 @@ Contrast: text on `--paper` and `--card` meets WCAG AA; keep it so when adding a
 | Priced lines and totals      | `QuoteSummary`: `ul.lines` of `.row`s, `.row.total`, figures in `.amount`           |
 | Nothing here yet             | `<p className="empty">` with the next step in words                                 |
 | A rare or second action      | `<details className="card">` with a `summary` verb, the form inside (no JavaScript) |
+| One form, two views          | Each view a `.stack` (or `fieldset.item`) toggled with `hidden`; the request form   |
 | Link to pass on              | `ShareLink` (copy and WhatsApp), never a hand-built share row                       |
 | Member navigation            | `OwnerNav` at the end of every owner page, with `current` set                       |
 

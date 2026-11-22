@@ -14,13 +14,12 @@ import {
   seed,
   submitRequest,
   toE164,
+  type WorkItemInput,
 } from "../src/index.ts";
 
 const SHARMA = "10000000-0000-4000-8000-000000000001";
 const GAS_REFILL = "10000000-0000-4000-8000-0000000b0002";
 const GENERAL_SERVICE = "10000000-0000-4000-8000-0000000b0003";
-const INSPECTION = "10000000-0000-4000-8000-0000000b0001";
-const KAVERI_FAN = "20000000-0000-4000-8000-0000000b0001";
 /** Seeded Sharma customer. */
 const ANITA_PHONE = "+919000001001";
 
@@ -39,15 +38,21 @@ const jpeg = () =>
     .jpeg()
     .toBuffer();
 
+const item = (title: string, change: Partial<WorkItemInput> = {}): WorkItemInput => ({
+  title,
+  details: "",
+  photos: [],
+  ...change,
+});
+
 /** A valid request to Sharma; each test changes what it is about. */
 const request = (change: Partial<IntakeInput> = {}): IntakeInput => ({
-  tasks: [GAS_REFILL],
   name: "Vikram Patil",
   phone: "98765 43210",
   address: "7 Hill Road, Aundh, Pune",
-  preferredWindow: "Saturday morning",
-  answers: { appliance: "Split AC", symptom: "Water leaking", age_years: "6" },
-  photos: [],
+  latitude: "",
+  longitude: "",
+  items: [item("AC gas refill")],
   ...change,
 });
 
@@ -78,13 +83,13 @@ describe("the public request form", () => {
       ).rows[0].count,
     );
 
-  it("creates the customer, the job with its tasks and answers, and a link that opens it", async () => {
-    const result = await submit(request({ tasks: [GENERAL_SERVICE, GAS_REFILL] }));
+  it("creates the customer, the job with its address and a link that opens it", async () => {
+    const result = await submit(request({ latitude: "18.5590", longitude: "73.8070" }));
     if (!result.ok) throw new Error(result.error);
     expect(result.number).toBe(3);
     const { rows } = await owner.tx((c) =>
       c.query(
-        `select j.source, j.status, j.answers, j.address, j.preferred_window, c.name, c.phone_e164
+        `select j.source, j.status, j.address, j.latitude, j.longitude, c.name, c.phone_e164
          from kk.job j join kk.customer c on c.id = j.customer_id where j.id = $1`,
         [result.jobId],
       ),
@@ -92,9 +97,9 @@ describe("the public request form", () => {
     expect(rows[0]).toEqual({
       source: "public_form",
       status: "requested",
-      answers: { appliance: "Split AC", symptom: "Water leaking", age_years: 6 },
       address: "7 Hill Road, Aundh, Pune",
-      preferred_window: "Saturday morning",
+      latitude: 18.559,
+      longitude: 73.807,
       name: "Vikram Patil",
       phone_e164: "+919876543210",
     });
@@ -102,28 +107,98 @@ describe("the public request form", () => {
       businessName: "Sharma Cooling Services",
       number: 3,
       customerName: "Vikram Patil",
-      // In the business's display order.
-      tasks: ["AC gas refill", "AC general service"],
-      photos: [],
     });
   });
 
-  it("stores the photos privately, and the customer's link shows them by signed URL", async () => {
+  it("makes each work item a task in the order sent; a price-list name is that item, any other the customer's own", async () => {
     const result = await submit(
       request({
-        photos: [
-          { question: "photo", bytes: await jpeg() },
-          { question: "photo", bytes: await jpeg() },
+        items: [
+          item("Broken wire", { details: "  Cut near the window.  " }),
+          // Case and spacing do not hide a price-list item.
+          item("  ac   GENERAL service "),
+          item("AC gas refill"),
+        ],
+      }),
+    );
+    if (!result.ok) throw new Error(result.error);
+    const { rows } = await owner.tx((c) =>
+      c.query(
+        `select catalogue_item_id, title, details, added_by from kk.job_task
+         where job_id = $1 order by added_at, id`,
+        [result.jobId],
+      ),
+    );
+    expect(rows).toEqual([
+      {
+        catalogue_item_id: null,
+        title: "Broken wire",
+        details: "Cut near the window.",
+        added_by: "customer",
+      },
+      {
+        catalogue_item_id: GENERAL_SERVICE,
+        title: "AC general service",
+        details: null,
+        added_by: "customer",
+      },
+      {
+        catalogue_item_id: GAS_REFILL,
+        title: "AC gas refill",
+        details: null,
+        added_by: "customer",
+      },
+    ]);
+  });
+
+  it("takes a hidden item's name as the customer's own words, priced by the business", async () => {
+    await owner.tx((c) =>
+      c.query("update kk.catalogue_item set active = false where id = $1", [GENERAL_SERVICE]),
+    );
+    const result = await submit(request({ items: [item("AC general service")] }));
+    if (!result.ok) throw new Error(result.error);
+    const view = await openJobLink(app, result.secret);
+    expect(view?.items.map((i) => [i.title, i.listed])).toEqual([["AC general service", false]]);
+    await owner.tx((c) =>
+      c.query("update kk.catalogue_item set active = true where id = $1", [GENERAL_SERVICE]),
+    );
+  });
+
+  it("does not match another business's price-list item", async () => {
+    // Kaveri's item, sent to Sharma: only the customer's words.
+    const result = await submit(request({ items: [item("Fan installation")] }));
+    if (!result.ok) throw new Error(result.error);
+    expect((await openJobLink(app, result.secret))?.items[0]?.listed).toBe(false);
+  });
+
+  it("keeps each photo with its work item, privately, shown on the customer's link by signed URL", async () => {
+    const result = await submit(
+      request({
+        items: [
+          item("AC gas refill", { photos: [await jpeg()] }),
+          item("Broken wire"),
+          item("Water leak", { photos: [await jpeg(), await jpeg()] }),
         ],
       }),
     );
     if (!result.ok) throw new Error(result.error);
     const view = await openJobLink(app, result.secret);
-    expect(view?.photos).toHaveLength(2);
-    const [first] = view?.photos ?? [];
+    expect(view?.items.map((i) => i.photos.length)).toEqual([1, 0, 2]);
+    const first = view?.items[0]?.photos[0];
     if (!first) throw new Error("no photo");
     expect((await fetch(storage.signedUrl(first))).status).toBe(200);
     expect((await fetch(`http://127.0.0.1:45447/${PRIVATE_BUCKET}/${first.key}`)).status).toBe(403);
+  });
+
+  it("refuses a customer's photo without a work item, in the database", async () => {
+    await expect(
+      owner.tx((c) =>
+        c.query(
+          `insert into kk.job_photo (business_id, job_id, object_id, kind)
+           select business_id, job_id, object_id, 'request' from kk.job_photo limit 1`,
+        ),
+      ),
+    ).rejects.toThrow(/check constraint/);
   });
 
   it("files a request from a known phone under that customer, without renaming them", async () => {
@@ -141,68 +216,35 @@ describe("the public request form", () => {
   });
 
   it.each([
-    ["no task", { tasks: [] }],
-    ["another business's item", { tasks: [KAVERI_FAN] }],
-    ["another business's item beside one of its own", { tasks: [GAS_REFILL, KAVERI_FAN] }],
-    ["an item that is not an id", { tasks: ["1 or 1=1"] }],
-  ])("refuses %s as a task, and writes nothing", async (_, change) => {
+    ["no work item", { items: [] }],
+    ["a work item without a title", { items: [item("AC gas refill"), item("   ")] }],
+    ["a title over 120 characters", { items: [item("x".repeat(121))] }],
+    ["details over 1000 characters", { items: [item("Leak", { details: "x".repeat(1001) })] }],
+    ["more than 20 work items", { items: Array.from({ length: 21 }, () => item("Leak")) }],
+  ])("refuses %s, and writes nothing", async (_, change) => {
     const before = await sharmaJobs();
-    expect(await submit(request(change))).toEqual({ ok: false, error: "tasks" });
+    expect(await submit(request(change))).toEqual({ ok: false, error: "items" });
     expect(await sharmaJobs()).toBe(before);
   });
 
-  it("refuses an item the business has hidden", async () => {
-    await owner.tx((c) =>
-      c.query("update kk.catalogue_item set active = false where id = $1", [INSPECTION]),
-    );
-    expect(await submit(request({ tasks: [INSPECTION] }))).toEqual({ ok: false, error: "tasks" });
-  });
-
   it.each([
-    ["a missing required answer", { answers: { appliance: "Split AC" } }],
-    [
-      "a choice the question does not offer",
-      { answers: { appliance: "Jet engine", symptom: "Not cooling" } },
-    ],
-    [
-      "a number that is not one",
-      { answers: { appliance: "Split AC", symptom: "Not cooling", age_years: "old" } },
-    ],
-  ])("refuses %s", async (_, change) => {
-    expect(await submit(request(change))).toEqual({ ok: false, error: "answers" });
+    ["only a latitude", { latitude: "18.5", longitude: "" }],
+    ["a latitude past the pole", { latitude: "91", longitude: "73.8" }],
+    ["a longitude that is not a number", { latitude: "18.5", longitude: "east" }],
+  ])("refuses %s as the location", async (_, change) => {
+    expect(await submit(request(change))).toEqual({ ok: false, error: "location" });
   });
 
-  it("refuses a photo for a business that asks for none", async () => {
-    const result = await submit(
-      {
-        ...request({ tasks: [KAVERI_FAN], answers: {} }),
-        photos: [{ question: "photo", bytes: await jpeg() }],
-      },
-      "kaveri-electricals",
-    );
-    expect(result).toEqual({ ok: false, error: "answers" });
-  });
-
-  it("accepts a request to a business that asks no questions", async () => {
-    const result = await submit(
-      request({ tasks: [KAVERI_FAN], answers: {} }),
-      "kaveri-electricals",
-    );
-    // Kaveri's seed has requests #1 to #3.
-    expect(result).toMatchObject({ ok: true, number: 4 });
-  });
-
-  it("refuses a file that is not an image, and more than six photos", async () => {
-    const text = { question: "photo", bytes: Buffer.from("not a photo") };
-    expect(await submit(request({ photos: [text] }))).toEqual({
-      ok: false,
-      error: "photo_not_an_image",
-    });
-    const seven = Array.from({ length: 7 }, () => ({ question: "photo", bytes: Buffer.alloc(1) }));
-    expect(await submit(request({ photos: seven }))).toEqual({
-      ok: false,
-      error: "too_many_photos",
-    });
+  it("refuses a file that is not an image, and more than six photos across the work items", async () => {
+    expect(
+      await submit(request({ items: [item("Leak", { photos: [Buffer.from("not a photo")] })] })),
+    ).toEqual({ ok: false, error: "photo_not_an_image" });
+    const four = Array.from({ length: 4 }, () => Buffer.alloc(1));
+    expect(
+      await submit(
+        request({ items: [item("Leak", { photos: four }), item("Wire", { photos: four })] }),
+      ),
+    ).toEqual({ ok: false, error: "too_many_photos" });
   });
 
   it("refuses a phone number it cannot read, and an unknown business", async () => {
@@ -224,23 +266,30 @@ describe("toE164", () => {
 });
 
 describe("readIntakeForm", () => {
-  it("reads the page's field names and skips an empty file input", async () => {
+  it("reads the page's field names, items in the order of their number, skipping empty files and items", async () => {
     const form = new FormData();
-    form.append("task", GAS_REFILL);
-    form.append("task", GENERAL_SERVICE);
     form.append("name", "Vikram");
     form.append("phone", "9876543210");
     form.append("address", "Aundh");
-    form.append("q.symptom", "Not cooling");
-    form.append("photo.photo", new File([await jpeg()], "ac.jpg"));
-    form.append("photo.photo", new File([], ""));
+    form.append("latitude", "18.5");
+    form.append("longitude", "73.8");
+    form.append("item.10.title", "Broken wire");
+    form.append("item.10.photo", new File([await jpeg()], "wire.jpg"));
+    form.append("item.10.photo", new File([], ""));
+    form.append("item.2.title", "AC service");
+    form.append("item.2.details", "Every summer");
+    form.append("item.3.title", "");
+    form.append("item.3.photo", new File([], ""));
+    form.append("item.x.title", "ignored");
     const input = await readIntakeForm(form);
     expect(input).toMatchObject({
-      tasks: [GAS_REFILL, GENERAL_SERVICE],
       name: "Vikram",
-      preferredWindow: "",
-      answers: { symptom: "Not cooling" },
+      latitude: "18.5",
+      longitude: "73.8",
     });
-    expect(input.photos.map((p) => p.question)).toEqual(["photo"]);
+    expect(input.items.map((i) => [i.title, i.details, i.photos.length])).toEqual([
+      ["AC service", "Every summer", 0],
+      ["Broken wire", "", 1],
+    ]);
   });
 });

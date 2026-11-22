@@ -2,6 +2,7 @@
 // pg-boss runs as the runtime role with its own migration, schema creation and REINDEX turned off: that role
 // owns nothing and may not run DDL. Jobs are sent on the caller's transaction, so a job exists only if the
 // business write that asked for it committed.
+import { pathToFileURL } from "node:url";
 import type { DbClient, MigrationFolder } from "@bodhchakra/db";
 import type { Logger } from "@bodhchakra/log";
 import { PgBoss } from "pg-boss";
@@ -151,5 +152,7 @@ export function createJobs(config: JobsConfig): Jobs {
 /** The pg-boss schema and the runtime role's rights on it; an app lists this before its own folder. */
 export const migrations: MigrationFolder = {
   name: "jobs",
-  dir: new URL("../migrations/", import.meta.url),
+  // Built from a path, as storage and audit do: the web bundler tries to resolve `new URL(…, import.meta.url)`
+  // as a module and fails on a folder.
+  dir: pathToFileURL(`${import.meta.dirname}/../migrations/`),
 };

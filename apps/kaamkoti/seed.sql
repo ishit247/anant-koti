@@ -61,31 +61,38 @@ insert into kk.catalogue_item (id, business_id, name, unit, unit_price_minor, ta
   ('20000000-0000-4000-8000-0000000b0001', '20000000-0000-4000-8000-000000000002', 'Fan installation', 'unit', 40000, 1800, 0),
   ('20000000-0000-4000-8000-0000000b0002', '20000000-0000-4000-8000-000000000002', 'House rewiring', 'sq_ft', 9000, 1800, 1);
 
--- A request names one or more tasks. Photos are not seeded: their bytes live in Garage, not in this file.
-insert into kk.job (id, business_id, customer_id, number, source, answers, address, preferred_window) values
+-- A request names one or more work items (tasks): a price-list item, or the customer's own words for the
+-- business to price. Photos are not seeded: their bytes live in Garage, not in this file.
+insert into kk.job (id, business_id, customer_id, number, source, address, latitude, longitude) values
   ('10000000-0000-4000-8000-0000000e0001', '10000000-0000-4000-8000-000000000001',
    '10000000-0000-4000-8000-0000000c0001', 1, 'public_form',
-   '{"appliance":"Split AC","symptom":"Not cooling","age_years":4}',
-   'Flat 4, Shanti Apartments, Kothrud, Pune', 'Weekday evenings'),
+   'Flat 4, Shanti Apartments, Kothrud, Pune', 18.507400, 73.807700),
   ('10000000-0000-4000-8000-0000000e0002', '10000000-0000-4000-8000-000000000001',
-   '10000000-0000-4000-8000-0000000c0002', 2, 'phone', '{}', '12 Lane 5, Baner, Pune', null),
+   '10000000-0000-4000-8000-0000000c0002', 2, 'phone', '12 Lane 5, Baner, Pune', null, null),
   ('20000000-0000-4000-8000-0000000e0001', '20000000-0000-4000-8000-000000000002',
-   '20000000-0000-4000-8000-0000000c0001', 1, 'public_form', '{}',
-   '88 4th Cross, Jayanagar, Bengaluru', null),
+   '20000000-0000-4000-8000-0000000c0001', 1, 'public_form',
+   '88 4th Cross, Jayanagar, Bengaluru', null, null),
   ('20000000-0000-4000-8000-0000000e0002', '20000000-0000-4000-8000-000000000002',
-   '20000000-0000-4000-8000-0000000c0003', 2, 'phone', '{}', '21 Residency Road, Bengaluru', null);
+   '20000000-0000-4000-8000-0000000c0003', 2, 'phone', '21 Residency Road, Bengaluru', null, null);
 
-insert into kk.job_task (id, business_id, job_id, catalogue_item_id, title, added_by) values
+insert into kk.job_task (id, business_id, job_id, catalogue_item_id, title, details, added_by) values
   ('10000000-0000-4000-8000-0000000f0001', '10000000-0000-4000-8000-000000000001',
-   '10000000-0000-4000-8000-0000000e0001', '10000000-0000-4000-8000-0000000b0002', 'AC gas refill', 'customer'),
+   '10000000-0000-4000-8000-0000000e0001', '10000000-0000-4000-8000-0000000b0002', 'AC gas refill',
+   'Split AC in the bedroom, not cooling since last week.', 'customer'),
   ('10000000-0000-4000-8000-0000000f0002', '10000000-0000-4000-8000-000000000001',
-   '10000000-0000-4000-8000-0000000e0001', '10000000-0000-4000-8000-0000000b0003', 'AC general service', 'customer'),
+   '10000000-0000-4000-8000-0000000e0001', '10000000-0000-4000-8000-0000000b0003', 'AC general service',
+   null, 'customer'),
+  ('10000000-0000-4000-8000-0000000f0004', '10000000-0000-4000-8000-000000000001',
+   '10000000-0000-4000-8000-0000000e0001', null, 'Broken wire',
+   'The wire to the outdoor unit is cut near the window.', 'customer'),
   ('10000000-0000-4000-8000-0000000f0003', '10000000-0000-4000-8000-000000000001',
-   '10000000-0000-4000-8000-0000000e0002', '10000000-0000-4000-8000-0000000b0001', 'Inspection visit', 'business'),
+   '10000000-0000-4000-8000-0000000e0002', '10000000-0000-4000-8000-0000000b0001', 'Inspection visit',
+   null, 'business'),
   ('20000000-0000-4000-8000-0000000f0001', '20000000-0000-4000-8000-000000000002',
-   '20000000-0000-4000-8000-0000000e0001', '20000000-0000-4000-8000-0000000b0001', 'Fan installation', 'customer'),
+   '20000000-0000-4000-8000-0000000e0001', '20000000-0000-4000-8000-0000000b0001', 'Fan installation',
+   null, 'customer'),
   ('20000000-0000-4000-8000-0000000f0002', '20000000-0000-4000-8000-000000000002',
-   '20000000-0000-4000-8000-0000000e0002', null, 'Check tripping main switch', 'business');
+   '20000000-0000-4000-8000-0000000e0002', null, 'Check tripping main switch', null, 'business');
 
 -- Quotes. Sharma's request #2 has one sent (an inspection visit and a request-level discount, both at 18 % GST),
 -- so the job is `quoted`; Kaveri's request #2 has a draft pricing its custom task. Requests #1 are unquoted, for
@@ -115,9 +122,9 @@ update kk.job set status = 'quoted' where id = '10000000-0000-4000-8000-0000000e
 -- A negotiation that ended in acceptance: Kaveri's request #3 had version 1 (₹472) countered at ₹400, then
 -- version 2 with a discount bringing it to ₹400, accepted. Each step is the update the app makes, in order,
 -- because the quote trigger allows only those moves. The job is `accepted` and its task `approved`.
-insert into kk.job (id, business_id, customer_id, number, source, answers, address, preferred_window) values
+insert into kk.job (id, business_id, customer_id, number, source, address) values
   ('20000000-0000-4000-8000-0000000e0003', '20000000-0000-4000-8000-000000000002',
-   '20000000-0000-4000-8000-0000000c0002', 3, 'public_form', '{}', '3 MG Road, Bengaluru', 'Saturday morning');
+   '20000000-0000-4000-8000-0000000c0002', 3, 'public_form', '3 MG Road, Bengaluru');
 insert into kk.job_task (id, business_id, job_id, catalogue_item_id, title, added_by) values
   ('20000000-0000-4000-8000-0000000f0003', '20000000-0000-4000-8000-000000000002',
    '20000000-0000-4000-8000-0000000e0003', '20000000-0000-4000-8000-0000000b0001', 'Fan installation', 'customer');

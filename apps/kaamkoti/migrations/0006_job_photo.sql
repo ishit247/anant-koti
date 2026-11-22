@@ -6,10 +6,14 @@ create table kk.job_photo (
   job_id uuid not null,
   object_id uuid not null unique,
   kind text not null check (kind in ('request', 'before', 'after')),
+  -- The work item the photo shows. A customer's photo always belongs to one.
+  job_task_id uuid,
   -- clock_timestamp, as for job_task: photos sent together are shown in the order they were sent.
   created_at timestamptz not null default clock_timestamp(),
-  -- Composite, so a photo row can name only a job and an object of its own business.
+  check (kind <> 'request' or job_task_id is not null),
+  -- Composite, so a photo row can name only a job, a task of that job and an object of its own business.
   foreign key (business_id, job_id) references kk.job (business_id, id),
+  foreign key (business_id, job_id, job_task_id) references kk.job_task (business_id, job_id, id),
   foreign key (business_id, object_id) references storage.object (business_id, id)
 );
 create index job_photo_job on kk.job_photo (business_id, job_id, created_at);

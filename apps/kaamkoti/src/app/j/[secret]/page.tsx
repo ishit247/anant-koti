@@ -6,6 +6,7 @@ import { openJobLink } from "../../../job-link.ts";
 import type { Quote } from "../../../quote.ts";
 import { server } from "../../../server.ts";
 import { QuoteSummary } from "../../quote-summary.tsx";
+import { WorkItems } from "../../work-items.tsx";
 
 // The path secret is the credential: it resolves to one job, read inside withTenant of that job's business.
 // No cookie is read or set; the app-wide Referrer-Policy keeps the secret out of Referer headers. The answer
@@ -82,14 +83,16 @@ export default async function JobPage({
       <p role="status">
         {waiting ? `Waiting for ${job.businessName} to reply to your answer.` : STATUS[job.status]}
       </p>
-      {job.tasks.length > 0 ? (
-        <ul>
-          {job.tasks.map((task, i) => (
-            // Titles may repeat (two custom tasks of the same name); their order is fixed.
-            // biome-ignore lint/suspicious/noArrayIndexKey: the list is static for this render
-            <li key={i}>{task}</li>
-          ))}
-        </ul>
+      {job.items.length > 0 ? (
+        <>
+          <h2>Work asked for</h2>
+          {/* Signed after the link resolved to this job: each URL opens one object for five minutes. */}
+          <WorkItems
+            items={job.items}
+            sign={(photo) => storage.signedUrl(photo)}
+            photoAlt="Sent with your request"
+          />
+        </>
       ) : null}
       {quote ? (
         <>
@@ -101,16 +104,6 @@ export default async function JobPage({
           </div>
         </>
       ) : null}
-      {job.photos.map((photo) => (
-        // Signed after the link resolved to this job: each URL opens one object for five minutes.
-        // biome-ignore lint/performance/noImgElement: a presigned URL, not an asset Next can optimise
-        <img
-          key={photo.key}
-          src={storage.signedUrl(photo)}
-          alt="Sent with your request"
-          width={160}
-        />
-      ))}
       <p>
         <a className="button" href={`tel:${job.businessPhone}`}>
           Call

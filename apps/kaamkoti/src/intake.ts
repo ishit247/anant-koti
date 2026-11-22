@@ -1,41 +1,45 @@
 // The public request form (docs/architecture.md 4.3, scope `public-intake`): a slug opens one business, and the
 // form may only create a request in it. Everything the customer sent is checked here, before any write: the
-// contact details, the tasks (active catalogue items of this business), the answers (this business's
-// questions) and the photos (checkImage). Then one transaction writes the customer, the job, its tasks and
-// photos, and the link the customer is sent to.
+// contact details and address, the picked location, the work items and their photos (checkImage). Then one
+// transaction writes the customer, the job, a task per work item with its photos, and the link the customer is
+// sent to. A work item whose title is the name of one of the business's active catalogue items is that item, at
+// its price; any other title is the customer's own words, for the business to price in the quote.
 import type { Db, DbClient } from "@bodhchakra/db";
 import { type CheckedImage, checkImage, type Storage } from "@bodhchakra/storage";
 import { resolveSlug } from "@bodhchakra/tenancy";
 import { z } from "zod";
 import { businessProfile } from "./business-profile.ts";
 import { issueJobLink } from "./job-link.ts";
-import type { intakeQuestion } from "./trade-template.ts";
 
-/** Up to this many photos per request (docs/architecture.md 10). */
+/** Up to this many photos per request, across its work items (docs/architecture.md 10). */
 export const MAX_REQUEST_PHOTOS = 6;
-export const MAX_REQUEST_TASKS = 20;
-const MAX_TEXT_ANSWER = 1000;
-const MAX_NUMBER_ANSWER = 1_000_000;
+export const MAX_REQUEST_ITEMS = 20;
+export const MAX_ITEM_TITLE = 120;
+export const MAX_ITEM_DETAILS = 1000;
+
+/** One work item as it arrived. */
+export interface WorkItemInput {
+  readonly title: string;
+  readonly details: string;
+  readonly photos: readonly Uint8Array[];
+}
 
 /** The form as it arrived; nothing in it is trusted yet. */
 export interface IntakeInput {
-  /** Catalogue item ids. */
-  readonly tasks: readonly string[];
   readonly name: string;
   readonly phone: string;
   readonly address: string;
-  readonly preferredWindow: string;
-  /** By question key. */
-  readonly answers: Readonly<Record<string, string>>;
-  /** Each under the key of the photo question it answers. */
-  readonly photos: readonly { readonly question: string; readonly bytes: Uint8Array }[];
+  /** Both empty unless the customer picked their location. */
+  readonly latitude: string;
+  readonly longitude: string;
+  readonly items: readonly WorkItemInput[];
 }
 
 export type IntakeError =
   | "not_found"
   | "contact"
-  | "tasks"
-  | "answers"
+  | "location"
+  | "items"
   | "too_many_photos"
   | "photo_too_large"
   | "photo_not_an_image";
@@ -44,31 +48,40 @@ export type IntakeResult =
   | { readonly ok: true; readonly jobId: string; readonly number: number; readonly secret: string }
   | { readonly ok: false; readonly error: IntakeError };
 
+const ITEM_FIELD = /^item\.(\d{1,2})\.(title|details|photo)$/;
+
 /**
- * The form's fields as the page names them: `task` (repeated), `name`, `phone`, `address`, `preferredWindow`,
- * `q.<key>` for an answer and `photo.<key>` for the files answering a photo question. An empty file input
- * arrives as a file of 0 bytes and is skipped.
+ * The form's fields as the page names them: `name`, `phone`, `address`, `latitude`, `longitude`, and per work
+ * item `item.<n>.title`, `item.<n>.details` and `item.<n>.photo` (files). Items keep the order of `<n>`. An
+ * empty file input arrives as a file of 0 bytes and is skipped, and so is an item left wholly blank.
  */
 export async function readIntakeForm(form: FormData): Promise<IntakeInput> {
   const text = (name: string) => {
     const value = form.get(name);
     return typeof value === "string" ? value : "";
   };
-  const answers: Record<string, string> = {};
-  const photos: { question: string; bytes: Uint8Array }[] = [];
+  const items = new Map<number, { title: string; details: string; photos: Uint8Array[] }>();
   for (const [name, value] of form) {
-    if (name.startsWith("q.") && typeof value === "string") answers[name.slice(2)] = value;
-    else if (name.startsWith("photo.") && typeof value !== "string" && value.size > 0)
-      photos.push({ question: name.slice(6), bytes: new Uint8Array(await value.arrayBuffer()) });
+    const field = ITEM_FIELD.exec(name);
+    if (!field) continue;
+    const n = Number(field[1]);
+    const item = items.get(n) ?? { title: "", details: "", photos: [] };
+    items.set(n, item);
+    if (field[2] === "photo") {
+      if (typeof value !== "string" && value.size > 0)
+        item.photos.push(new Uint8Array(await value.arrayBuffer()));
+    } else if (typeof value === "string") item[field[2] === "title" ? "title" : "details"] = value;
   }
   return {
-    tasks: form.getAll("task").filter((v) => typeof v === "string"),
     name: text("name"),
     phone: text("phone"),
     address: text("address"),
-    preferredWindow: text("preferredWindow"),
-    answers,
-    photos,
+    latitude: text("latitude"),
+    longitude: text("longitude"),
+    items: [...items]
+      .sort(([a], [b]) => a - b)
+      .map(([, item]) => item)
+      .filter((item) => item.title.trim() || item.details.trim() || item.photos.length > 0),
   };
 }
 
@@ -89,52 +102,35 @@ export const contact = z.object({
   name: z.string().trim().min(1).max(120),
   phone: z.string().transform(toE164).pipe(z.string().regex(E164)),
   address: z.string().trim().min(1).max(500),
-  preferredWindow: z
-    .string()
-    .trim()
-    .max(200)
-    .transform((s) => s || null),
 });
 
-const taskIds = z.array(z.uuid()).min(1).max(MAX_REQUEST_TASKS);
+/** A number typed as text; an empty string is refused, not read as 0. */
+const coordinate = (limit: number) =>
+  z.string().trim().min(1).pipe(z.coerce.number<string>().min(-limit).max(limit));
 
-type Question = z.infer<typeof intakeQuestion>;
-export type Answers = Record<string, string | number>;
+/** Null when no location was picked; anything else must be a real coordinate pair. */
+const location = z.union([
+  z.object({ latitude: z.literal(""), longitude: z.literal("") }).transform(() => null),
+  z.object({ latitude: coordinate(90), longitude: coordinate(180) }),
+]);
+export type Location = { readonly latitude: number; readonly longitude: number };
 
-/** The answers to a business's questions, or null if one is missing or not a valid answer to its question. */
-export function parseAnswers(
-  questions: readonly Question[],
-  raw: Readonly<Record<string, string>>,
-): Answers | null {
-  const answers: Answers = {};
-  for (const question of questions) {
-    if (question.type === "photo") continue;
-    const value = (raw[question.key] ?? "").trim();
-    if (!value) {
-      if (question.required) return null;
-      continue;
-    }
-    if (question.type === "text") {
-      if (value.length > MAX_TEXT_ANSWER) return null;
-      answers[question.key] = value;
-    } else if (question.type === "number") {
-      const n = Number(value);
-      if (!Number.isFinite(n) || n < 0 || n > MAX_NUMBER_ANSWER) return null;
-      answers[question.key] = n;
-    } else {
-      if (!question.options.includes(value)) return null;
-      answers[question.key] = value;
-    }
-  }
-  return answers;
-}
+const workItems = z
+  .array(
+    z.object({
+      title: z.string().trim().min(1).max(MAX_ITEM_TITLE),
+      details: z
+        .string()
+        .trim()
+        .max(MAX_ITEM_DETAILS)
+        .transform((s) => s || null),
+    }),
+  )
+  .min(1)
+  .max(MAX_REQUEST_ITEMS);
 
-/** Photos may only answer the business's photo questions, and a required one needs at least one. */
-function photosFit(questions: readonly Question[], sent: readonly string[]): boolean {
-  const photoQuestions = questions.filter((q) => q.type === "photo");
-  if (!sent.every((key) => photoQuestions.some((q) => q.key === key))) return false;
-  return photoQuestions.every((q) => !q.required || sent.includes(q.key));
-}
+/** The same name, whatever the case and spacing the customer typed it with. */
+const sameName = (name: string) => name.trim().replace(/\s+/g, " ").toLowerCase();
 
 /** Creates a request from the public form of the business with this slug. */
 export async function submitRequest(
@@ -145,58 +141,68 @@ export async function submitRequest(
 ): Promise<IntakeResult> {
   const person = contact.safeParse(input);
   if (!person.success) return { ok: false, error: "contact" };
-  const tasks = taskIds.safeParse([...new Set(input.tasks)]);
-  if (!tasks.success) return { ok: false, error: "tasks" };
-  if (input.photos.length > MAX_REQUEST_PHOTOS) return { ok: false, error: "too_many_photos" };
+  const place = location.safeParse(input);
+  if (!place.success) return { ok: false, error: "location" };
+  const items = workItems.safeParse(input.items);
+  if (!items.success) return { ok: false, error: "items" };
+  if (input.items.flatMap((item) => item.photos).length > MAX_REQUEST_PHOTOS)
+    return { ok: false, error: "too_many_photos" };
 
   // Decoding is the slow part; it runs before a connection is taken.
-  const photos: { question: string; image: CheckedImage }[] = [];
-  for (const photo of input.photos) {
-    const checked = await checkImage(photo.bytes);
-    if (!checked.ok)
-      return {
-        ok: false,
-        error: checked.reason === "too_large" ? "photo_too_large" : "photo_not_an_image",
-      };
-    photos.push({ question: photo.question, image: checked.image });
+  const photos: CheckedImage[][] = [];
+  for (const item of input.items) {
+    const checkedItem: CheckedImage[] = [];
+    for (const bytes of item.photos) {
+      const checked = await checkImage(bytes);
+      if (!checked.ok)
+        return {
+          ok: false,
+          error: checked.reason === "too_large" ? "photo_too_large" : "photo_not_an_image",
+        };
+      checkedItem.push(checked.image);
+    }
+    photos.push(checkedItem);
   }
 
   const businessId = await db.tx((client) => resolveSlug(client, slug));
   if (!businessId) return { ok: false, error: "not_found" };
   return db.withTenant(businessId, async (client): Promise<IntakeResult> => {
-    const profile = await businessProfile(client);
-    if (!profile) return { ok: false, error: "not_found" };
-    const answers = parseAnswers(profile.intake, input.answers);
-    if (
-      !answers ||
-      !photosFit(
-        profile.intake,
-        photos.map((p) => p.question),
-      )
-    )
-      return { ok: false, error: "answers" };
-    const items = await activeItems(client, tasks.data);
-    if (items.length !== tasks.data.length) return { ok: false, error: "tasks" };
+    if (!(await businessProfile(client))) return { ok: false, error: "not_found" };
+    const catalogue = await activeItemsByName(client);
 
     const customerId = await findOrCreateCustomer(client, businessId, person.data);
-    const job = await createJob(client, businessId, customerId, person.data, answers);
-    for (const item of items) {
-      await client.query(
-        `insert into kk.job_task (business_id, job_id, catalogue_item_id, title, added_by)
-         values ($1, $2, $3, $4, 'customer')`,
-        [businessId, job.id, item.id, item.name],
+    const job = await createJob(client, businessId, customerId, person.data, place.data);
+    for (const [i, item] of items.data.entries()) {
+      const known = catalogue.get(sameName(item.title));
+      const { rows } = await client.query<{ id: string }>(
+        `insert into kk.job_task (business_id, job_id, catalogue_item_id, title, details, added_by)
+         values ($1, $2, $3, $4, $5, 'customer')
+         returning id`,
+        [businessId, job.id, known?.id ?? null, known?.name ?? item.title, item.details],
       );
-    }
-    for (const { image } of photos) {
-      const object = await storage.putImage(client, image, null);
-      await client.query(
-        `insert into kk.job_photo (business_id, job_id, object_id, kind) values ($1, $2, $3, 'request')`,
-        [businessId, job.id, object.id],
-      );
+      const task = rows[0];
+      if (!task) throw new Error("intake: the task insert returned no row");
+      for (const image of photos[i] ?? []) {
+        const object = await storage.putImage(client, image, null);
+        await client.query(
+          `insert into kk.job_photo (business_id, job_id, job_task_id, object_id, kind)
+           values ($1, $2, $3, $4, 'request')`,
+          [businessId, job.id, task.id, object.id],
+        );
+      }
     }
     const { secret } = await issueJobLink(client, job.id);
     return { ok: true, jobId: job.id, number: job.number, secret };
   });
+}
+
+/** The business's active catalogue items by name; the first in display order wins a shared name. */
+async function activeItemsByName(client: DbClient) {
+  const { rows } = await client.query<{ id: string; name: string }>(
+    "select id, name from kk.catalogue_item where active order by position desc",
+  );
+  // Reversed, so the earliest item is set last and wins.
+  return new Map(rows.map((row) => [sameName(row.name), row]));
 }
 
 /** The requested items that this business offers now, in its display order. RLS keeps other businesses out. */
@@ -242,23 +248,23 @@ export async function createJob(
   businessId: string,
   customerId: string,
   person: Contact,
-  answers: Answers,
+  place: Location | null,
   source: "public_form" | "phone" = "public_form",
 ): Promise<{ id: string; number: number }> {
   await client.query("select pg_advisory_xact_lock(hashtextextended('kk.job.number:' || $1, 0))", [
     businessId,
   ]);
   const { rows } = await client.query<{ id: string; number: number }>(
-    `insert into kk.job (business_id, customer_id, number, source, answers, address, preferred_window)
+    `insert into kk.job (business_id, customer_id, number, source, address, latitude, longitude)
      select $1, $2, coalesce(max(number), 0) + 1, $3, $4, $5, $6 from kk.job
      returning id, number`,
     [
       businessId,
       customerId,
       source,
-      JSON.stringify(answers),
       person.address,
-      person.preferredWindow,
+      place?.latitude ?? null,
+      place?.longitude ?? null,
     ],
   );
   const job = rows[0];

@@ -189,8 +189,8 @@ Each module's own section in 12 lists its tables. Section 4.1 covers tenancy.
 | `business_profile`  | 1:1 with business: `trade_key`, `about`, `service_area`, `logo_object_id`, `intake` (questions), `checklist`, `terms`; copied from the template at onboarding, then the business's own                                                                                                                            |
 | `catalogue_item`    | `name`, `unit` (`job`, `hour`, `unit`, `sq_ft`, …), `unit_price_minor`, `tax_rate_bp`, `active`                                                                                                                                                                                                                   |
 | `customer`          | `name`, `phone_e164`, `email`, `address`; unique (`business_id`, `phone_e164`); found or created on request                                                                                                                                                                                                       |
-| `job`               | The request and everything after: `customer_id`, `number` (per business), `source` (`public_form`, `whatsapp_link`, `qr`, `phone`), `answers`, `address`, `preferred_window`, `status` (section 6), `accepted_quote_id`, `cancel_reason`                                                                          |
-| `job_task`          | One piece of work in a request: `job_id`, `catalogue_item_id` (nullable: custom task), `title`, `status` (`requested`, `quoted`, `approved`, `done`, `dropped`), `added_by` (`customer`, `business`), `added_at`. A request has one or more                                                                       |
+| `job`               | The request and everything after: `customer_id`, `number` (per business), `source` (`public_form`, `whatsapp_link`, `qr`, `phone`), `address`, `latitude`/`longitude` (both or neither: the customer's picked location), `status` (section 6), `accepted_quote_id`, `cancel_reason`                               |
+| `job_task`          | One piece of work in a request (a "work item" on the form): `job_id`, `catalogue_item_id` (nullable: custom task), `title`, `details`, `status` (`requested`, `quoted`, `approved`, `done`, `dropped`), `added_by` (`customer`, `business`), `added_at`. A request has one or more                                |
 | `quote`             | `job_id`, `version` (unique per job), `status` (`draft`, `sent`, `accepted`, `rejected`, `countered`, `superseded`), `valid_until`, `sent_at`, totals (`net_minor`, `tax_minor`, `total_minor`), `deposit_minor` (2.4); `counter_note`, `counter_total_minor`, `decided_at` (2.5)                                 |
 | `quote_line`        | `job_id`, `quote_id`, `position`, `job_task_id` (nullable: null = request-level charge), `catalogue_item_id` (nullable), `description`, `unit`, `quantity_milli`, `unit_price_minor`, `tax_rate_bp`, `net_minor`, `tax_minor`. Composite keys carry `job_id`, so a line prices only a task of its own quote's job |
 | `appointment`       | `job_id`, `kind` (`site_visit`, `work`), `technician_member_id`, `starts_at`, `ends_at`, `status` (`planned`, `done`, `cancelled`), `on_the_way_at`                                                                                                                                                               |
@@ -199,7 +199,7 @@ Each module's own section in 12 lists its tables. Section 4.1 covers tenancy.
 | `change_order_line` | Same shape as `quote_line`                                                                                                                                                                                                                                                                                        |
 | `invoice`           | `job_id` (unique while not void), `number` (per business, gap-free sequence row), `status` (`issued`, `paid`, `void`), totals, `issued_at`, `paid_at`                                                                                                                                                             |
 | `invoice_line`      | Snapshot of the accepted quote's lines plus approved change-order lines                                                                                                                                                                                                                                           |
-| `job_photo`         | `job_id`, `object_id` → `storage.object`, `kind` (`request`, `before`, `after`)                                                                                                                                                                                                                                   |
+| `job_photo`         | `job_id`, `object_id` → `storage.object`, `kind` (`request`, `before`, `after`), `job_task_id` (the work item it shows; required for `request`)                                                                                                                                                                   |
 | `review`            | `job_id` (unique), `rating` 1–5, `text`, `status` (`held`, `published`), `owner_response`, `publish_after`                                                                                                                                                                                                        |
 
 Rules the database enforces, not just the code:
@@ -260,8 +260,10 @@ requested ──send quote──▶ quoted ──customer accepts──▶ accep
   expired: accepting it is refused and the customer sees "ask for a new quote". The pg-boss job at
   `valid_until` only notifies the owner. No stored status can be stale.
 - Site visits are appointments of kind `site_visit` and do not move the job's state.
-- **Tasks and charges.** The customer picks catalogue items on the request form; each becomes a `job_task` with
-  a known price. A charge is task-level when its line has a `job_task_id`, and request-level (visit fee, discount,
+- **Tasks and charges.** The customer adds work items on the request form (3.2a), each with a title, details
+  and photos; each becomes a `job_task`. A title that names one of the business's active catalogue items (case
+  and spacing ignored; the title autocompletes from the price list) is that item, with a known price; any other
+  title is a custom task, which the first quote draft lists at 0 for the business to price. A charge is task-level when its line has a `job_task_id`, and request-level (visit fee, discount,
   one lump price) when it is null; one quote can mix both. A task the customer adds before the quote is accepted
   makes a new quote version. After acceptance, the customer's added task is only a request: it is
   `requested` and costs nothing until the business prices it in a change order and the customer approves.
@@ -392,9 +394,14 @@ invites in 0.7 are shared by the owner: copy the link, or a `wa.me` share. Sendi
   `/b/[slug]/request/send` (scope `public-intake`), not a server action like the app's other forms. It has to
   answer 429 and 413 and take six photos, and a server action can do neither. The proxy cannot limit it, because
   it buffers bodies only to 10 MB. Limits: 10 per IP per hour, then 200 per business per day, counted in that
-  order. Photos answer the business's `photo` questions (field `photo.<key>`); a business with no photo question
-  takes none. On success the customer is sent to a fresh job link (`/j/<secret>`), which shows their tasks and
-  photos (by `signedUrl`). `job_task` arrived with this step, not 2.4, because the form picks the tasks.
+  order. Since 3.2a the form is the same for every trade: name, mobile, address (with an optional "Use my
+  location", the browser's own geolocation; nothing is sent to a map service), and one or more work items
+  (fields `item.<n>.title`, `item.<n>.details`, `item.<n>.photo`). Up to 20 items and 6 photos in all; each
+  photo belongs to its item. A client component switches between the request and one item's editor; every
+  item's fields stay in the one multipart post. On success the customer is sent to a fresh job link
+  (`/j/<secret>`), which shows the work items with their details and photos (by `signedUrl`). The owner's job
+  page opens a picked location in Maps by a plain link. The trade template's intake questions are no longer
+  asked (3.2c decides their fate); the preferred time is agreed after acceptance (3.1b).
 
 ## 11. Audit
 

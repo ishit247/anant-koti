@@ -3,7 +3,7 @@
 import type { Db } from "@bodhchakra/db";
 import { type Money, money } from "@bodhchakra/money";
 import { currentBusiness, resolveSlug } from "@bodhchakra/tenancy";
-import { type BusinessProfile, businessProfile, listCatalogue } from "./business-profile.ts";
+import { businessProfile, listCatalogue } from "./business-profile.ts";
 
 export interface PublicPage {
   readonly name: string;
@@ -13,8 +13,6 @@ export interface PublicPage {
   readonly about: string;
   readonly serviceArea: string;
   readonly services: readonly { id: string; name: string; unit: string; price: Money }[];
-  /** What the request form asks, in the business's order. */
-  readonly questions: BusinessProfile["intake"];
 }
 
 /** The page for a slug, or null if no business has it or it has not finished onboarding (nothing to show yet). */
@@ -41,7 +39,6 @@ export async function publicPage(db: Db, slug: string): Promise<PublicPage | nul
           unit,
           price: money(unitPriceMinor, business.currency),
         })),
-      questions: profile.intake,
     };
   });
 }

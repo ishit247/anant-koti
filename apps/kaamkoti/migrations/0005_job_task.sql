@@ -1,5 +1,7 @@
--- One piece of work in a request (docs/architecture.md 5.3). The customer picks one or more catalogue items on
--- the public form; the business can add custom tasks later. Quote lines (2.4) price them.
+-- One piece of work in a request (docs/architecture.md 5.3): a work item. On the public form the customer adds
+-- one or more, each with a title (a catalogue item's name, or their own words), details and photos; the
+-- business can add tasks too. Quote lines (2.4) price them: a catalogue item at its price, any other task at
+-- the price the business proposes.
 create table kk.job_task (
   id uuid primary key default gen_random_uuid(),
   business_id uuid not null references tenancy.business (id),
@@ -7,6 +9,8 @@ create table kk.job_task (
   -- Null for a custom task. The title is copied, so renaming a catalogue item does not rewrite a request.
   catalogue_item_id uuid,
   title text not null check (length(title) between 1 and 120),
+  -- What the customer says about this piece of work.
+  details text check (length(details) between 1 and 1000),
   status text not null default 'requested'
     check (status in ('requested', 'quoted', 'approved', 'done', 'dropped')),
   added_by text not null check (added_by in ('customer', 'business')),

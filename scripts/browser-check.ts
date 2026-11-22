@@ -250,31 +250,53 @@ try {
   await form.getByRole("link", { name: "Request a visit" }).click();
   await form.waitForURL(`${APP}/b/sharma-cooling/request`);
   await shoot(form, "11-request-form");
-  const fill = async () => {
-    await form.selectOption("select[name='q.appliance']", "Split AC");
-    await form.selectOption("select[name='q.symptom']", "Not cooling");
-    await form.fill("input[name=name]", "Browser Check");
-    await form.fill("input[name=phone]", "98765 00000");
-    await form.fill("textarea[name=address]", "1 Check Road, Pune");
-  };
-  // No service picked: the form comes back with the reason.
-  await fill();
+  await form.fill("input[name=name]", "Browser Check");
+  await form.fill("input[name=phone]", "98765 00000");
+  await form.fill("textarea[name=address]", "1 Check Road, Pune");
+  // No work item yet: the form says so without posting.
   await form.getByRole("button", { name: "Send request" }).click();
-  await form.waitForURL(/\?error=tasks$/);
-  if (!(await form.getByRole("alert").filter({ hasText: "at least one service" }).count()))
-    problems.push("a request without a service is not explained");
+  if (!(await form.getByRole("alert").filter({ hasText: "at least one work item" }).count()))
+    problems.push("a request without a work item is not explained");
   await shoot(form, "12-request-form-error");
-  await fill();
-  await form.getByRole("checkbox", { name: /AC gas refill/ }).check();
-  await form.setInputFiles("input[name='photo.photo']", {
-    name: "ac.png",
-    mimeType: "image/png",
-    buffer: Buffer.from(ONE_PIXEL_PNG, "base64"),
-  });
+  // Saved items keep their (hidden) fields in the form; labels are looked up in the open editor only.
+  const editor = () => form.locator("fieldset.item:not([hidden])");
+  // A price-list item with a photo: the editor shows its price.
+  await form.getByRole("button", { name: "Add work item" }).click();
+  await editor().getByLabel("What needs doing?").fill("AC gas refill");
+  if (!(await form.getByText("from the price list").count()))
+    problems.push("a price-list title does not show its price");
+  await editor().getByLabel("Details (optional)").fill("Bedroom split AC, not cooling.");
+  await editor()
+    .getByLabel("Photos (optional)")
+    .setInputFiles({
+      name: "ac.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(ONE_PIXEL_PNG, "base64"),
+    });
+  await shoot(form, "12a-work-item-editor");
+  await form.getByRole("button", { name: "Save" }).click();
+  // The customer's own words: priced by the business.
+  await form.getByRole("button", { name: "Add work item" }).click();
+  await editor().getByLabel("What needs doing?").fill("Broken wire");
+  if (!(await form.getByText("The business will quote a price.").count()))
+    problems.push("a title of the customer's own does not say it will be quoted");
+  await form.getByRole("button", { name: "Save" }).click();
+  // Back on a new item discards it.
+  await form.getByRole("button", { name: "Add work item" }).click();
+  await editor().getByLabel("What needs doing?").fill("Changed my mind");
+  await form.getByRole("button", { name: "Back" }).click();
+  if (await form.getByText("Changed my mind").count())
+    problems.push("Back on a new work item does not discard it");
+  await shoot(form, "12b-request-with-items");
   await form.getByRole("button", { name: "Send request" }).click();
   await form.waitForURL(/\/j\/[A-Za-z0-9_-]{43}$/);
-  if (!(await form.getByText("AC gas refill").count()))
-    problems.push("the new request's link does not list its task");
+  if (
+    !(await form.getByText("AC gas refill").count()) ||
+    !(await form.getByText("Broken wire").count())
+  )
+    problems.push("the new request's link does not list its work items");
+  if (!(await form.getByText("Bedroom split AC, not cooling.").count()))
+    problems.push("the new request's link does not show a work item's details");
   const photo = form.getByRole("img", { name: "Sent with your request" });
   await photo.waitFor();
   if (!(await photo.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)))

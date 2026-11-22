@@ -143,3 +143,39 @@ export async function jobTasks(
   );
   return rows;
 }
+
+/** A work item as the customer described it, with the photos they sent for it. */
+export interface WorkItem {
+  readonly id: string;
+  readonly title: string;
+  readonly details: string | null;
+  /** From the price list, so priced at its price; otherwise the business proposes one. */
+  readonly listed: boolean;
+  /** Storage keys; the page signs a URL for each. */
+  readonly photos: readonly { readonly key: string }[];
+}
+
+/** The job's work items still asked for, in the order they were added, each with its photos. */
+export async function workItems(client: DbClient, jobId: string): Promise<WorkItem[]> {
+  const tasks = await client.query<{
+    id: string;
+    title: string;
+    details: string | null;
+    listed: boolean;
+  }>(
+    `select id, title, details, catalogue_item_id is not null as listed from kk.job_task
+     where job_id = $1 and status <> 'dropped' order by added_at, id`,
+    [jobId],
+  );
+  const photos = await client.query<{ job_task_id: string; key: string }>(
+    `select p.job_task_id, o.key from kk.job_photo p
+     join storage.object o on o.business_id = p.business_id and o.id = p.object_id
+     where p.job_id = $1 and p.kind = 'request'
+     order by p.created_at, p.id`,
+    [jobId],
+  );
+  return tasks.rows.map((task) => ({
+    ...task,
+    photos: photos.rows.filter((p) => p.job_task_id === task.id).map(({ key }) => ({ key })),
+  }));
+}

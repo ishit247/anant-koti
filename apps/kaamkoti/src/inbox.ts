@@ -4,9 +4,8 @@
 import type { Audit } from "@bodhchakra/audit";
 import type { DbClient } from "@bodhchakra/db";
 import { z } from "zod";
-import { businessProfile } from "./business-profile.ts";
-import { activeItems, contact, createJob, findOrCreateCustomer } from "./intake.ts";
-import { type JobStatus, jobTasks } from "./job.ts";
+import { activeItems, contact, createJob, findOrCreateCustomer, type Location } from "./intake.ts";
+import { type JobStatus, type WorkItem, workItems } from "./job.ts";
 import { issueJobLink, revokeJobLinks } from "./job-link.ts";
 
 export type JobSource = "public_form" | "whatsapp_link" | "qr" | "phone";
@@ -64,14 +63,12 @@ export async function countNewRequests(client: DbClient): Promise<number> {
   return rows[0]?.n ?? 0;
 }
 
-export interface OwnerJobView extends InboxRow {
+export interface OwnerJobView extends Omit<InboxRow, "tasks"> {
   readonly customerPhone: string;
   readonly address: string | null;
-  readonly preferredWindow: string | null;
-  /** The business's question and the customer's answer. */
-  readonly answers: readonly { readonly question: string; readonly answer: string }[];
-  /** Storage keys of the customer's request photos; the page signs a URL for each. */
-  readonly photos: readonly { readonly key: string }[];
+  /** Where the customer said they are, if they picked their location. */
+  readonly location: Location | null;
+  readonly items: readonly WorkItem[];
 }
 
 /** One request in full, or null if this business has no such job. */
@@ -85,11 +82,11 @@ export async function ownerJob(client: DbClient, jobId: string): Promise<OwnerJo
     phone_e164: string;
     created_at: Date;
     address: string | null;
-    preferred_window: string | null;
-    answers: Record<string, string | number>;
+    latitude: number | null;
+    longitude: number | null;
   }>(
     `select j.id, j.number, j.status, j.source, c.name as customer_name, c.phone_e164, j.created_at,
-            j.address, j.preferred_window, j.answers
+            j.address, j.latitude, j.longitude
      from kk.job j
      join kk.customer c on c.business_id = j.business_id and c.id = j.customer_id
      where j.id = $1`,
@@ -97,21 +94,6 @@ export async function ownerJob(client: DbClient, jobId: string): Promise<OwnerJo
   );
   const job = rows[0];
   if (!job) return null;
-  const tasks = await jobTasks(client, jobId);
-  const photos = await client.query<{ key: string }>(
-    `select o.key from kk.job_photo p
-     join storage.object o on o.business_id = p.business_id and o.id = p.object_id
-     where p.job_id = $1 and p.kind = 'request'
-     order by p.created_at, p.id`,
-    [jobId],
-  );
-  const profile = await businessProfile(client);
-  // jsonb does not keep key order, so the answers follow the order of the questions.
-  const questions = (profile?.intake ?? []).filter((q) => q.type !== "photo");
-  const labels = new Map(questions.map((q) => [q.key, q.label]));
-  const asked = new Map(questions.map((q, i) => [q.key, i]));
-  const byQuestion = (a: [string, unknown], b: [string, unknown]) =>
-    (asked.get(a[0]) ?? questions.length) - (asked.get(b[0]) ?? questions.length);
   return {
     id: job.id,
     number: job.number,
@@ -119,18 +101,14 @@ export async function ownerJob(client: DbClient, jobId: string): Promise<OwnerJo
     source: job.source,
     customerName: job.customer_name,
     createdAt: job.created_at,
-    tasks: tasks.map((t) => t.title),
     customerPhone: job.phone_e164,
     address: job.address,
-    preferredWindow: job.preferred_window,
-    // An answer to a question the business has since removed keeps its key as the label.
-    answers: Object.entries(job.answers)
-      .sort(byQuestion)
-      .map(([key, value]) => ({
-        question: labels.get(key) ?? key,
-        answer: String(value),
-      })),
-    photos: photos.rows,
+    // The table's check keeps the two together.
+    location:
+      job.latitude !== null && job.longitude !== null
+        ? { latitude: job.latitude, longitude: job.longitude }
+        : null,
+    items: await workItems(client, jobId),
   };
 }
 
@@ -161,12 +139,7 @@ export async function logPhoneEnquiry(
   owner: { readonly businessId: string; readonly memberId: string },
   input: PhoneEnquiryInput,
 ): Promise<PhoneEnquiryResult> {
-  const person = contact.safeParse({
-    name: input.name,
-    phone: input.phone,
-    address: input.address,
-    preferredWindow: "",
-  });
+  const person = contact.safeParse(input);
   if (!person.success) return { ok: false, error: "contact" };
   const ids = itemIds.safeParse([...new Set(input.tasks)]);
   const custom = input.customTask.trim();
@@ -176,7 +149,7 @@ export async function logPhoneEnquiry(
     return { ok: false, error: "tasks" };
 
   const customerId = await findOrCreateCustomer(client, owner.businessId, person.data);
-  const job = await createJob(client, owner.businessId, customerId, person.data, {}, "phone");
+  const job = await createJob(client, owner.businessId, customerId, person.data, null, "phone");
   for (const item of items) {
     await client.query(
       `insert into kk.job_task (business_id, job_id, catalogue_item_id, title, added_by)
