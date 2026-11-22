@@ -4,12 +4,13 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { DbClient } from "@bodhchakra/db";
 
-export type LinkPurpose = "job" | "invite";
+/** Customers sign in instead of holding a link (architecture 7), so only technician invites remain. */
+export type LinkPurpose = "invite";
 
 export interface NewLink {
   purpose: LinkPurpose;
   businessId: string;
-  /** The invite or job the link opens. */
+  /** The invite the link opens. */
   subjectId: string;
   expiresAt: Date;
 }
@@ -69,21 +70,4 @@ export async function revoke(client: DbClient, id: string): Promise<void> {
     "update tokens.token set revoked_at = now() where id = $1 and revoked_at is null",
     [id],
   );
-}
-
-/**
- * Ends every live link to one subject, for example all of a job's links after a message went to a wrong number.
- * Runs inside `withTenant`; returns how many links it ended.
- */
-export async function revokeFor(
-  client: DbClient,
-  purpose: LinkPurpose,
-  subjectId: string,
-): Promise<number> {
-  const { rowCount } = await client.query(
-    `update tokens.token set revoked_at = now()
-     where purpose = $1 and subject_id = $2 and revoked_at is null`,
-    [purpose, subjectId],
-  );
-  return rowCount ?? 0;
 }

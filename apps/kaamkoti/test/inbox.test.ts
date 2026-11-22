@@ -7,10 +7,8 @@ import {
   listInbox,
   logPhoneEnquiry,
   migrations,
-  openJobLink,
   ownerJob,
   RUNTIME_ROLE,
-  reissueJobLink,
   seed,
 } from "../src/index.ts";
 
@@ -21,7 +19,6 @@ const SHARMA_JOB_1 = "10000000-0000-4000-8000-0000000e0001";
 const KAVERI_JOB_1 = "20000000-0000-4000-8000-0000000e0001";
 const SHARMA_GAS_REFILL = "10000000-0000-4000-8000-0000000b0002";
 const KAVERI_FAN = "20000000-0000-4000-8000-0000000b0001";
-const SEEDED_SHARMA_LINK = "dev-job-link-sharma-request-1-xxxxxxxxxxxxx";
 
 const log = createLogger({ service: "test" });
 const audit = createAudit(log);
@@ -75,9 +72,6 @@ describe("the owner's inbox on the seeded database", () => {
 
   it("does not find another business's request, even by its id", async () => {
     expect(await app.withTenant(SHARMA, (c) => ownerJob(c, KAVERI_JOB_1))).toBeNull();
-    expect(
-      await app.withTenant(SHARMA, (c) => reissueJobLink(c, audit, sharmaOwner, KAVERI_JOB_1)),
-    ).toBeNull();
   });
 
   describe("logging a phone enquiry", () => {
@@ -131,26 +125,6 @@ describe("the owner's inbox on the seeded database", () => {
         logPhoneEnquiry(c, audit, sharmaOwner, { ...enquiry, tasks: [KAVERI_FAN] }),
       );
       expect(result).toEqual({ ok: false, error: "tasks" });
-    });
-  });
-
-  describe("sending a new customer link", () => {
-    it("ends the old links, opens the job with the new one, and is audited", async () => {
-      expect(await openJobLink(app, SEEDED_SHARMA_LINK)).not.toBeNull();
-      const fresh = await app.withTenant(SHARMA, (c) =>
-        reissueJobLink(c, audit, sharmaOwner, SHARMA_JOB_1),
-      );
-      if (!fresh) throw new Error("no new link");
-      expect(fresh.revoked).toBe(1);
-      expect(await openJobLink(app, SEEDED_SHARMA_LINK)).toBeNull();
-      expect(await openJobLink(app, fresh.secret)).toMatchObject({ number: 1 });
-      const { rows } = await owner.tx((c) =>
-        c.query(
-          "select data from audit.event where action = 'job.link_reissued' and entity_id = $1",
-          [SHARMA_JOB_1],
-        ),
-      );
-      expect(rows).toEqual([{ data: { revoked: 1 } }]);
     });
   });
 });

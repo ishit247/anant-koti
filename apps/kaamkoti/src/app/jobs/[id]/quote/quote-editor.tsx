@@ -82,9 +82,11 @@ export function QuoteEditor({
   if (state.sent) {
     return (
       <>
-        <p role="status">Version {state.sent.version} is sent. Send the customer this link:</p>
+        <p role="status">
+          Version {state.sent.version} is sent. The customer sees it on their request page:
+        </p>
         <ShareLink
-          link={`${window.location.origin}/j/${state.sent.secret}`}
+          link={state.sent.link}
           label="Customer link"
           message={`${businessName}: your quote for request #${jobNumber}:`}
         />

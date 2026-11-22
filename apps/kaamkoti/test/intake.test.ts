@@ -11,10 +11,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   addAddress,
   addressBook,
+  customerFor,
+  customerRequest,
   deleteAddress,
   type IntakeInput,
   migrations,
-  openJobLink,
   type Place,
   PRIVATE_BUCKET,
   RUNTIME_ROLE,
@@ -109,6 +110,13 @@ describe("the request form", () => {
 
   const submit = (input: IntakeInput, slug = "sharma-cooling", session = VIKRAM) =>
     submitRequest(app, storage, audit, slug, session, input);
+  /** A request as its sender sees it on their own request page at Sharma. */
+  const ownRequest = (jobId: string, session = VIKRAM) =>
+    app.withTenant(SHARMA, async (c) => {
+      const me = await customerFor(c, audit, session);
+      if (!me) throw new Error("the sender has no customer row");
+      return customerRequest(c, me, jobId);
+    });
   /** A customer row as the owner sees it. */
   const customerRow = async (id: string) =>
     (
@@ -152,7 +160,7 @@ describe("the request form", () => {
       ).rows[0].count,
     );
 
-  it("creates the signed-in person's customer row from their first place, the job with its own copy, and a link", async () => {
+  it("creates the signed-in person's customer row from their first place, and the job with its own copy, on their page", async () => {
     const result = await submit(request({ latitude: "18.5590", longitude: "73.8070" }));
     if (!result.ok) throw new Error(result.error);
     expect(result.number).toBe(3);
@@ -177,11 +185,7 @@ describe("the request form", () => {
       phone_e164: "+919876543210",
       email: "vikram@example.test",
     });
-    expect(await openJobLink(app, result.secret)).toMatchObject({
-      businessName: "Sharma Cooling Services",
-      number: 3,
-      customerName: "Vikram Patil",
-    });
+    expect(await ownRequest(result.jobId)).toMatchObject({ number: 3, status: "requested" });
   });
 
   it("makes each work item a task in the order sent; a price-list name is that item, any other the customer's own", async () => {
@@ -231,7 +235,7 @@ describe("the request form", () => {
     );
     const result = await submit(request({ items: [item("AC general service")] }));
     if (!result.ok) throw new Error(result.error);
-    const view = await openJobLink(app, result.secret);
+    const view = await ownRequest(result.jobId);
     expect(view?.items.map((i) => [i.title, i.listed])).toEqual([["AC general service", false]]);
     await owner.tx((c) =>
       c.query("update kk.catalogue_item set active = true where id = $1", [GENERAL_SERVICE]),
@@ -242,10 +246,10 @@ describe("the request form", () => {
     // Kaveri's item, sent to Sharma: only the customer's words.
     const result = await submit(request({ items: [item("Fan installation")] }));
     if (!result.ok) throw new Error(result.error);
-    expect((await openJobLink(app, result.secret))?.items[0]?.listed).toBe(false);
+    expect((await ownRequest(result.jobId))?.items[0]?.listed).toBe(false);
   });
 
-  it("keeps each photo with its work item, privately, shown on the customer's link by signed URL", async () => {
+  it("keeps each photo with its work item, privately, shown on the customer's page by signed URL", async () => {
     const result = await submit(
       request({
         items: [
@@ -256,7 +260,7 @@ describe("the request form", () => {
       }),
     );
     if (!result.ok) throw new Error(result.error);
-    const view = await openJobLink(app, result.secret);
+    const view = await ownRequest(result.jobId);
     expect(view?.items.map((i) => i.photos.length)).toEqual([1, 0, 2]);
     const first = view?.items[0]?.photos[0];
     if (!first) throw new Error("no photo");

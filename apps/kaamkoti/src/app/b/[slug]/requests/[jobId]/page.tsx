@@ -18,10 +18,13 @@ import { customerRequest } from "../../../../../request-edit.ts";
 import { server } from "../../../../../server.ts";
 import { BusinessHeader } from "../../../../business-header.tsx";
 import { CustomerNav } from "../../../../customer-nav.tsx";
+import { WorkItems } from "../../../../work-items.tsx";
 import { RequestForm } from "../../request/request-form.tsx";
+import { QuoteAnswer } from "./quote-answer.tsx";
 
-// One of the signed-in customer's own requests (D15): the new-request screens over its work items, until a quote
-// is accepted. The form posts to ./edit (scope customer). Another customer's or business's id answers 404.
+// One of the signed-in customer's own requests (D15): the quote with its answer forms (posting to ./answer), and
+// the new-request screens over its work items until a quote is accepted (posting to ./edit); after that, the
+// items with their photos. Another customer's or business's id answers 404.
 // biome-ignore lint/correctness/noUnusedVariables: read by scanRoutes, which scans the source text
 const route = defineRoute({ scope: "customer" });
 
@@ -47,10 +50,10 @@ export default async function RequestDetail({
   searchParams,
 }: {
   params: Promise<{ slug: string; jobId: string }>;
-  searchParams: Promise<{ result?: string; error?: string }>;
+  searchParams: Promise<{ result?: string; error?: string; answer?: string | string[] }>;
 }) {
   const { slug, jobId } = await params;
-  const { result, error } = await searchParams;
+  const { result, error, answer } = await searchParams;
   const space = `/b/${encodeURIComponent(slug)}`;
   const { job, own, book } = await withCustomer(
     slug,
@@ -62,7 +65,8 @@ export default async function RequestDetail({
     }),
   );
   if (!job) notFound();
-  const page = await publicPage(server().db, slug);
+  const { db, storage } = server();
+  const page = await publicPage(db, slug);
   if (!page) notFound();
   const done = result && result in RESULTS ? RESULTS[result as keyof typeof RESULTS] : null;
   const refused = error && error in ERRORS ? ERRORS[error as keyof typeof ERRORS] : null;
@@ -83,10 +87,19 @@ export default async function RequestDetail({
           {done}
         </p>
       ) : null}
+      {job.quote ? (
+        <QuoteAnswer
+          quote={job.quote}
+          status={job.status}
+          businessName={page.name}
+          action={`${space}/requests/${job.id}/answer`}
+          said={typeof answer === "string" ? answer : undefined}
+        />
+      ) : null}
       {job.editable ? (
         <RequestForm
           // A saved edit shows the new items: the form's state starts from what the server sent.
-          key={`${job.id}:${job.tasks.map((t) => t.id).join()}:${result ?? ""}`}
+          key={`${job.id}:${job.items.map((t) => t.id).join()}:${result ?? ""}`}
           own={own}
           book={book.map((entry) => ({
             id: entry.id,
@@ -114,11 +127,11 @@ export default async function RequestDetail({
           errors={ERRORS}
           refused={refused}
           edit={{
-            items: job.tasks.map((t) => ({
+            items: job.items.map((t) => ({
               id: t.id,
               title: t.title,
               details: t.details ?? "",
-              photos: t.photos,
+              photos: t.photos.length,
             })),
             place: {
               contactName: job.place.contactName,
@@ -146,14 +159,12 @@ export default async function RequestDetail({
             </p>
             <p className="muted">{job.place.address}</p>
           </div>
-          <ul className="cards">
-            {job.tasks.map((task) => (
-              <li key={task.id} className="card">
-                <strong>{task.title}</strong>
-                {task.details ? <p className="muted small">{task.details}</p> : null}
-              </li>
-            ))}
-          </ul>
+          {/* Signed after the job was found under this customer: each URL opens one object for five minutes. */}
+          <WorkItems
+            items={job.items}
+            sign={(photo) => storage.signedUrl(photo)}
+            photoAlt="Sent with your request"
+          />
         </>
       )}
       <CustomerNav space={space} current="requests" />

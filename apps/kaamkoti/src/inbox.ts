@@ -1,13 +1,12 @@
 // The owner's side of a request (docs/architecture.md 4.3, scope `member`): the list of requests from every
-// source, one request in full, a phone enquiry logged by hand, and a fresh customer link. All of it runs inside
-// withTenant of the owner's business, so another business's jobs are not there to find.
+// source, one request in full, and a phone enquiry logged by hand. All of it runs inside withTenant of the
+// owner's business, so another business's jobs are not there to find.
 import type { Audit } from "@bodhchakra/audit";
 import type { DbClient } from "@bodhchakra/db";
 import { z } from "zod";
 import { addAddress, type Location, type Place } from "./address-book.ts";
 import { activeItems, contact, createJob, findOrCreateCustomer } from "./intake.ts";
 import { type JobStatus, type WorkItem, workItems } from "./job.ts";
-import { issueJobLink, revokeJobLinks } from "./job-link.ts";
 
 export type JobSource = "public_form" | "whatsapp_link" | "qr" | "phone";
 
@@ -189,29 +188,4 @@ export async function logPhoneEnquiry(
     data: { number: job.number, source: "phone" },
   });
   return { ok: true, jobId: job.id };
-}
-
-/**
- * Ends every live link to the job and issues a new one, for a link that went to a wrong number or was lost.
- * Returns the secret for the owner to send; null if this business has no such job.
- */
-export async function reissueJobLink(
-  client: DbClient,
-  audit: Audit,
-  owner: { readonly businessId: string; readonly memberId: string },
-  jobId: string,
-): Promise<{ secret: string; revoked: number } | null> {
-  const { rows } = await client.query("select 1 from kk.job where id = $1", [jobId]);
-  if (rows.length === 0) return null;
-  const revoked = await revokeJobLinks(client, jobId);
-  const { secret } = await issueJobLink(client, jobId);
-  await audit.record(client, {
-    businessId: owner.businessId,
-    actor: { kind: "member", id: owner.memberId },
-    action: "job.link_reissued",
-    entity: "job",
-    entityId: jobId,
-    data: { revoked },
-  });
-  return { secret, revoked };
 }

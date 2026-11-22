@@ -37,7 +37,7 @@ export async function POST(
   const refusal = (error: keyof typeof REFUSED) =>
     json ? Response.json({ error }, { status: 422 }) : `${page}?error=${error}`;
 
-  const { db, storage, audit, limiter } = server();
+  const { storage, audit, limiter } = server();
   const refused = await overLimit(limiter.limit, [
     [`intake-ip:${clientIp(request.headers)}`, LIMITS.intakePerIp],
   ]);

@@ -1,4 +1,4 @@
-// Quotes (docs/architecture.md 5.3, 6, 8; scope `member` for the owner, `customer-token` for the read view). A job
+// Quotes (docs/architecture.md 5.3, 6, 8; scope `member` for the owner, `customer` for the customer's view). A job
 // has numbered versions. The owner edits one draft at a time, which starts from the request's tasks or from the
 // version before; sending it supersedes that version and moves the job to `quoted`. Amounts are computed here
 // with @bodhchakra/money and restated by the database's CHECKs and triggers, which also keep a sent quote frozen.
@@ -309,8 +309,8 @@ const ANSWERED: Record<QuoteAnswer["kind"], QuoteStatus> = {
 };
 
 /**
- * The customer's answer to the version they were sent (scope `customer-token`: the caller resolved the link to
- * this job). Only the job's current, unexpired `sent` quote takes an answer, once. Accepting locks the quote,
+ * The customer's answer to the version they were sent (scope `customer`: the caller, `answerRequestQuote`, found
+ * this job under the signed-in customer). Only the job's current, unexpired `sent` quote takes an answer, once. Accepting locks the quote,
  * records it as the job's accepted quote and approves the tasks it prices; rejecting or countering leaves the
  * job `quoted` for the owner to revise. A deposit link (4.x) and the owner's notice (3.2) come later.
  */
@@ -368,7 +368,7 @@ export function ownerQuotes(client: DbClient, jobId: string, now = new Date()): 
 }
 
 /**
- * What the customer's link shows: the newest quote the business has sent, unless it was replaced. Never a
+ * What the customer's request page shows: the newest quote the business has sent, unless it was replaced. Never a
  * draft, never an older version.
  */
 export async function customerQuote(

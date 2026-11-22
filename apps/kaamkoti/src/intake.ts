@@ -22,7 +22,6 @@ import {
 } from "./address-book.ts";
 import { businessProfile } from "./business-profile.ts";
 import { customerFor, type SpaceCustomer } from "./customer-space.ts";
-import { issueJobLink } from "./job-link.ts";
 import { phone } from "./phone.ts";
 
 /** Up to this many photos per request, across its work items (docs/architecture.md 10). */
@@ -64,7 +63,7 @@ export type IntakeError =
   | "photo_not_an_image";
 
 export type IntakeResult =
-  | { readonly ok: true; readonly jobId: string; readonly number: number; readonly secret: string }
+  | { readonly ok: true; readonly jobId: string; readonly number: number }
   | { readonly ok: false; readonly error: IntakeError };
 
 const ITEM_FIELD = /^item\.(\d{1,2})\.(id|title|details|photo)$/;
@@ -239,8 +238,7 @@ export async function submitRequest(
         );
       }
     }
-    const { secret } = await issueJobLink(client, job.id);
-    return { ok: true, jobId: job.id, number: job.number, secret };
+    return { ok: true, jobId: job.id, number: job.number };
   });
 }
 

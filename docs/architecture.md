@@ -306,8 +306,8 @@ requested ──send quote──▶ quoted ──customer accepts──▶ accep
 
 Customers have their own account (section 3), but always use it inside one business's space,
 `https://kaamkoti.<tld>/b/<slug>/…`, and see only their own jobs with that business, never a list of
-businesses. (Until 3.2f customers opened a job by a token link, `/j/<token>`, with no account; that path and
-the `job` token purpose are removed in 3.2f.)
+businesses. (Until 3.2f customers opened a job by a token link, `/j/<token>`, with no account; 3.2f removed
+that path, the `job` token purpose and the owner's "send a new link".)
 
 - **The tradesperson shares the link** `/b/<slug>` (the public page, scope `public-slug`). It opens with the
   app bar (`BusinessHeader`: avatar, business, place; every customer page has it, with a back arrow), then two
@@ -328,15 +328,21 @@ the `job` token purpose are removed in 3.2f.)
 - **Scope.** Every customer route resolves the business by slug, then the `customer` row for the session's
   identity, inside `withTenant`, and the job query helper adds `customer_id = <that row>`. A job id from
   another customer or another business is answered with 404, the same as a missing one. Tested, with a mutant.
-- **Messages link to the job page** in the space, never to a secret. A wrong number or a forwarded message
-  therefore grants nothing: opening the link still needs that customer's sign-in.
+- **The job page** shows the quote first while there is one (`QuoteAnswer`: where it stands, its lines, and
+  while it is open Accept, "Offer a different price" and "Turn down", plain forms posting to
+  `…/requests/<jobId>/answer`, which runs `answerRequestQuote`: the job under this customer, then
+  `answerQuote`). Below it, the request form over the items until a quote is accepted; after that, the items
+  with their details and photos (signed URLs).
+- **Messages link to the job page** in the space, never to a secret (`requestPageUrl`, on `PUBLIC_ORIGIN`):
+  `quote.sent` carries it, and the owner gets the same link to pass on after sending a quote. A wrong number
+  or a forwarded message therefore grants nothing: opening the link still needs that customer's sign-in.
 - **Forms post with the customer cookie**, so they need CSRF protection: the cookie is `SameSite=Lax`, and
   every customer route handler also refuses (403) a post that `fromOwnPages` (guard.ts) does not accept:
   `Sec-Fetch-Site` must be `same-origin`, and only a browser that sends no `Sec-Fetch-Site` is judged by
   `Origin` (the bare domain). `Origin` alone cannot do it: under the app's `Referrer-Policy: no-referrer` a
   browser sends `Origin: null` even on a same-origin form post. A post without a session gets a 303 to
   sign-in (never a 307, which would re-post the form there). Answers are a 303 back to the page with
-  `?answer=<outcome>`, as before. The browser check proves the refusals for send and sign-out, with mutants.
+  `?answer=<outcome>`, as before. The browser check proves the refusals for send, sign-out and the quote answer, with mutants.
 - **Lapsed business** (section 13): the space still opens after sign-in, but shows a contact card and allows no
   actions.
 - **`tokens` keeps one purpose, `invite`.** The token is 32 random bytes in base64url; only its SHA-256 is
@@ -439,8 +445,8 @@ invites in 0.7 are shared by the owner: copy the link, or a `wa.me` share. Sendi
   (fields `item.<n>.title`, `item.<n>.details`, `item.<n>.photo`). Up to 20 items and 6 photos in all; each
   photo belongs to its item. A client component switches between the request and one item's editor; every
   item's fields stay in the one multipart post. On success the customer is sent to their work list
-  `/b/<slug>/requests` (since the first half of 3.2f; the job page `/b/<slug>/requests/<jobId>` follows in its
-  second half, and a fresh `/j/<secret>` before 3.2f; intake still issues that link until then). The job page shows the work items with their details and photos (by `signedUrl`). The owner's job
+  `/b/<slug>/requests` (since 3.2f; a fresh `/j/<secret>` before), whose cards open the job page
+  `/b/<slug>/requests/<jobId>` (section 7). The owner's job
   page opens a picked location in Maps by a plain link. The trade template's intake questions are no longer
   asked (3.2c decides their fate); the preferred time is agreed after acceptance (3.1b).
 
@@ -466,7 +472,7 @@ them in its README.
 | `db`               | `createPool(cfg)`, `tx(fn)`, `withTenant(id, fn)`, `migrate([...folders])`, `testDb()` (fresh database per test file)                                    | `db.migration`                                                                    | 0.3  |
 | `tenancy`          | `createBusiness`, `addMember`, `createInvite`, `acceptInvite`, `memberFor(identityId)`, `requireRole`, `defineRoute({ scope, … })`, route-scope test kit | `tenancy.*`                                                                       | 0.4  |
 | `audit`            | `record(tx, event)`, `recordStrict(tx, event)`                                                                                                           | `audit.event`                                                                     | 0.4  |
-| `tokens`           | `signRequest`, `verifyRequest` (0.5); `issue`, `resolve`, `revoke`, `revokeFor` for invite links (0.7; job links 2.1–3.2f)                               | `tokens.token`                                                                    | 0.5  |
+| `tokens`           | `signRequest`, `verifyRequest` (0.5); `issue`, `resolve`, `revoke` for invite links (0.7; job links 2.1–3.2f)                                            | `tokens.token`                                                                    | 0.5  |
 | `jobs`             | `createJobs(pool)`, `defineJob(name, zodPayload, handler)`, `send(tx, …)`, `sendAt`                                                                      | `pgboss.*`                                                                        | 0.5  |
 | `outbox`           | `enqueue(tx, topic, payload, key)`, `startDelivery`, `receive(source, key, tx, fn)`                                                                      | `outbox.message`, `outbox.inbox`                                                  | 0.5  |
 | `auth` (app side)  | `createAuth(options)` → `startLogin`, `handleCallback`, `getSession`, `signOut`; `SignInRefused`, `SignInUnavailable`                                    | `auth.login_attempt`, `auth.session`                                              | 0.6  |

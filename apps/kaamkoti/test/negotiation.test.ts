@@ -4,11 +4,10 @@ import { createLogger } from "@bodhchakra/log";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   answerQuote,
-  issueJobLink,
+  customerQuote,
   logPhoneEnquiry,
   migrations,
   openDraft,
-  openJobLink,
   ownerQuotes,
   type QuoteAnswer,
   RUNTIME_ROLE,
@@ -195,7 +194,6 @@ describe("negotiating a quote on the seeded database", () => {
 
     it("stores a counter's price and note, shows it to both sides, and audits the price only", async () => {
       const { jobId, quoteId } = await quotedJob();
-      const { secret } = await sharma((c) => issueJobLink(c, jobId));
       const counter: QuoteAnswer = { kind: "counter", totalMinor: 250_000, note: "₹2,500 all in?" };
       expect(await answer(jobId, quoteId, counter)).toEqual({ ok: true });
 
@@ -205,7 +203,7 @@ describe("negotiating a quote on the seeded database", () => {
         total: { minor: 250_000, currency: "INR" },
         note: "₹2,500 all in?",
       });
-      expect((await openJobLink(app, secret))?.quote?.counter?.note).toBe("₹2,500 all in?");
+      expect((await sharma((c) => customerQuote(c, jobId)))?.counter?.note).toBe("₹2,500 all in?");
       const { rows } = await owner.tx((c) =>
         c.query("select data from audit.event where entity_id = $1 and action = 'job.counter'", [
           jobId,

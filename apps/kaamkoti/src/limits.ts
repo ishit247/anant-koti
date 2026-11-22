@@ -6,8 +6,6 @@ import type { Limit, RateLimitRule } from "@bodhchakra/rate-limit";
 export const CLIENT_IP_HEADER = "x-client-ip";
 
 export const LIMITS = {
-  /** A customer opens their page a handful of times; guessing a 256-bit link would take far more. */
-  jobLinkPerIp: { window: 600, max: 60 },
   intakePerIp: { window: 3600, max: 10 },
   /** Requests one business can receive through its form in a day, so a flood cannot bury its inbox. */
   intakePerBusiness: { window: 86_400, max: 200 },

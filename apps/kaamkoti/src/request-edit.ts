@@ -17,15 +17,14 @@ import {
   MAX_REQUEST_PHOTOS,
   sameName,
 } from "./intake.ts";
-import { type JobStatus, transitionJob } from "./job.ts";
-
-export interface RequestTask {
-  readonly id: string;
-  readonly title: string;
-  readonly details: string | null;
-  /** Photos already sent with this item; they stay when it is edited. */
-  readonly photos: number;
-}
+import { type JobStatus, transitionJob, type WorkItem, workItems } from "./job.ts";
+import {
+  type AnswerError,
+  answerQuote,
+  customerQuote,
+  type Quote,
+  type QuoteAnswer,
+} from "./quote.ts";
 
 export interface CustomerRequest {
   readonly id: string;
@@ -34,8 +33,10 @@ export interface CustomerRequest {
   readonly createdAt: Date;
   /** Where and whom, as this request has them (E.164 phone). */
   readonly place: Place;
-  /** Work items still in the request, in the order they were added. */
-  readonly tasks: readonly RequestTask[];
+  /** Work items still in the request, in the order they were added, with the photos sent for each. */
+  readonly items: readonly WorkItem[];
+  /** The newest quote the business sent, unless replaced; never a draft. */
+  readonly quote: Quote | null;
   /** True until the customer accepts a quote: the items can still be changed. */
   readonly editable: boolean;
 }
@@ -65,20 +66,6 @@ export async function customerRequest(
   );
   const job = rows[0];
   if (!job) return null;
-  const tasks = await client.query<{
-    id: string;
-    title: string;
-    details: string | null;
-    photos: number;
-  }>(
-    `select t.id, t.title, t.details,
-            (select count(*)::int from kk.job_photo p
-             where p.business_id = t.business_id and p.job_id = t.job_id and p.job_task_id = t.id) as photos
-     from kk.job_task t
-     where t.business_id = $1 and t.job_id = $2 and t.status <> 'dropped'
-     order by t.added_at, t.id`,
-    [customer.businessId, job.id],
-  );
   return {
     id: job.id,
     number: job.number,
@@ -93,9 +80,33 @@ export async function customerRequest(
           ? { latitude: job.latitude, longitude: job.longitude }
           : null,
     },
-    tasks: tasks.rows,
+    // Only after the job was found under this customer: both read by job id alone.
+    items: await workItems(client, job.id),
+    quote: await customerQuote(client, job.id),
     editable: job.status === "requested" || job.status === "quoted",
   };
+}
+
+/**
+ * The signed-in customer's answer to the quote on their own request (architecture 6, 7). The job is looked up
+ * under the customer first, so another customer's or business's job is `not_found`, like a missing one; then
+ * `answerQuote` takes only that job's current sent version.
+ */
+export async function answerRequestQuote(
+  client: DbClient,
+  audit: Audit,
+  customer: SpaceCustomer,
+  jobId: string,
+  quoteId: string,
+  answer: QuoteAnswer,
+): Promise<{ readonly ok: true } | { readonly ok: false; readonly error: AnswerError }> {
+  if (!z.uuid().safeParse(jobId).success) return { ok: false, error: "not_found" };
+  const { rowCount } = await client.query(
+    "select 1 from kk.job where business_id = $1 and customer_id = $2 and id = $3",
+    [customer.businessId, customer.id, jobId],
+  );
+  if (rowCount === 0) return { ok: false, error: "not_found" };
+  return answerQuote(client, audit, jobId, quoteId, answer);
 }
 
 const text = {

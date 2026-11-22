@@ -1,5 +1,5 @@
 import { formatMoney } from "@bodhchakra/money";
-import { currentBusiness, defineRoute } from "@bodhchakra/tenancy";
+import { defineRoute } from "@bodhchakra/tenancy";
 import { notFound } from "next/navigation";
 import { z } from "zod";
 import { requireMember } from "../../../guard.ts";
@@ -21,7 +21,6 @@ import { OwnerNav } from "../../owner-nav.tsx";
 import { QuoteSummary } from "../../quote-summary.tsx";
 import { WorkItems } from "../../work-items.tsx";
 import { PlanVisit } from "./plan-visit.tsx";
-import { ResendLink } from "./resend-link.tsx";
 import { StartQuote } from "./start-quote.tsx";
 
 // The id in the path is only a lookup key: the job is read inside withTenant of the signed-in owner's
@@ -33,16 +32,12 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   if (!id.success) notFound();
   const owner = await requireMember(route, `/jobs/${id.data}`);
   const { db, storage } = server();
-  const { job, business, quotes, visits, team } = await db.withTenant(
-    owner.businessId,
-    async (client) => ({
-      job: await ownerJob(client, id.data),
-      business: await currentBusiness(client),
-      quotes: await ownerQuotes(client, id.data),
-      visits: await plannedVisits(client, new Date(0), id.data),
-      team: await assignableMembers(client),
-    }),
-  );
+  const { job, quotes, visits, team } = await db.withTenant(owner.businessId, async (client) => ({
+    job: await ownerJob(client, id.data),
+    quotes: await ownerQuotes(client, id.data),
+    visits: await plannedVisits(client, new Date(0), id.data),
+    team: await assignableMembers(client),
+  }));
   if (!job) notFound();
   // The same states the planner accepts: the work needs `accepted`, a site visit any open state.
   const visitable = ["requested", "quoted", "accepted", "scheduled"].includes(job.status);
@@ -176,13 +171,6 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           </a>
         ) : null}
       </div>
-
-      <h2>Customer link</h2>
-      <p className="muted small">
-        The customer follows this request through a private link. If it went to the wrong number or
-        was lost, end the old links and send a new one.
-      </p>
-      <ResendLink jobId={job.id} businessName={business.name} />
       <OwnerNav current="/jobs" />
     </>
   );

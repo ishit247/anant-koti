@@ -1,23 +1,20 @@
--- Scoped, expiring, revocable links (docs/architecture.md 7): technician invites and customer job links.
--- The link holds 32 random bytes; only their SHA-256 is stored, so a read of this table opens no link. A secret
--- cannot be recovered, so a subject may have several live links (one per message that carried one).
+-- Scoped, expiring, revocable links (docs/architecture.md 7): technician invites. Customers sign in instead.
+-- The link holds 32 random bytes; only their SHA-256 is stored, so a read of this table opens no link.
 -- What a link lets its holder do is decided from the subject's state at request time, not stored here.
 create schema tokens;
 
 create table tokens.token (
   id uuid primary key default gen_random_uuid(),
   hash bytea not null unique check (length(hash) = 32),
-  purpose text not null check (purpose in ('job', 'invite')),
+  purpose text not null check (purpose in ('invite')),
   -- No foreign key: this module is below tenancy, which references it.
   business_id uuid not null,
-  -- What the link opens: the invite or the job.
+  -- What the link opens: the invite.
   subject_id uuid not null,
   expires_at timestamptz not null,
   revoked_at timestamptz,
   created_at timestamptz not null default now()
 );
--- Leads with business_id for the tenant; serves revokeFor, which ends every link of one subject.
-create index token_subject on tokens.token (business_id, purpose, subject_id);
 
 alter table tokens.token enable row level security;
 create policy tenant on tokens.token

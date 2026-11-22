@@ -3,11 +3,10 @@ import { type Db, type DbClient, type TestDb, testDb } from "@bodhchakra/db";
 import { createLogger } from "@bodhchakra/log";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  issueJobLink,
+  customerQuote,
   logPhoneEnquiry,
   migrations,
   openDraft,
-  openJobLink,
   ownerQuotes,
   type QuoteLineInput,
   RUNTIME_ROLE,
@@ -272,11 +271,11 @@ describe("quotes on the seeded database", () => {
 
     it("shows the customer the sent version only: never a draft, never a superseded one", async () => {
       const jobId = await newJob();
-      const { secret } = await sharma((c) => issueJobLink(c, jobId));
-      expect((await openJobLink(app, secret))?.quote).toBeNull();
+      const shown = () => sharma((c) => customerQuote(c, jobId));
+      expect(await shown()).toBeNull();
 
       await draftFor(jobId);
-      expect((await openJobLink(app, secret))?.quote).toBeNull();
+      expect(await shown()).toBeNull();
 
       const first = await sharma(async (c) => {
         const [draft] = await ownerQuotes(c, jobId);
@@ -287,13 +286,13 @@ describe("quotes on the seeded database", () => {
       await sharma((c) =>
         saveDraft(c, sharmaOwner, revision, { lines: [visitFee], depositMinor: 0 }),
       );
-      expect((await openJobLink(app, secret))?.quote).toMatchObject({
+      expect(await shown()).toMatchObject({
         version: 1,
         total: { minor: 295_000 },
       });
 
       await sharma((c) => sendQuote(c, audit, sharmaOwner, revision, 7));
-      expect((await openJobLink(app, secret))?.quote).toMatchObject({
+      expect(await shown()).toMatchObject({
         version: 2,
         total: { minor: 23_600 },
       });

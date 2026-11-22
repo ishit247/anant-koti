@@ -19,6 +19,13 @@ export type JobGroup = keyof typeof JOB_GROUPS;
 export const jobGroup = (value: string | undefined): JobGroup =>
   value === "completed" || value === "cancelled" ? value : "active";
 
+/**
+ * The customer's page for one job, on the bare domain, for messages and the owner to pass on. It holds no
+ * secret: opening it still needs that customer's sign-in, so a wrong number or a forward grants nothing.
+ */
+export const requestPageUrl = (publicOrigin: string, slug: string, jobId: string) =>
+  `${publicOrigin}/b/${encodeURIComponent(slug)}/requests/${jobId}`;
+
 /** This business's customer row for the signed-in identity: its id and the business it belongs to. */
 export interface SpaceCustomer {
   readonly id: string;

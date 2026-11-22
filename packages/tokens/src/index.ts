@@ -8,7 +8,6 @@ export {
   type NewLink,
   resolve,
   revoke,
-  revokeFor,
 } from "./link.ts";
 export {
   CLIENT_HEADER,

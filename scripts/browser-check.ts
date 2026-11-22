@@ -1,11 +1,12 @@
 // Phase-end browser check: `pnpm run check:browser`, against the running dev stack (`pnpm run up:fresh`,
 // the platform container, `pnpm --filter kaamkoti dev`). Chromium lives on D: (set
 // PLAYWRIGHT_BROWSERS_PATH=D:\playwright-browsers; install with `pnpm exec playwright install chromium-headless-shell`). A new owner signs in with an email code read from
-// Mailpit, creates a business, picks a trade, edits a price, and the public page and a customer's job link are
-// opened without cookies. A new customer signs in on the bare domain to send a request with a photo, lands on
-// their work list, and finds the form filled in next time; the send route refuses another origin and sends a
-// post without a session to sign-in. A seeded customer signs in on the bare domain and sees only her own
-// request; intake and /j/ answer 429 past their per-IP limits.
+// Mailpit, creates a business, picks a trade, edits a price, and the public page is opened without cookies. A
+// new customer signs in on the bare domain to send a request with a photo, lands on their work list, and finds
+// the form filled in next time; the send route refuses another origin and sends a post without a session to
+// sign-in. She then asks the new business for work, and the quote is negotiated and accepted on her request
+// page, which refuses another site's post and answers 404 for another customer's or business's job. A seeded
+// customer signs in on the bare domain and sees only her own request; intake answers 429 past its per-IP limit.
 // Each page is screenshotted at phone and desktop width into .validation/browser/; the run fails on a console
 // error, a page wider than the viewport, or a cookie on the public page.
 import { mkdirSync } from "node:fs";
@@ -117,7 +118,7 @@ try {
   await page.goto(`${APP}/`);
   await shoot(page, "7-home-owner");
 
-  // The owner's inbox: log a phone enquiry, open it, and send the customer a fresh link.
+  // The owner's inbox: log a phone enquiry and open it.
   const tabs = page.getByRole("navigation", { name: "Main" });
   await tabs.getByRole("link", { name: "Requests" }).click();
   await page.waitForURL(`${APP}/jobs`);
@@ -136,83 +137,6 @@ try {
   if (!(await page.getByRole("heading", { name: "Request #1" }).count()))
     problems.push("a logged enquiry does not open as request #1");
   await shoot(page, "7c-job-detail");
-  await page.getByRole("button", { name: "Revoke old links, send a new one" }).click();
-  const fresh = await page.getByLabel("Customer link").inputValue();
-  const stranger = await browser.newContext({ viewport: WIDTHS.phone });
-  const strangerPage = await stranger.newPage();
-  await strangerPage.goto(fresh);
-  if (!(await strangerPage.getByRole("heading", { name: "Request #1" }).count()))
-    problems.push("the re-sent customer link does not open the request");
-  await stranger.close();
-  await shoot(page, "7d-link-resent");
-
-  // A quote: the first draft prices the request's task from the price list; add a discount line, have a deposit
-  // above the total refused without losing the lines, send, and read it through the customer's new link.
-  const jobUrl = page.url();
-  await page.getByRole("button", { name: "Write a quote" }).click();
-  await page.waitForURL(/\/quote$/);
-  await shoot(page, "7d1-quote-draft");
-  await page.getByRole("button", { name: "Custom line" }).click();
-  await page.locator("input[name=description]").last().fill("Discount");
-  await page.locator("input[name=price]").last().fill("-55");
-  await page.fill("input[name=deposit]", "999999");
-  await page.getByRole("button", { name: "Save draft" }).click();
-  await page.getByRole("alert").filter({ hasText: "deposit cannot be more" }).waitFor();
-  if ((await page.locator("input[name=description]").count()) !== 2)
-    problems.push("a refused quote save lost a line");
-  await shoot(page, "7d2-quote-refused");
-  await page.fill("input[name=deposit]", "");
-  await page.getByRole("button", { name: "Send quote" }).click();
-  await page.getByRole("status").filter({ hasText: "is sent" }).waitFor();
-  const quoteLink = await page.getByLabel("Customer link").inputValue();
-  await shoot(page, "7d3-quote-sent");
-  const reader = await browser.newContext({ viewport: WIDTHS.phone });
-  const readerPage = await reader.newPage();
-  watchConsole(readerPage, "customer quote");
-  await readerPage.goto(quoteLink);
-  if (!(await readerPage.getByRole("heading", { name: "Your quote" }).count()))
-    problems.push("the customer's link does not show the sent quote");
-  if (!(await readerPage.getByText("Discount").count()))
-    problems.push("the customer's quote lacks the discount line");
-  await shoot(readerPage, "7d4-customer-quote");
-  if ((await reader.cookies()).length > 0) problems.push("customer quote context holds cookies");
-
-  // Negotiation: the customer offers a lower price; the owner sees it and revises; the customer accepts the
-  // new version, after which the owner is offered no revision.
-  await readerPage.getByText("Offer a different price").click();
-  await readerPage.fill("input[name=total]", "400");
-  await readerPage.fill("textarea[name=note]", "Can you do it for 400?");
-  await readerPage.getByRole("button", { name: "Send my price" }).click();
-  await readerPage.getByRole("status").filter({ hasText: "Your price is sent" }).waitFor();
-  if (await readerPage.getByRole("button", { name: /Accept quote/ }).count())
-    problems.push("a countered quote still offers acceptance");
-  await shoot(readerPage, "7d5-customer-countered");
-  if ((await reader.cookies()).length > 0) problems.push("customer counter context holds cookies");
-  await reader.close();
-  await page.goto(jobUrl);
-  if (!(await page.getByText("offered ₹400.00").count()))
-    problems.push("the owner does not see the counter-offer");
-  await shoot(page, "7d6-job-countered");
-  await page.getByRole("button", { name: "Revise the quote" }).click();
-  await page.waitForURL(/\/quote$/);
-  await page.getByRole("button", { name: "Send quote" }).click();
-  await page.getByRole("status").filter({ hasText: "is sent" }).waitFor();
-  const revisedLink = await page.getByLabel("Customer link").inputValue();
-  const accepter = await browser.newContext({ viewport: WIDTHS.phone });
-  const accepterPage = await accepter.newPage();
-  watchConsole(accepterPage, "customer accept");
-  await accepterPage.goto(revisedLink);
-  await accepterPage.getByRole("button", { name: /Accept quote/ }).click();
-  await accepterPage.getByRole("status").filter({ hasText: "has your acceptance" }).waitFor();
-  await shoot(accepterPage, "7d7-customer-accepted");
-  if ((await accepter.cookies()).length > 0) problems.push("customer accept context holds cookies");
-  await accepter.close();
-  await page.goto(jobUrl);
-  if (!(await page.getByText("accepted this quote").count()))
-    problems.push("the owner does not see the acceptance");
-  if (await page.getByRole("button", { name: "Revise the quote" }).count())
-    problems.push("an accepted quote still offers a revision");
-  await shoot(page, "7d8-job-accepted");
   await tabs.getByRole("link", { name: "Requests" }).click();
   await page.waitForURL(`${APP}/jobs`);
   if (!(await page.getByText("Phone Caller").count()))
@@ -235,23 +159,11 @@ try {
   // fetch, not the page: the browser logs a 404 as a console error.
   const missing = await fetch(`${APP}/b/no-such-business-${run}`);
   if (missing.status !== 404) problems.push(`unknown slug answered ${missing.status}`);
-
-  // The customer's job link (seeded in apps/kaamkoti/seed.sql), also cookieless.
-  const jobPage = await visitor.newPage();
-  watchConsole(jobPage, "job link");
-  const job = await jobPage.goto(`${APP}/j/dev-job-link-sharma-request-1-xxxxxxxxxxxxx`);
-  if (job?.status() !== 200) problems.push(`job link answered ${job?.status()}`);
-  if (job?.headers()["set-cookie"]) problems.push("job link set a cookie");
-  if (job?.headers()["referrer-policy"] !== "no-referrer")
-    problems.push("job link lacks Referrer-Policy: no-referrer");
-  if (!(await jobPage.getByRole("heading", { name: "Request #1" }).count()))
-    problems.push("job link does not show request #1");
-  await shoot(jobPage, "9-job-link");
-  await jobPage.goto(`${APP}/j/${"x".repeat(43)}`);
-  if (!(await jobPage.getByText("This link is no longer valid").count()))
-    problems.push("an unknown job link is not refused");
-  await shoot(jobPage, "10-job-link-dead");
-  if ((await visitor.cookies()).length > 0) problems.push("visitor context holds cookies");
+  if (response?.headers()["referrer-policy"] !== "no-referrer")
+    problems.push("public page lacks Referrer-Policy: no-referrer");
+  // The token path is gone (3.2f): nothing answers under /j/.
+  const oldLink = await fetch(`${APP}/j/${"x".repeat(43)}`, { redirect: "manual" });
+  if (oldLink.status !== 404) problems.push(`an old /j/ link answered ${oldLink.status}`);
   await visitor.close();
 
   // A new customer's request (D15): "New work" asks them to sign in on the bare domain first, by email code,
@@ -330,8 +242,7 @@ try {
     problems.push("Back on a new work item does not discard it");
   await shoot(form, "12b-request-with-items");
   await form.getByRole("button", { name: "Send request" }).click();
-  // The request lands in their work list. Its details and photo are checked on the customer's job page once
-  // that exists (3.2f, second half); intake.test.ts checks the photo by signed URL meanwhile.
+  // The request lands in their work list; a request's details and photo are checked on its page further on.
   await form.waitForURL(`${PUBLIC}/b/sharma-cooling/requests`);
   const sent = await form.locator(".cards > li").allTextContents();
   if (sent.length !== 1 || !sent[0]?.includes("AC gas refill"))
@@ -398,6 +309,141 @@ try {
       })
     ).status();
   if (intake !== 429) problems.push(`intake past its limit answered ${intake}`);
+
+  // The quote on the customer's request page (D15, 3.2f). The same customer asks the new business for work
+  // with a detail and a photo; the owner quotes it with a discount line, she offers a lower price on her page,
+  // the owner revises, and she accepts. Every answer is a post from her own signed-in page; no link holds a secret.
+  await form.goto(`${PUBLIC}/b/${slug}/request`);
+  await form.getByLabel("Your name").fill("Quote Check");
+  await form.getByLabel("Your mobile number").fill(`8${String(Date.now()).slice(-9)}`);
+  await form.fill("textarea[name=address]", "2 Quote Lane, Pune");
+  await form.getByRole("button", { name: "Add work item" }).click();
+  await editor().getByLabel("What needs doing?").fill("Fan not working");
+  await editor().getByLabel("Details (optional)").fill("Hall fan hums but does not turn.");
+  await editor()
+    .locator('input[type="file"][name$=".photo"]')
+    .setInputFiles({
+      name: "fan.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(ONE_PIXEL_PNG, "base64"),
+    });
+  await form.getByRole("button", { name: "Save" }).click();
+  await form.getByRole("button", { name: "Send request" }).click();
+  await form.waitForURL(`${PUBLIC}/b/${slug}/requests`);
+  await form.locator(".cards a").first().click();
+  await form.waitForURL(/\/requests\/[0-9a-f-]{36}$/);
+  const requestPage = form.url();
+  const jobId = requestPage.slice(requestPage.lastIndexOf("/") + 1);
+  const sentItem = await form.locator("button.tile.wrap").first().textContent();
+  if (!sentItem?.includes("Hall fan hums") || !sentItem.includes("1 photo"))
+    problems.push(`the customer's request page shows the item as ${JSON.stringify(sentItem)}`);
+  await shoot(form, "13a-customer-request-page");
+
+  // The owner prices the item, adds a discount, has a deposit above the total refused without losing the
+  // lines, and sends; the link to pass on is her request page, which needs her sign-in.
+  await page.goto(`${APP}/jobs`);
+  await page.locator(".cards a.card", { hasText: "Quote Check" }).click();
+  await page.waitForURL(/\/jobs\/[0-9a-f-]{36}$/);
+  const jobUrl = page.url();
+  await page.getByRole("button", { name: "Write a quote" }).click();
+  await page.waitForURL(/\/quote$/);
+  await page.locator("input[name=price]").first().fill("800");
+  await shoot(page, "13b-quote-draft");
+  await page.getByRole("button", { name: "Custom line" }).click();
+  await page.locator("input[name=description]").last().fill("Discount");
+  await page.locator("input[name=price]").last().fill("-55");
+  await page.fill("input[name=deposit]", "999999");
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await page.getByRole("alert").filter({ hasText: "deposit cannot be more" }).waitFor();
+  if ((await page.locator("input[name=description]").count()) !== 2)
+    problems.push("a refused quote save lost a line");
+  await shoot(page, "13c-quote-refused");
+  await page.fill("input[name=deposit]", "");
+  await page.getByRole("button", { name: "Send quote" }).click();
+  await page.getByRole("status").filter({ hasText: "is sent" }).waitFor();
+  const shared = await page.getByLabel("Customer link").inputValue();
+  if (shared !== requestPage) problems.push(`the owner is given ${shared} to pass on`);
+  await shoot(page, "13d-quote-sent");
+
+  await form.goto(requestPage);
+  if (!(await form.getByRole("heading", { name: "Your quote" }).count()))
+    problems.push("the customer's request page does not show the sent quote");
+  if (!(await form.getByText("Discount").count()))
+    problems.push("the customer's quote lacks the discount line");
+  await shoot(form, "13e-customer-quote");
+  // Her answer's own guards: another site's post is refused; another business's or customer's job is a 404,
+  // to read or to answer, even from her own pages.
+  // Each probe names a job together with its own sent quote, so only the customer scope can refuse it.
+  const answerTo = (s: string, id: string) => `${PUBLIC}/b/${s}/requests/${id}/answer`;
+  const myQuote = await form.locator("input[name=quote]").first().inputValue();
+  const crossSite = await customer.request.post(answerTo(slug, jobId), {
+    headers: { "sec-fetch-site": "cross-site", origin: PUBLIC },
+    form: { quote: myQuote, answer: "accept" },
+    maxRedirects: 0,
+  });
+  if (crossSite.status() !== 403)
+    problems.push(`a cross-site answer to a quote answered ${crossSite.status()}`);
+  // Sharma's #2 and its sent quote (seed.sql) are someone else's.
+  const SHARMA_2 = "10000000-0000-4000-8000-0000000e0002";
+  const SHARMA_2_QUOTE = "10000000-0000-4000-8000-000000100001";
+  for (const [whose, s, id, quote] of [
+    ["another business's", "sharma-cooling", jobId, myQuote],
+    ["another customer's", "sharma-cooling", SHARMA_2, SHARMA_2_QUOTE],
+  ] as const) {
+    const read = await customer.request.get(`${PUBLIC}/b/${s}/requests/${id}`);
+    if (read.status() !== 404) problems.push(`${whose} request page answered ${read.status()}`);
+    const answered = await customer.request.post(answerTo(s, id), {
+      headers: { "sec-fetch-site": "same-origin" },
+      form: { quote, answer: "accept" },
+      maxRedirects: 0,
+    });
+    if (answered.status() !== 404)
+      problems.push(`an answer to ${whose} quote answered ${answered.status()}`);
+  }
+
+  // Negotiation: she offers a lower price; the owner sees it and revises; she accepts the new version, after
+  // which the owner is offered no revision and she sees the work with its photo.
+  await form.getByText("Offer a different price").click();
+  await form.fill("input[name=total]", "400");
+  await form.fill("textarea[name=note]", "Can you do it for 400?");
+  await form.getByRole("button", { name: "Send my price" }).click();
+  await form.getByRole("status").filter({ hasText: "Your price is sent" }).waitFor();
+  if (await form.getByRole("button", { name: /Accept quote/ }).count())
+    problems.push("a countered quote still offers acceptance");
+  await shoot(form, "13f-customer-countered");
+  await page.goto(jobUrl);
+  if (!(await page.getByText("offered ₹400.00").count()))
+    problems.push("the owner does not see the counter-offer");
+  await shoot(page, "13g-job-countered");
+  await page.getByRole("button", { name: "Revise the quote" }).click();
+  await page.waitForURL(/\/quote$/);
+  await page.getByRole("button", { name: "Send quote" }).click();
+  await page.getByRole("status").filter({ hasText: "is sent" }).waitFor();
+  await form.goto(requestPage);
+  await form.getByRole("button", { name: /Accept quote/ }).click();
+  await form.getByRole("status").filter({ hasText: "has your acceptance" }).waitFor();
+  if (await form.locator("button.tile.wrap").count())
+    problems.push("an accepted request still offers its items for editing");
+  if (!(await form.getByText("Hall fan hums").count()))
+    problems.push("the accepted request does not show the item's details");
+  // Lazy-loaded, so brought into view first; decode() settles once the signed URL has answered.
+  const photo = form.locator(".photos img").first();
+  await photo.scrollIntoViewIfNeeded();
+  const loaded = await photo.evaluate((img: HTMLImageElement) =>
+    img.decode().then(
+      () => img.naturalWidth > 0,
+      () => false,
+    ),
+  );
+  if (!loaded) problems.push("the accepted request's photo does not load");
+  await form.evaluate(() => window.scrollTo(0, 0));
+  await shoot(form, "13h-customer-accepted");
+  await page.goto(jobUrl);
+  if (!(await page.getByText("accepted this quote").count()))
+    problems.push("the owner does not see the acceptance");
+  if (await page.getByRole("button", { name: "Revise the quote" }).count())
+    problems.push("an accepted quote still offers a revision");
+  await shoot(page, "13i-job-accepted");
   await customer.close();
 
   // A signed-in customer (D15): seeded Anita opens "My requests" on the bare domain, signs in there, and sees
@@ -569,17 +615,6 @@ try {
     problems.push("the owner's Call does not ring the person at the address");
   await shoot(ownerPage, "16f-owner-job-for-someone-else");
   await sharma.close();
-
-  // Past the /j/ lookup limit.
-  let lookups = 0;
-  for (let i = 0; i < 61; i++)
-    lookups = (
-      await fetch(`${APP}/j/${"y".repeat(43)}`, {
-        redirect: "manual",
-        headers: { "x-client-ip": `limit-${run}` },
-      })
-    ).status;
-  if (lookups !== 429) problems.push(`job link lookups past their limit answered ${lookups}`);
 } finally {
   await owner?.close();
   await browser.close();

@@ -52,7 +52,6 @@ export {
   type PhoneEnquiryError,
   type PhoneEnquiryInput,
   type PhoneEnquiryResult,
-  reissueJobLink,
 } from "./inbox.ts";
 export {
   checkItemPhotos,
@@ -79,14 +78,6 @@ export {
   type WorkItem,
   workItems,
 } from "./job.ts";
-export {
-  type CustomerJobView,
-  issueJobLink,
-  JOB_LINK_DAYS,
-  openJobLink,
-  resolveJobLink,
-  revokeJobLinks,
-} from "./job-link.ts";
 export { CLIENT_IP_HEADER, clientIp, LIMITS, overLimit } from "./limits.ts";
 export { noticeQuoteSent } from "./notices.ts";
 export { toE164 } from "./phone.ts";
@@ -112,11 +103,11 @@ export {
 } from "./quote.ts";
 export { type AnswerForm, type QuoteForm, readAnswerForm, readQuoteForm } from "./quote-form.ts";
 export {
+  answerRequestQuote,
   type CustomerRequest,
   customerRequest,
   type EditResult,
   editRequest,
-  type RequestTask,
 } from "./request-edit.ts";
 export {
   assignableMembers,

@@ -8,17 +8,21 @@ import type { Storage } from "@bodhchakra/storage";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   addressBook,
+  answerRequestQuote,
   customerFor,
   customerRequest,
   editRequest,
   migrations,
+  openDraft,
   RUNTIME_ROLE,
   type SpaceCustomer,
   seed,
+  sendQuote,
   type WorkItemInput,
 } from "../src/index.ts";
 
 const SHARMA = "10000000-0000-4000-8000-000000000001";
+const sharmaOwner = { businessId: SHARMA, memberId: "10000000-0000-4000-8000-0000000a0001" };
 const ANITA = {
   identityId: "00000000-0000-4000-8000-00000000d005",
   email: "anita@example.com",
@@ -103,7 +107,7 @@ describe("a customer editing their request", () => {
     });
   }
   const titles = async (jobId: string) =>
-    (await asAnita((c, me) => customerRequest(c, me, jobId)))?.tasks.map((t) => t.title);
+    (await asAnita((c, me) => customerRequest(c, me, jobId)))?.items.map((t) => t.title);
   const stateOf = async (jobId: string) =>
     (
       await owner.tx((c) =>
@@ -121,7 +125,7 @@ describe("a customer editing their request", () => {
       await edit(jobId, [item(taskId, "Fix kitchen tap", "Drips"), item("", "AC general service")]),
     ).toBe("saved");
     const after = await asAnita((c, me) => customerRequest(c, me, jobId));
-    expect(after?.tasks.map((t) => [t.title, t.details])).toEqual([
+    expect(after?.items.map((t) => [t.title, t.details])).toEqual([
       ["Fix kitchen tap", "Drips"],
       ["AC general service", null],
     ]);
@@ -241,5 +245,53 @@ describe("a customer editing their request", () => {
       c.query<{ title: string }>("select title from kk.job_task where id = $1", [theirs.taskId]),
     );
     expect(rows[0]?.title).toBe("Fix tap");
+  });
+
+  describe("answering the quote on the request page", () => {
+    /** A fresh request of the customer's with version 1 sent by the owner, as it stands. */
+    async function quotedRequest(customer = ANITA_ROW) {
+      const { jobId } = await freshRequest(customer);
+      const quoteId = await app.withTenant(SHARMA, async (c) => {
+        const draft = await openDraft(c, sharmaOwner, jobId);
+        if (!draft.ok) throw new Error(draft.error);
+        const sent = await sendQuote(c, audit, sharmaOwner, draft.quoteId, 7);
+        if (!sent.ok) throw new Error(sent.error);
+        return draft.quoteId;
+      });
+      return { jobId, quoteId };
+    }
+    const answer = (jobId: string, quoteId: string) =>
+      asAnita((c, me) => answerRequestQuote(c, audit, me, jobId, quoteId, { kind: "accept" }));
+    const quoteStatus = async (quoteId: string) =>
+      (
+        await owner.tx((c) =>
+          c.query<{ status: string }>("select status from kk.quote where id = $1", [quoteId]),
+        )
+      ).rows[0]?.status;
+
+    it("shows her the sent quote, takes her acceptance, and then locks the items", async () => {
+      const { jobId, quoteId } = await quotedRequest();
+      const before = await asAnita((c, me) => customerRequest(c, me, jobId));
+      expect(before).toMatchObject({ status: "quoted", editable: true });
+      expect(before?.quote).toMatchObject({ id: quoteId, status: "sent" });
+      expect(await answer(jobId, quoteId)).toEqual({ ok: true });
+      const after = await asAnita((c, me) => customerRequest(c, me, jobId));
+      expect(after).toMatchObject({ status: "accepted", editable: false });
+      expect(after?.quote?.status).toBe("accepted");
+    });
+
+    it("answers another customer's request as not found, and leaves its quote alone", async () => {
+      const theirs = await quotedRequest(RAHUL_ROW);
+      expect(await answer(theirs.jobId, theirs.quoteId)).toEqual({ ok: false, error: "not_found" });
+      expect(await quoteStatus(theirs.quoteId)).toBe("sent");
+      expect(await answer("not-an-id", theirs.quoteId)).toEqual({ ok: false, error: "not_found" });
+    });
+
+    it("answers another business's request as not found", async () => {
+      const KAVERI_JOB_1 = "20000000-0000-4000-8000-0000000e0001";
+      const mine = await quotedRequest();
+      expect(await answer(KAVERI_JOB_1, mine.quoteId)).toEqual({ ok: false, error: "not_found" });
+      expect(await quoteStatus(mine.quoteId)).toBe("sent");
+    });
   });
 });

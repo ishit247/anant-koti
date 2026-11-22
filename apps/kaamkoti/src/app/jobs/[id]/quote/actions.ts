@@ -3,8 +3,8 @@ import { formatMoney } from "@bodhchakra/money";
 import { currentBusiness, defineRoute } from "@bodhchakra/tenancy";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { requestPageUrl } from "../../../../customer-space.ts";
 import { requireMember } from "../../../../guard.ts";
-import { issueJobLink } from "../../../../job-link.ts";
 import { noticeQuoteSent } from "../../../../notices.ts";
 import { type QuoteError, saveDraft, sendQuote } from "../../../../quote.ts";
 import { readQuoteForm, type TypedQuote } from "../../../../quote-form.ts";
@@ -20,8 +20,8 @@ export interface QuoteEditorState {
   readonly totals?: { readonly net: string; readonly tax: string; readonly total: string };
   readonly sent?: {
     readonly version: number;
-    /** The new customer link's secret, shown once in the owner's own response; only its hash is stored. */
-    readonly secret: string;
+    /** The customer's page for this job, for the owner to pass on; it needs the customer's sign-in. */
+    readonly link: string;
   };
 }
 
@@ -49,9 +49,9 @@ export async function saveQuoteAction(
   if (!target.success) return { error: MESSAGE.not_found };
   const { jobId, quoteId } = target.data;
   const owner = await requireMember(route, `/jobs/${jobId}/quote`);
-  const { db, audit, notify, origin } = server();
+  const { db, audit, notify, publicOrigin } = server();
   const state = await db.withTenant(owner.businessId, async (client): Promise<QuoteEditorState> => {
-    const { currency } = await currentBusiness(client);
+    const { currency, slug } = await currentBusiness(client);
     const parsed = readQuoteForm(form, currency);
     if (!parsed.ok) return { error: parsed.error, typed: parsed.typed };
     const { typed } = parsed;
@@ -65,10 +65,9 @@ export async function saveQuoteAction(
     if (!parsed.send) return { typed, totals };
     const sent = await sendQuote(client, audit, owner, quoteId, parsed.validDays);
     if (!sent.ok) return { error: MESSAGE[sent.error], typed, totals };
-    // Each message carries a fresh link (architecture.md 7); this one carries the quote.
-    const { secret } = await issueJobLink(client, sent.jobId);
-    await noticeQuoteSent(client, notify, { quoteId, secret, origin });
-    return { typed, totals, sent: { version: sent.version, secret } };
+    await noticeQuoteSent(client, notify, { quoteId, publicOrigin });
+    const link = requestPageUrl(publicOrigin, slug, sent.jobId);
+    return { typed, totals, sent: { version: sent.version, link } };
   });
   revalidatePath(`/jobs/${jobId}`);
   return state;

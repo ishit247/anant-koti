@@ -6,7 +6,6 @@ import { createNotify, type Notify } from "@bodhchakra/notify";
 import { createOutbox } from "@bodhchakra/outbox";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  issueJobLink,
   logPhoneEnquiry,
   migrations,
   noticeQuoteSent,
@@ -21,7 +20,7 @@ const SHARMA_OWNER = "10000000-0000-4000-8000-0000000a0001";
 const SHARMA_GAS_REFILL = "10000000-0000-4000-8000-0000000b0002";
 // Request #1, from Anita Deshpande, who gave an email.
 const SHARMA_JOB_1 = "10000000-0000-4000-8000-0000000e0001";
-const ORIGIN = "http://127.0.0.1:45450";
+const PUBLIC_ORIGIN = "http://localhost:45450";
 
 const log = createLogger({ service: "test", write: () => {} });
 const audit = createAudit(log);
@@ -67,14 +66,12 @@ describe("notices", () => {
   }
 
   /** Sends the draft as the quote editor's action does, with the notice in the same transaction. */
-  function sendWithNotice(quoteId: string, fail = false): Promise<string> {
+  function sendWithNotice(quoteId: string, fail = false): Promise<void> {
     return sharma(async (c) => {
       const sent = await sendQuote(c, audit, sharmaOwner, quoteId, 7);
       if (!sent.ok) throw new Error(sent.error);
-      const { secret } = await issueJobLink(c, sent.jobId);
-      await noticeQuoteSent(c, notify, { quoteId, secret, origin: ORIGIN });
+      await noticeQuoteSent(c, notify, { quoteId, publicOrigin: PUBLIC_ORIGIN });
       if (fail) throw new Error("the send's transaction failed");
-      return secret;
     });
   }
 
@@ -97,9 +94,9 @@ describe("notices", () => {
     await database.drop();
   });
 
-  it("queues quote.sent to the customer with the link issued for it", async () => {
+  it("queues quote.sent to the customer, linking to their page for the job on the bare domain", async () => {
     const quoteId = await draftFor(SHARMA_JOB_1);
-    const secret = await sendWithNotice(quoteId);
+    await sendWithNotice(quoteId);
 
     const [message] = await queued(`notify:quote.sent:${quoteId}`);
     expect(message?.topic).toBe("notify.send");
@@ -110,7 +107,7 @@ describe("notices", () => {
       vars: {
         customerName: "Anita Deshpande",
         businessName: "Sharma Cooling Services",
-        link: `${ORIGIN}/j/${secret}`,
+        link: `${PUBLIC_ORIGIN}/b/sharma-cooling/requests/${SHARMA_JOB_1}`,
       },
     });
     expect(message?.payload.vars).toHaveProperty("total", expect.stringMatching(/^₹/));
@@ -134,7 +131,7 @@ describe("notices", () => {
   it("refuses to announce a quote that was not sent", async () => {
     const quoteId = await draftFor(await phoneRequest());
     await expect(
-      sharma((c) => noticeQuoteSent(c, notify, { quoteId, secret: "x", origin: ORIGIN })),
+      sharma((c) => noticeQuoteSent(c, notify, { quoteId, publicOrigin: PUBLIC_ORIGIN })),
     ).rejects.toThrow("is not a sent quote");
   });
 });

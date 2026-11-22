@@ -188,14 +188,6 @@ update kk.job_task set status = 'approved' where id = '20000000-0000-4000-8000-0
 update kk.job set status = 'accepted', accepted_quote_id = '20000000-0000-4000-8000-000000100003'
   where id = '20000000-0000-4000-8000-0000000e0003';
 
--- One customer link per business to its request #1, with a fixed development secret (stored, as always, only
--- as its SHA-256) so manual and browser checks can open /j/<secret>. Real links come from issueJobLink.
-insert into tokens.token (hash, purpose, business_id, subject_id, expires_at) values
-  (sha256(convert_to('dev-job-link-sharma-request-1-xxxxxxxxxxxxx', 'UTF8')), 'job',
-   '10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-0000000e0001', now() + interval '30 days'),
-  (sha256(convert_to('dev-job-link-kaveri-request-1-xxxxxxxxxxxxx', 'UTF8')), 'job',
-   '20000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-0000000e0001', now() + interval '30 days');
-
 -- A planned site visit for Sharma's first request, tomorrow from 10:00 with the technician. Kaveri's accepted
 -- request is left unplanned, so scheduling the work can be tried from the app.
 insert into kk.appointment (business_id, job_id, kind, technician_member_id, starts_at, ends_at) values
