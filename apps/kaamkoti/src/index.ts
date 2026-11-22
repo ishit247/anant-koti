@@ -30,6 +30,7 @@ export {
   jobGroup,
   type SpaceCustomer,
 } from "./customer-space.ts";
+export { type Geocoder, nominatim, type Point, point } from "./geocode.ts";
 export {
   countNewRequests,
   type InboxRow,

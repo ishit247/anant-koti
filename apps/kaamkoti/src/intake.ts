@@ -20,6 +20,7 @@ export const MAX_REQUEST_PHOTOS = 6;
 export const MAX_REQUEST_ITEMS = 20;
 export const MAX_ITEM_TITLE = 120;
 export const MAX_ITEM_DETAILS = 1000;
+export const MAX_ADDRESS = 500;
 
 /** One work item as it arrived. */
 export interface WorkItemInput {
@@ -106,7 +107,7 @@ export function toE164(typed: string): string {
 export const contact = z.object({
   name: z.string().trim().min(1).max(120),
   phone: z.string().transform(toE164).pipe(z.string().regex(E164)),
-  address: z.string().trim().min(1).max(500),
+  address: z.string().trim().min(1).max(MAX_ADDRESS),
 });
 
 /** A number typed as text; an empty string is refused, not read as 0. */

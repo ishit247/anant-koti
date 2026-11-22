@@ -17,6 +17,7 @@ export interface RequestLimits {
   readonly photos: number;
   readonly title: number;
   readonly details: number;
+  readonly address: number;
 }
 
 interface Item {
@@ -33,6 +34,7 @@ const sameName = (name: string) => name.trim().replace(/\s+/g, " ").toLowerCase(
 export function RequestForm({
   contact,
   action,
+  placeAction,
   services,
   imageTypes,
   limits,
@@ -41,6 +43,8 @@ export function RequestForm({
   /** The customer's own record here, to fill the details in; null before their first request. */
   contact: { name: string; phone: string; address: string } | null;
   action: string;
+  /** Where a picked point is sent to get its address back (D16). */
+  placeAction: string;
   services: readonly Service[];
   imageTypes: string;
   limits: RequestLimits;
@@ -52,7 +56,9 @@ export function RequestForm({
   const [problem, setProblem] = useState<string | null>(null);
   const [itemProblem, setItemProblem] = useState<string | null>(null);
   const [place, setPlace] = useState<{ latitude: string; longitude: string } | null>(null);
-  const [locating, setLocating] = useState<"idle" | "busy" | "failed">("idle");
+  /** "found": the address box was filled from the picked point. */
+  const [locating, setLocating] = useState<"idle" | "busy" | "found" | "failed">("idle");
+  const addressBox = useRef<HTMLTextAreaElement>(null);
   const [canLocate, setCanLocate] = useState(false);
   const [sending, setSending] = useState(false);
   const nextKey = useRef(0);
@@ -128,15 +134,34 @@ export function RequestForm({
     setEditing(null);
   };
 
+  /** The picked point's address in the Address box, for the customer to correct; null if none came back. */
+  const fillAddress = async (latitude: number, longitude: number): Promise<boolean> => {
+    try {
+      const response = await fetch(placeAction, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ latitude, longitude }),
+      });
+      if (!response.ok) return false;
+      const { address } = (await response.json()) as { address: string | null };
+      if (!address || !addressBox.current) return false;
+      addressBox.current.value = address;
+      return true;
+    } catch {
+      // Documented fallback: offline or the lookup failed; the point is kept and the customer types the address.
+      return false;
+    }
+  };
+
   const locate = () => {
     setLocating("busy");
     navigator.geolocation.getCurrentPosition(
-      ({ coords }) => {
+      async ({ coords }) => {
         setPlace({
           latitude: coords.latitude.toFixed(6),
           longitude: coords.longitude.toFixed(6),
         });
-        setLocating("idle");
+        setLocating((await fillAddress(coords.latitude, coords.longitude)) ? "found" : "idle");
       },
       // Refused or unavailable: the typed address is enough, and the message says so.
       () => setLocating("failed"),
@@ -189,12 +214,13 @@ export function RequestForm({
           <label>
             Address
             <textarea
+              ref={addressBox}
               name="address"
               defaultValue={contact?.address}
               autoComplete="street-address"
               required
-              maxLength={500}
-              rows={2}
+              maxLength={limits.address}
+              rows={3}
               placeholder="House, street, area"
             />
           </label>
@@ -217,6 +243,14 @@ export function RequestForm({
           {locating === "failed" && !place ? (
             <p className="hint" role="status">
               Could not get your location. The address is enough.
+            </p>
+          ) : place && locating === "found" ? (
+            <p className="hint" role="status">
+              Address filled in from your location. Add your house or flat number.
+            </p>
+          ) : place && locating === "idle" ? (
+            <p className="hint" role="status">
+              No address was found for your location. Please check the one above.
             </p>
           ) : null}
         </section>

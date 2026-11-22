@@ -12,6 +12,7 @@ import { createOutbox } from "@bodhchakra/outbox";
 import { type Limiter, redisLimiter } from "@bodhchakra/rate-limit";
 import { createStorage, type Storage } from "@bodhchakra/storage";
 import { PRIVATE_BUCKET, webConfig } from "./config.ts";
+import { type Geocoder, nominatim } from "./geocode.ts";
 
 export interface Server {
   readonly db: Db;
@@ -23,6 +24,8 @@ export interface Server {
   readonly storage: Storage;
   readonly limiter: Limiter;
   readonly audit: Audit;
+  /** The address of a point a customer picked (D16). */
+  readonly geocode: Geocoder;
   /** Messages to customers and owners, through the outbox; the worker delivers them to platform. */
   readonly notify: Notify;
   /** Where browsers reach this app: the base of every link sent to a customer. */
@@ -86,6 +89,7 @@ function build(): Server {
     storage,
     limiter: redisLimiter(config.REDIS_URL, log),
     audit: createAudit(log),
+    geocode: nominatim(config.GEOCODER_URL, log),
     notify: createNotify(outbox),
     origin: config.APP_ORIGIN,
     publicOrigin: config.PUBLIC_ORIGIN,

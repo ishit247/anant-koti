@@ -258,6 +258,8 @@ try {
   const customer = await browser.newContext({
     viewport: WIDTHS.phone,
     extraHTTPHeaders: { "x-client-ip": `browser-${run}` },
+    geolocation: { latitude: 18.5074, longitude: 73.8077 },
+    permissions: ["geolocation"],
   });
   const form = await customer.newPage();
   watchConsole(form, "request form");
@@ -271,6 +273,18 @@ try {
   await form.fill("input[name=name]", "Browser Check");
   await form.fill("input[name=phone]", `9${String(Date.now()).slice(-9)}`);
   await form.fill("textarea[name=address]", "1 Check Road, Pune");
+  // "Use my current location" fills the address from the picked point (D16). The lookup is answered here, in
+  // the browser, so the check never sends a point to OpenStreetMap; geocode.test.ts covers the server's side.
+  const picked = "Shanti Apartments, Kothrud, Pune, Maharashtra, 411038";
+  await form.route("**/request/place", (route) => route.fulfill({ json: { address: picked } }));
+  await form.getByRole("button", { name: "Use my current location" }).click();
+  await form.getByText("Location added").waitFor();
+  if ((await form.inputValue("textarea[name=address]")) !== picked)
+    problems.push("the picked location's address is not in the address box");
+  if ((await form.inputValue("input[name=latitude]")) !== "18.507400")
+    problems.push("the picked point is not in the form");
+  await shoot(form, "11a-request-location-picked");
+  await form.unroute("**/request/place");
   // No work item yet: the form says so without posting.
   await form.getByRole("button", { name: "Send request" }).click();
   if (!(await form.getByRole("alert").filter({ hasText: "at least one work item" }).count()))
@@ -344,6 +358,22 @@ try {
     !anonymous.headers.get("location")?.startsWith("/b/sharma-cooling/login?")
   )
     problems.push(`a request post without a session answered ${anonymous.status}, not sign-in`);
+  // The place lookup (D16) spends the app's share of the geocoder: customers only, from our own pages only.
+  const placeAt = `${PUBLIC}/b/sharma-cooling/request/place`;
+  const nowhere = { latitude: 0, longitude: 0 };
+  const placeAnonymous = await fetch(placeAt, {
+    method: "POST",
+    headers: { origin: PUBLIC, "content-type": "application/json" },
+    body: JSON.stringify(nowhere),
+  });
+  if (placeAnonymous.status !== 401)
+    problems.push(`a place lookup without a session answered ${placeAnonymous.status}`);
+  const placeCrossSite = await customer.request.post(placeAt, {
+    headers: { "sec-fetch-site": "cross-site", origin: PUBLIC },
+    data: nowhere,
+  });
+  if (placeCrossSite.status() !== 403)
+    problems.push(`a cross-site place lookup answered ${placeCrossSite.status()}`);
   // Past the limit, signed in. Intake counts before it looks at the slug, so an unknown one keeps real
   // counters clean.
   let intake = 0;

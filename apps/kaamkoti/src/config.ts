@@ -26,6 +26,8 @@ export const webConfig = z.object({
   SIGN_IN_CLIENT_SECRET: z.string().min(MIN_SECRET_LENGTH),
   /** Rate-limit counters for the public request form and customer links. */
   REDIS_URL: z.url({ protocol: /^rediss?$/ }),
+  /** Reverse geocoding for a picked location (D16); a test points it at a stub. */
+  GEOCODER_URL: origin(/^https?$/).default("https://nominatim.openstreetmap.org"),
   /** Garage's S3 API as this process reaches it, and as a browser does (presigned photo URLs). */
   S3_ENDPOINT: origin(/^https?$/),
   S3_PUBLIC_ENDPOINT: origin(/^https?$/),

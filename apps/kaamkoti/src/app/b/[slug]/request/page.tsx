@@ -5,6 +5,7 @@ import { customerContact } from "../../../../customer-space.ts";
 import { withCustomer } from "../../../../guard.ts";
 import {
   type IntakeError,
+  MAX_ADDRESS,
   MAX_ITEM_DETAILS,
   MAX_ITEM_TITLE,
   MAX_REQUEST_ITEMS,
@@ -60,6 +61,7 @@ export default async function RequestPage({
       <RequestForm
         contact={contact}
         action={`${space}/request/send`}
+        placeAction={`${space}/request/place`}
         services={page.services.map((s) => ({ name: s.name, price: formatPrice(s.price, s.unit) }))}
         imageTypes={IMAGE_TYPES.join(",")}
         limits={{
@@ -67,6 +69,7 @@ export default async function RequestPage({
           photos: MAX_REQUEST_PHOTOS,
           title: MAX_ITEM_TITLE,
           details: MAX_ITEM_DETAILS,
+          address: MAX_ADDRESS,
         }}
         refused={refused}
       />

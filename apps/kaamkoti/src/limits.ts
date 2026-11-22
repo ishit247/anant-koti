@@ -11,6 +11,9 @@ export const LIMITS = {
   intakePerIp: { window: 3600, max: 10 },
   /** Requests one business can receive through its form in a day, so a flood cannot bury its inbox. */
   intakePerBusiness: { window: 86_400, max: 200 },
+  /** "Use my current location" lookups (D16): a few per request form, and Nominatim's one a second app-wide. */
+  placePerIp: { window: 3600, max: 30 },
+  placeGlobal: { window: 1, max: 1 },
 } as const satisfies Record<string, RateLimitRule>;
 
 /**
