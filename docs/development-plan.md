@@ -8,7 +8,9 @@ its first table says which sections each step reads.
 customer session (scope `customer`; the send route checks Origin and sends a post without a session to
 sign-in), the form is filled in from the customer's own record, a mobile on another customer's record is refused
 (`phone_taken`), and a sent request lands on the work list. The public page opens with an app bar
-(`BusinessHeader`) and "New work" / "Work list" above Call and WhatsApp. Next: 3.2f second half (HIGH: the job
+(`BusinessHeader`) and "New work" above Call and WhatsApp. Customer tab bar (asked 2026-11-22): every
+`/b/<slug>` page ends with `CustomerNav` (Home, Work list, Profile); `/b/<slug>/profile` (scope `customer`)
+shows the customer's own record and is the only place to sign out. Next: 3.2f second half (HIGH: the job
 page `/b/<slug>/requests/<jobId>` with the quote answer; `/j/` and job tokens removed), best in a fresh session.
 Before that: 3.2e done (2026-11-22): customers sign in on the bare domain (`PUBLIC_ORIGIN`;
 `http://localhost:45450` in dev, the app host stays `127.0.0.1`) and see their own requests at

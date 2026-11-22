@@ -428,7 +428,8 @@ dl.facts dd {
   border-radius: var(--radius);
   box-shadow: var(--shadow);
 }
-.actions + .panel {
+.actions + .panel,
+.panel + .actions {
   margin-top: 1rem;
 }
 .panel > h2 {
@@ -563,6 +564,12 @@ button.add:hover {
 .dock .muted {
   margin: 0;
 }
+/* Above a tab bar, the dock stops on its top edge; the bar already keeps clear of the phone's home bar. */
+body:has(nav.tabs) .dock {
+  bottom: calc(var(--tabs) + env(safe-area-inset-bottom));
+  margin-bottom: -2rem;
+  padding-bottom: 0.75rem;
+}
 
 /* A screen inside a page (one work item's editor): a back arrow and a title on top. */
 .sheet {
@@ -681,20 +688,7 @@ nav.seg a[aria-current="page"] {
   color: var(--ink);
   box-shadow: var(--shadow);
 }
-/* Who is signed in, with the way out, on one line under a customer page's title. */
-.signed-in {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin: 0;
-  min-width: 0;
-}
-.signed-in .who-email {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* The member tab bar: thumb reach on a phone, a plain bar on a desktop. */
+/* The tab bar (members and customers): thumb reach on a phone, a plain bar on a desktop. */
 nav.tabs {
   position: fixed;
   inset: auto 0 0 0;

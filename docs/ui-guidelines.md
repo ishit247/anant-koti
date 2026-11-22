@@ -79,9 +79,9 @@ input gets a brand edge and ring. Do not put an input without a visible label on
 | Photo picker                 | `label.drop` around a `.visually-hidden` file input; `.thumbs` previews below               |
 | Icons                        | `Icon` in `app/icons.tsx` (inline SVG, always beside words, `aria-hidden`)                  |
 | One list seen several ways   | `nav.seg` of links with `aria-current="page"` (the customer's Active, Completed, Cancelled) |
-| Who is signed in             | `form.signed-in`: `.who-email` and a `button.link` "Sign out" posting the form              |
 | Link to pass on              | `ShareLink` (copy and WhatsApp), never a hand-built share row                               |
 | Member navigation            | `OwnerNav` at the end of every owner page, with `current` set                               |
+| Customer navigation          | `CustomerNav` (Home, Work list, Profile) at the end of every `/b/[slug]` page; the request form sets no `current`. Sign out lives only on Profile; a `.dock` sits above the bar |
 
 Buttons: primary is the default `button`/`.button` (3 rem tall, 0.8 rem radius); `quiet` is white with a
 soft edge; `link` is text-weight with an icon; `icon` is a round 44 px target (back arrow); `danger` is red
@@ -156,6 +156,7 @@ Before a UI step is done (see CLAUDE.md, "How much verification"):
 | --------------------------------------- | -------------------------------------------------------------- |
 | Request form `/b/[slug]/request`        | Reference: hero, panels, tiles, sheet editor, photo drop, dock |
 | Customer home `/b/[slug]/requests`      | Hero, `nav.seg`, cards with status chips, dock "New request"   |
+| Customer profile `/b/[slug]/profile`    | Hero, panel of `dl.facts`, quiet "Sign out"                    |
 | Customer job `/j/[secret]`, owner pages | New tokens (filled inputs, card depth), old layout             |
 
 The owner screens (price list, quote editor, phone enquiry, job page) and the customer job page move to the

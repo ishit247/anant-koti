@@ -14,6 +14,7 @@ import { formatPrice } from "../../../../price.ts";
 import { publicPage } from "../../../../public-page.ts";
 import { server } from "../../../../server.ts";
 import { BusinessHeader } from "../../../business-header.tsx";
+import { CustomerNav } from "../../../customer-nav.tsx";
 import { RequestForm } from "./request-form.tsx";
 
 // A signed-in customer (D15) asks this business for work: the form is filled in from their own record here, if
@@ -42,13 +43,8 @@ export default async function RequestPage({
   const { slug } = await params;
   const { error } = await searchParams;
   const space = `/b/${encodeURIComponent(slug)}`;
-  const { contact, email } = await withCustomer(
-    slug,
-    `${space}/request`,
-    async (client, customer, session) => ({
-      contact: customer ? await customerContact(client, customer) : null,
-      email: session.email,
-    }),
+  const contact = await withCustomer(slug, `${space}/request`, async (client, customer) =>
+    customer ? customerContact(client, customer) : null,
   );
   const page = await publicPage(server().db, slug);
   if (!page) notFound();
@@ -60,12 +56,6 @@ export default async function RequestPage({
         <p className="muted">
           Tell {page.name} what needs doing. You will get a quote before any work starts.
         </p>
-        <form className="signed-in muted small" method="post" action={`${space}/signout`}>
-          <span className="who-email">{email}</span>
-          <button type="submit" className="link">
-            Sign out
-          </button>
-        </form>
       </BusinessHeader>
       <RequestForm
         contact={contact}
@@ -80,6 +70,7 @@ export default async function RequestPage({
         }}
         refused={refused}
       />
+      <CustomerNav space={space} />
     </>
   );
 }

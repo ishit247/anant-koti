@@ -11,6 +11,7 @@ import { CUSTOMER_STATUS_LABEL, formatWhen, statusTone } from "../../../../job-l
 import { publicPage } from "../../../../public-page.ts";
 import { server } from "../../../../server.ts";
 import { BusinessHeader } from "../../../business-header.tsx";
+import { CustomerNav } from "../../../customer-nav.tsx";
 
 // The customer's home in one business (D15, architecture 7): their own requests here, by state.
 // biome-ignore lint/correctness/noUnusedVariables: read by scanRoutes, which scans the source text
@@ -39,10 +40,9 @@ export default async function CustomerHome({
   const group = jobGroup((await searchParams).status);
   const space = `/b/${encodeURIComponent(slug)}`;
   const here = group === "active" ? `${space}/requests` : `${space}/requests?status=${group}`;
-  const { jobs, email } = await withCustomer(slug, here, async (client, customer, session) => ({
-    jobs: customer ? await customerJobs(client, customer, group) : [],
-    email: session.email,
-  }));
+  const jobs = await withCustomer(slug, here, async (client, customer) =>
+    customer ? customerJobs(client, customer, group) : [],
+  );
   const page = await publicPage(server().db, slug);
   if (!page) notFound();
 
@@ -50,12 +50,6 @@ export default async function CustomerHome({
     <>
       <BusinessHeader business={page} home={{ href: space }}>
         <h1>Your requests</h1>
-        <form className="signed-in muted small" method="post" action={`${space}/signout`}>
-          <span className="who-email">{email}</span>
-          <button type="submit" className="link">
-            Sign out
-          </button>
-        </form>
       </BusinessHeader>
       <nav className="seg" aria-label="Requests by state">
         {GROUPS.map(([key, label]) => (
@@ -84,6 +78,7 @@ export default async function CustomerHome({
           New request
         </a>
       </div>
+      <CustomerNav space={space} current="requests" />
     </>
   );
 }

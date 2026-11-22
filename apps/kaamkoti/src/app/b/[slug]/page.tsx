@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { publicPage } from "../../../public-page.ts";
 import { server } from "../../../server.ts";
 import { BusinessHeader } from "../../business-header.tsx";
+import { CustomerNav } from "../../customer-nav.tsx";
 import { Icon } from "../../icons.tsx";
 
 // No credential: the slug in the path opens one business, and only its public columns are read.
@@ -25,9 +26,6 @@ export default async function BusinessPage({ params }: { params: Promise<{ slug:
         <a className="button" href={`${space}/request`}>
           <Icon name="plus" size={18} />
           New work
-        </a>
-        <a className="button quiet" href={`${space}/requests`}>
-          Work list
         </a>
       </div>
       <div className="actions">
@@ -53,6 +51,7 @@ export default async function BusinessPage({ params }: { params: Promise<{ slug:
           </ul>
         </section>
       ) : null}
+      <CustomerNav space={space} current="home" />
     </>
   );
 }

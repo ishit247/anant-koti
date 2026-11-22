@@ -389,7 +389,16 @@ try {
   await space.goto(`${APP}/jobs`);
   if (new URL(space.url()).pathname === "/jobs")
     problems.push(`a customer opened the members' app at ${space.url()}`);
+  // The way out is on her profile, reached from the tab bar, which shows her own record with Sharma.
   await space.goto(`${PUBLIC}/b/sharma-cooling/requests`);
+  await space.getByRole("link", { name: "Profile" }).click();
+  await space.waitForURL(`${PUBLIC}/b/sharma-cooling/profile`);
+  await shoot(space, "16b-customer-profile");
+  const profile = await space.locator("dl.facts").textContent();
+  if (!profile?.includes("anita@example.com") || !profile.includes("Anita"))
+    problems.push(`the customer profile shows ${JSON.stringify(profile)}, not Anita's record`);
+  if ((await space.getByRole("button", { name: "Sign out" }).count()) !== 1)
+    problems.push("the customer profile has no single Sign out button");
   await space.getByRole("button", { name: "Sign out" }).click();
   await space.waitForURL(`${PUBLIC}/b/sharma-cooling`);
   if ((await anita.cookies()).some((c) => c.name === "__Host-kk_customer"))
