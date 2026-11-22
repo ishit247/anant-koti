@@ -18,14 +18,20 @@ action), starting with the request form. Change a rule here and in the CSS in th
    except customer photos. The first paint is text.
 4. **Say what happened.** Every form answers in words (`role="alert"` for errors, `role="status"` for
    success). Empty lists explain what to do next. Never a blank or broken page.
-5. **Customers and owners see the same style.** Customer pages (`/b/`, `/j/`) use the same cards and
-   buttons but no tab bar and no cookies. A customer page opens with `header.hero`, so the customer sees
+5. **Customers and owners see the same style.** Customer pages (`/b/<slug>/…`, the customer space since
+   D15) use the same cards and buttons but no tab bar; they carry only the customer's own sign-in cookie. A customer page opens with `header.hero`, so the customer sees
    whose page it is before what it asks.
 6. **Finished, not a form dump.** Hierarchy does the work: a few `section.panel`s per screen, each a step
    with a sentence-case title; lists of things are `button.tile` rows that open an edit screen (`.sheet`),
-   never a column of repeated mini-forms; inputs are filled and soft, not boxed; spacing is generous and
+   never a column of repeated mini-forms; inputs are filled and soft, not boxed; spacing is even and
    only the main action carries the brand colour. The request form (`/b/[slug]/request`) is the reference
    screen.
+7. **Modern, minimal, compact (asked 2026-11-22).** A clean, modern look with no wasted space: tight but
+   even spacing, no empty bands, no decoration that carries no meaning. Icons save space where their
+   meaning is obvious (edit, delete, call, map, photo, back); an icon-only button always has an
+   `aria-label` and a visible text label where the meaning is not obvious. The layout should explain
+   itself, so help text is short: at most one line under a field, or behind an info icon. Never a
+   paragraph of instructions.
 
 ## Tokens
 

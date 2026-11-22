@@ -27,7 +27,9 @@ Decided (do not re-ask):
   touches that area. School renames its `@bodhchakra/*` packages if it adopts them.
 - A subscription or payment becomes active only from a verified webhook; live/lapsed
   status is computed at request time. A lapsed business shows a contact card, never
-  a broken page. Customers never need an account: they act through scoped magic links.
+  a broken page. Customers have their own account (D15, 2026-11-22): one login by
+  OTP to email (now) or mobile (3.3), always used inside one tradesperson's space; they see and manage only their
+  requests with that business, never several tradespeople at once.
 - CI runs locally (`pnpm run validate quick|standard|full`) until launch; images are
   built here and shipped to our server over SSH. No hosted CI. The one remote is
   `origin`, a private GitHub repo (2026-11-21); no other remote without asking.

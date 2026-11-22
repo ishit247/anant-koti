@@ -36,9 +36,10 @@ salon-at-home. Any other trade starts from a blank template.
 
 ## Beyond the core
 
-Recurring maintenance contracts (AMC) with automatically scheduled visits; a customer
-portal by magic link; WhatsApp as the main channel, with SMS and email as fallbacks; an
-offline-capable technician view; a follow-up 7 days after the job and warranty claims
+Recurring maintenance contracts (AMC) with automatically scheduled visits; WhatsApp as the main channel, with SMS and email as fallbacks; an
+offline-capable technician view; customer accounts (D15): the tradesperson sends a link,
+the customer signs in by OTP to email or mobile inside that tradesperson's space and sees their
+requests with that business (Active, Completed, Cancelled), and creates new ones; a follow-up 7 days after the job and warranty claims
 linked to the original job; lead-source tracking; an owner dashboard. Later: parts and
 stock, route planning, GST invoices, multiple branches.
 

@@ -16,6 +16,7 @@ Read only what your step needs. Each step's sections:
 | 1.x      | 5.3, 6                                |
 | 2.1–2.3  | 5.3, 7, 10                            |
 | 2.4, 2.5 | 5.3, 6, 8                             |
+| 3.2e, 3.2f | 1, 3, 4.3, 5.3, 6, 7, 10            |
 | 3.x      | 5.3, 6, 9                             |
 | 4.x      | 5.3, 6, 8, 12 (`payments`)            |
 | 5.x      | 4, 13                                 |
@@ -25,7 +26,7 @@ Read only what your step needs. Each step's sections:
 
 ```
 Cloudflare → Caddy (shared infra project)
-  ├─ kaamkoti.<tld>          → kaamkoti-web   public pages, request form, customer links; no cookies
+  ├─ kaamkoti.<tld>          → kaamkoti-web   public pages and the customer space (section 7); customer session cookie
   ├─ app.kaamkoti.<tld>      → kaamkoti-web   owner and technician app; session cookie
   ├─ id.<platform-tld>       → platform       sign-in pages, OpenID Connect provider (D14)
   └─ hooks.<platform-tld>    → platform       provider webhooks for notify and billing
@@ -33,17 +34,17 @@ Internal network only: kaamkoti-worker, platform internal API, Postgres, Garage,
 ```
 
 - The domains are still open (D1 is needed by 6.3). Code reads every host from config; nothing hard-codes one.
-- **One web image serves both Kaam Koti hosts.** Next.js middleware routes by `Host`. Public routes on the
-  bare domain never set or read a cookie. Because the session cookie is `__Host-kk_session` (host-only, `Secure`,
-  `HttpOnly`, `SameSite=Lax`, no `Domain`), the browser never sends it to `kaamkoti.<tld>`. Cookie isolation
-  therefore comes from the browser, not from our code.
+- **One web image serves both Kaam Koti hosts.** Next.js middleware routes by `Host`. Each host has its own
+  session cookie: `__Host-kk_session` (members) on `app.`, and `__Host-kk_customer` (customers, D15) on the
+  bare domain. Both are host-only, `Secure`, `HttpOnly`, `SameSite=Lax` and have no `Domain`, so the browser never
+  sends one to the other host. Cookie isolation therefore comes from the browser; the session's `kind` (section 3)
+  is the second check, so a member session is never accepted as a customer one, or the reverse.
 - `kaamkoti-worker` is the same codebase with a different entry point. It runs pg-boss handlers and has no
   host port.
 - `platform` is one container: identity, billing and notify. Apps reach its internal API at
   `http://platform:3000/internal/v1/…` on the Docker network. Only `id.` and `hooks.` are routed to it
   through Caddy.
-- Redis is not shared (infra rule). Its one job is rate-limit counters (sign-in OTP, public request form, token
-  lookups). It runs in the platform project, and Kaam Koti runs its own for the public form. Nothing that must
+- Redis is not shared (infra rule). Its one job is rate-limit counters (sign-in OTP, the request form). It runs in the platform project, and Kaam Koti runs its own for the public form. Nothing that must
   survive a restart lives in Redis.
 - Logs are JSON to stdout via `log`, collected into Loki.
 
@@ -101,6 +102,13 @@ There is one identity per person, and it lives in `platform`. Each app keeps its
   session too, so the next person on a shared phone is asked for a code. Platform redirects back only with an
   `id_token_hint`, so the session row keeps the ID token until it is deleted. Global sign-out (an event
   telling every app to drop that identity's sessions) is out of MVP.
+- **Customers sign in the same way (D15, 3.2e).** The same Kaam Koti client has a second redirect URI on the
+  bare domain: `/b/<slug>/login` and `/b/<slug>/auth/callback` run steps 1–3 there, with `__Host-kk_login` and
+  `__Host-kk_customer` set on that host. `auth.session` gains `kind` (`member`, `customer`); each host accepts
+  only its own kind. Step 4 differs: a customer session belongs to an identity, not to a business. The
+  customer space resolves the slug's business, then the `customer` row for (business, identity); none yet means
+  the customer has not asked this business for anything, and their list is empty. Sign-out works as for members.
+  The sign-in page offers email now; phone joins in 3.3 like the members' sign-in.
 - Identity holds name, email and phone. A member row holds only `identity_id` and a display name copied at
   sign-in, so personal data has one home. (The ID token kept for sign-out also carries email and name; it
   lives no longer than the session.)
@@ -157,10 +165,9 @@ A permission answers _what_ the role may do. Scope answers _whose_ row it is. Bo
 | Scope              | Credential                               | Resolves to                                          |
 | ------------------ | ---------------------------------------- | ---------------------------------------------------- |
 | `member`           | session cookie (`app.` only)             | business, member, role; then `withTenant`            |
-| `customer-token`   | token in the path (section 7)            | business, job and allowed actions; then `withTenant` |
+| `customer`         | customer session cookie (bare domain)    | business by slug, then the customer row for this identity; then `withTenant`, and only that customer's jobs |
 | `invite-token`     | token in the path (section 7)            | business and role; then `withTenant` to accept       |
 | `public-slug`      | none                                     | business by slug; read-only public columns           |
-| `public-intake`    | none, rate limited                       | business by slug; may only create a request          |
 | `service`          | signed request from platform (section 9) | the business in the payload; then `withTenant`       |
 | `provider-webhook` | provider signature                       | the business in the URL, verified against its secret |
 | `none`             | none                                     | health checks and static pages only                  |
@@ -188,7 +195,7 @@ Each module's own section in 12 lists its tables. Section 4.1 covers tenancy.
 | `trade_template`    | Global, read-only, from seeds: `key`, `version`, `body` (catalogue, intake questions, checklist, terms)                                                                                                                                                                                                           |
 | `business_profile`  | 1:1 with business: `trade_key`, `about`, `service_area`, `logo_object_id`, `intake` (questions), `checklist`, `terms`; copied from the template at onboarding, then the business's own                                                                                                                            |
 | `catalogue_item`    | `name`, `unit` (`job`, `hour`, `unit`, `sq_ft`, …), `unit_price_minor`, `tax_rate_bp`, `active`                                                                                                                                                                                                                   |
-| `customer`          | `name`, `phone_e164`, `email`, `address`; unique (`business_id`, `phone_e164`); found or created on request                                                                                                                                                                                                       |
+| `customer`          | The business's record of one customer: `identity_id` (nullable: a customer the owner entered by phone has none until they sign in), `name`, `phone_e164`, `email`, `address`; unique (`business_id`, `identity_id`). Created on the signed-in customer's first request, with name and email from the identity. An owner-entered row with no `identity_id` is claimed when a customer signs in with that verified email (3.2e) or verified phone (3.3) |
 | `job`               | The request and everything after: `customer_id`, `number` (per business), `source` (`public_form`, `whatsapp_link`, `qr`, `phone`), `address`, `latitude`/`longitude` (both or neither: the customer's picked location), `status` (section 6), `accepted_quote_id`, `cancel_reason`                               |
 | `job_task`          | One piece of work in a request (a "work item" on the form): `job_id`, `catalogue_item_id` (nullable: custom task), `title`, `details`, `status` (`requested`, `quoted`, `approved`, `done`, `dropped`), `added_by` (`customer`, `business`), `added_at`. A request has one or more                                |
 | `quote`             | `job_id`, `version` (unique per job), `status` (`draft`, `sent`, `accepted`, `rejected`, `countered`, `superseded`), `valid_until`, `sent_at`, totals (`net_minor`, `tax_minor`, `total_minor`), `deposit_minor` (2.4); `counter_note`, `counter_total_minor`, `decided_at` (2.5)                                 |
@@ -244,7 +251,7 @@ requested ──send quote──▶ quoted ──customer accepts──▶ accep
 
 | From                    | Event               | To            | Who                                         | Side effects                                                                                       |
 | ----------------------- | ------------------- | ------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| —                       | request created     | `requested`   | customer (`public-intake`) or owner (phone) | customer found or created; notify owner and customer; token issued                                 |
+| —                       | request created     | `requested`   | customer (signed in) or owner (phone)       | customer found or created; notify owner and customer                                               |
 | `requested`             | quote sent          | `quoted`      | owner                                       | quote `draft → sent`; expiry job at `valid_until`; notify customer                                 |
 | `requested`             | decline             | `declined`    | owner                                       | notify customer                                                                                    |
 | `quoted`                | accept              | `accepted`    | customer                                    | quote → `accepted`, `job.accepted_quote_id` set; deposit link if `deposit_minor > 0`; notify owner |
@@ -254,7 +261,7 @@ requested ──send quote──▶ quoted ──customer accepts──▶ accep
 | `accepted`              | appointment planned | `scheduled`   | owner                                       | notify customer; reminder jobs                                                                     |
 | `scheduled`             | check in            | `in_progress` | assigned technician or owner                | `job_visit.checked_in_at`                                                                          |
 | `in_progress`           | complete            | `completed`   | assigned technician or owner                | invoice issued with pay link; notify customer                                                      |
-| `requested`…`scheduled` | cancel              | `cancelled`   | owner, or customer by token                 | appointments cancelled; open payment links cancelled                                               |
+| `requested`…`scheduled` | cancel              | `cancelled`   | owner, or the customer                      | appointments cancelled; open payment links cancelled                                               |
 
 - **Quote expiry is computed at request time.** A `sent` quote with `valid_until < now()` is treated as
   expired: accepting it is refused and the customer sees "ask for a new quote". The pg-boss job at
@@ -268,7 +275,10 @@ requested ──send quote──▶ quoted ──customer accepts──▶ accep
   makes a new quote version. After acceptance, the customer's added task is only a request: it is
   `requested` and costs nothing until the business prices it in a change order and the customer approves.
   Invoice lines copy `job_task_id` from the lines they snapshot.
-- A proposed change order needs the customer's approval by token. It can be approved only while the job is
+- **The customer's list (D15)** groups jobs by state: **Active** is `requested`, `quoted`, `accepted`,
+  `scheduled` and `in_progress` (from phase 4 also `completed` with an unpaid invoice); **Completed** is
+  `completed`; **Cancelled** is `cancelled`, `declined` and `lost`. Active is the default.
+- A proposed change order needs the customer's approval in their space. It can be approved only while the job is
   `in_progress` or `completed` and the invoice is not yet issued. The invoice includes only `approved` change
   orders (4.3).
 - A paid invoice is derived, not a job state. It drives the review request (6.1).
@@ -283,28 +293,33 @@ requested ──send quote──▶ quoted ──customer accepts──▶ accep
   the quote prices. A draft the owner left open when the customer accepted stays as it was and can be neither
   saved nor sent.
 
-## 7. Customer access by link (`tokens`)
+## 7. Customer access (D15)
 
-Customers never have accounts. They open their job by a link: `https://kaamkoti.<tld>/j/<token>`.
+Customers have their own account (section 3), but always use it inside one business's space,
+`https://kaamkoti.<tld>/b/<slug>/…`, and see only their own jobs with that business, never a list of
+businesses. (Until 3.2f customers opened a job by a token link, `/j/<token>`, with no account; that path and
+the `job` token purpose are removed in 3.2f.)
 
-- The token is 32 random bytes in base64url. Only its SHA-256 is stored, in `tokens.token`: `hash`, `purpose`
-  (`job`, `invite`), `business_id`, `subject_id`, `expires_at`, `revoked_at`.
-- Scope is one job. Lookup returns the job id. The page then runs inside `withTenant` and loads only that job.
-  What the customer may do there (view, respond to quote, approve change order, pay, review) follows from the
-  job's state at request time; nothing about actions is stored on the token.
-- **A new link per message.** The secret cannot be recovered from its hash, so a later message cannot resend an
-  earlier link. Each message carries a fresh link (`issueJobLink`), live for 30 days after that message; a job
-  can have several live links. The owner can revoke all of a job's links (`revokeJobLinks`) and send a new one,
-  for example after a wrong number. (Changed in 2.1 from "one link per job, extended on each send", which
-  needed the secret stored.)
-- The token sits in the path. Caddy writes no access logs, and pages set `Referrer-Policy: no-referrer` and load
-  no third-party resources, so it does not leak. Lookups are rate limited per IP (60 per 10 minutes) in the
-  app's proxy (`src/proxy.ts`, matcher `/j/:path*`), which answers 429; the address is `x-client-ip`, which
-  Caddy sets.
-- Customer actions are form posts carrying the token. With no cookies there is no ambient authority, and so
-  no CSRF. The quote answer posts to the route handler `/j/<token>/answer` (2.5), which resolves the token
-  again and answers with a 303 back to the page and `?answer=<outcome>`.
-- **Lapsed business** (section 13): the link still opens, but shows a contact card and allows no actions.
+- **The tradesperson shares the link** `/b/<slug>` (the public page, scope `public-slug`). Its main action leads
+  to the customer's home; a customer who is not signed in is sent to sign in first and comes back.
+- **Routes** (scope `customer`): `/b/<slug>/requests` is the home, a list of the customer's jobs filtered
+  Active, Completed or Cancelled (`?status=`, Active by default; section 6), with "New request";
+  `/b/<slug>/request` is the request form (section 10); `/b/<slug>/requests/<jobId>` is the job page. What
+  the customer may do there (view, respond to the quote, agree the time, approve a change order, cancel, pay,
+  review) follows from the job's state at request time.
+- **Scope.** Every customer route resolves the business by slug, then the `customer` row for the session's
+  identity, inside `withTenant`, and the job query helper adds `customer_id = <that row>`. A job id from
+  another customer or another business is answered with 404, the same as a missing one. Tested, with a mutant.
+- **Messages link to the job page** in the space, never to a secret. A wrong number or a forwarded message
+  therefore grants nothing: opening the link still needs that customer's sign-in.
+- **Forms post with the customer cookie**, so they need CSRF protection: the cookie is `SameSite=Lax`, and
+  every customer route handler also refuses a post whose `Origin` is not the bare domain. Answers are a 303 back
+  to the page with `?answer=<outcome>`, as before.
+- **Lapsed business** (section 13): the space still opens after sign-in, but shows a contact card and allows no
+  actions.
+- **`tokens` keeps one purpose, `invite`.** The token is 32 random bytes in base64url; only its SHA-256 is
+  stored, in `tokens.token`: `hash`, `purpose`, `business_id`, `subject_id`, `expires_at`, `revoked_at`. It
+  sits in the path; Caddy writes no access logs, and pages set `Referrer-Policy: no-referrer`.
 
 ## 8. Money
 
@@ -368,7 +383,7 @@ receiver code handles provider webhooks, with the provider's signature in place 
 
 | Template                                                                 | To                                                      | When                                           |
 | ------------------------------------------------------------------------ | ------------------------------------------------------- | ---------------------------------------------- |
-| `request.received`                                                       | owner; customer gets an acknowledgement with their link | job created                                    |
+| `request.received`                                                       | owner; customer gets an acknowledgement linking to the job | job created                                    |
 | `quote.sent`                                                             | customer                                                | quote sent or revised                          |
 | `quote.response`                                                         | owner                                                   | accepted, rejected, countered                  |
 | `appointment.confirmed`, `appointment.reminder`, `technician.on_the_way` | customer                                                | planned; 24 h before; tapped by the technician |
@@ -391,15 +406,17 @@ invites in 0.7 are shared by the owner: copy the link, or a `wa.me` share. Sendi
   `sha256`, `created_by`. Up to 6 photos per request on the public form. Limits are per IP, and per business
   per day.
 - **The public request form** (2.2) is a plain multipart post to a route handler,
-  `/b/[slug]/request/send` (scope `public-intake`), not a server action like the app's other forms. It has to
+  `/b/[slug]/request/send` (scope `customer` since 3.2f; `public-intake` before), not a server action like the app's other forms. It has to
   answer 429 and 413 and take six photos, and a server action can do neither. The proxy cannot limit it, because
   it buffers bodies only to 10 MB. Limits: 10 per IP per hour, then 200 per business per day, counted in that
-  order. Since 3.2a the form is the same for every trade: name, mobile, address (with an optional "Use my
+  order. Since 3.2a the form is the same for every trade: name, mobile, address (since 3.2f name and email
+  come from the account, and the mobile, still unverified until 3.3, is prefilled from the customer's last
+  request; so is the address) (with an optional "Use my
   location", the browser's own geolocation; nothing is sent to a map service), and one or more work items
   (fields `item.<n>.title`, `item.<n>.details`, `item.<n>.photo`). Up to 20 items and 6 photos in all; each
   photo belongs to its item. A client component switches between the request and one item's editor; every
-  item's fields stay in the one multipart post. On success the customer is sent to a fresh job link
-  (`/j/<secret>`), which shows the work items with their details and photos (by `signedUrl`). The owner's job
+  item's fields stay in the one multipart post. On success the customer is sent to the new job's page
+  (`/b/<slug>/requests/<jobId>` since 3.2f; a fresh `/j/<secret>` before), which shows the work items with their details and photos (by `signedUrl`). The owner's job
   page opens a picked location in Maps by a plain link. The trade template's intake questions are no longer
   asked (3.2c decides their fate); the preferred time is agreed after acceptance (3.1b).
 
@@ -425,7 +442,7 @@ them in its README.
 | `db`               | `createPool(cfg)`, `tx(fn)`, `withTenant(id, fn)`, `migrate([...folders])`, `testDb()` (fresh database per test file)                                    | `db.migration`                                                                    | 0.3  |
 | `tenancy`          | `createBusiness`, `addMember`, `createInvite`, `acceptInvite`, `memberFor(identityId)`, `requireRole`, `defineRoute({ scope, … })`, route-scope test kit | `tenancy.*`                                                                       | 0.4  |
 | `audit`            | `record(tx, event)`, `recordStrict(tx, event)`                                                                                                           | `audit.event`                                                                     | 0.4  |
-| `tokens`           | `signRequest`, `verifyRequest` (0.5); `issue`, `resolve`, `revoke`, `revokeFor` for links (invites 0.7, jobs 2.1)                                        | `tokens.token`                                                                    | 0.5  |
+| `tokens`           | `signRequest`, `verifyRequest` (0.5); `issue`, `resolve`, `revoke`, `revokeFor` for invite links (0.7; job links 2.1–3.2f)                                     | `tokens.token`                                                                    | 0.5  |
 | `jobs`             | `createJobs(pool)`, `defineJob(name, zodPayload, handler)`, `send(tx, …)`, `sendAt`                                                                      | `pgboss.*`                                                                        | 0.5  |
 | `outbox`           | `enqueue(tx, topic, payload, key)`, `startDelivery`, `receive(source, key, tx, fn)`                                                                      | `outbox.message`, `outbox.inbox`                                                  | 0.5  |
 | `auth` (app side)  | `createAuth(options)` → `startLogin`, `handleCallback`, `getSession`, `signOut`; `SignInRefused`, `SignInUnavailable`                                    | `auth.login_attempt`, `auth.session`                                              | 0.6  |
@@ -453,7 +470,7 @@ Dependency direction (checked in 0.2): foundation (`config`, `log`, `money`) ←
   applied only if its `version` is newer, so an old event can never undo a new one.
 - **Live is computed at request time:** `live = (trialing and now < trial_ends_at) or now < paid_through + 3
   days grace`. Nothing is stored that can go stale, and a platform outage changes nothing.
-- **Lapsed:** the public page and customer links show a contact card (name, phone, WhatsApp link) and accept
+- **Lapsed:** the public page and the customer space show a contact card (name, phone, WhatsApp link) and accept
   no new requests or payments. The owner app goes read-only, apart from billing and export. Data is never
   deleted on lapse.
 - Limits are plan config: seats (owner plus technicians), and the WhatsApp quota (counted in platform). They are
