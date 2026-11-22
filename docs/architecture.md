@@ -438,7 +438,7 @@ receiver code handles provider webhooks, with the provider's signature in place 
 | `quote.expired`                                                          | owner                                           | a sent quote is still unanswered at its expiry |
 | `appointment.proposed`                                                   | customer                                        | the owner proposes the work's time (3.1b)      |
 | `appointment.response`                                                   | owner                                           | the customer confirms it or asks for another   |
-| `appointment.confirmed`, `appointment.reminder`, `technician.on_the_way` | customer                                        | planned; 24 h before; tapped by the technician |
+| `appointment.confirmed`, `appointment.reminder`, `appointment.on_the_way` | customer                                       | planned; 24 h before (3.3b); tapped by the owner |
 | `change_order.proposed`                                                  | customer                                        | technician or owner proposes                   |
 | `invoice.issued`, `payment.received`                                     | customer; owner                                 | complete; payment recorded                     |
 | `review.request`, `review.held`                                          | customer; owner                                 | invoice paid; low rating                       |

@@ -3,6 +3,8 @@ import { useActionState } from "react";
 import {
   type ConfirmVisitState,
   confirmVisitAction,
+  type OnTheWayState,
+  onTheWayAction,
   type PlanVisitState,
   planVisitAction,
 } from "./actions.ts";
@@ -69,6 +71,30 @@ export function PlanVisit({
       <button type="submit" disabled={pending}>
         {pending ? "Planning…" : "Plan it"}
       </button>
+      {state.error ? (
+        <p className="error" role="alert">
+          {state.error}
+        </p>
+      ) : null}
+    </form>
+  );
+}
+
+/** Tells the customer the owner has set out for the visit. */
+export function OnTheWay({ jobId, appointmentId }: { jobId: string; appointmentId: string }) {
+  const [state, action, pending] = useActionState<OnTheWayState, FormData>(onTheWayAction, {});
+  return (
+    <form action={action}>
+      <input type="hidden" name="jobId" value={jobId} />
+      <input type="hidden" name="appointmentId" value={appointmentId} />
+      <button type="submit" className="quiet" disabled={pending}>
+        {pending ? "Telling them…" : "I'm on my way"}
+      </button>
+      {state.sent ? (
+        <p className="notice" role="status">
+          The customer has been told.
+        </p>
+      ) : null}
       {state.error ? (
         <p className="error" role="alert">
           {state.error}

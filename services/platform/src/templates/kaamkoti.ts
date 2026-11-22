@@ -188,4 +188,44 @@ export const kaamkoti = {
       params: (v) => [v.customerName, v.businessName, v.visit, v.when, v.link],
     },
   }),
+  /** To the customer: the day before a planned visit. */
+  "appointment.reminder": defineTemplate({
+    vars: z.object({
+      customerName: text,
+      businessName: text,
+      visit: z.enum(["work visit", "site visit"]),
+      when: text,
+      link,
+    }),
+    email: (v) => ({
+      subject: `Tomorrow: ${v.businessName}, ${v.when}`,
+      text:
+        `Hello ${v.customerName},\n\n` +
+        `A reminder that ${v.businessName} will come for a ${v.visit} on ${v.when}.\n\n` +
+        `Your request:\n${v.link}\n\n${SIGN_IN}`,
+    }),
+    whatsapp: {
+      name: "kaamkoti_appointment_reminder",
+      body:
+        "Hello {{1}}, a reminder that {{2}} will come for a {{3}} on {{4}}.\n\n" +
+        `Your request: {{5}}\n\n${WA_SIGN_IN}`,
+      params: (v) => [v.customerName, v.businessName, v.visit, v.when, v.link],
+    },
+  }),
+  /** To the customer: the business has set out for the visit. */
+  "appointment.on_the_way": defineTemplate({
+    vars: z.object({ customerName: text, businessName: text, link }),
+    email: (v) => ({
+      subject: `${v.businessName} is on the way`,
+      text:
+        `Hello ${v.customerName},\n\n` +
+        `${v.businessName} has set out and is on the way to you.\n\n` +
+        `Your request:\n${v.link}\n\n${SIGN_IN}`,
+    }),
+    whatsapp: {
+      name: "kaamkoti_appointment_on_the_way",
+      body: `Hello {{1}}, {{2}} has set out and is on the way to you.\n\nYour request: {{3}}\n\n${WA_SIGN_IN}`,
+      params: (v) => [v.customerName, v.businessName, v.link],
+    },
+  }),
 };

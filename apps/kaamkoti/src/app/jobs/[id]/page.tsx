@@ -20,8 +20,11 @@ import { server } from "../../../server.ts";
 import { OwnerNav } from "../../owner-nav.tsx";
 import { QuoteSummary } from "../../quote-summary.tsx";
 import { WorkItems } from "../../work-items.tsx";
-import { ConfirmForCustomer, PlanVisit } from "./plan-visit.tsx";
+import { ConfirmForCustomer, OnTheWay, PlanVisit } from "./plan-visit.tsx";
 import { StartQuote } from "./start-quote.tsx";
+
+// "I'm on my way" is offered from half a day before the visit until it ends.
+const ON_THE_WAY_WINDOW_MS = 12 * 60 * 60 * 1000;
 
 // The id in the path is only a lookup key: the job is read inside withTenant of the signed-in owner's
 // business, so another business's id is a 404 like an unknown one.
@@ -45,6 +48,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   if (!job) notFound();
   // The same states the planner accepts: the work needs `accepted`, a site visit any open state.
   const visitable = ["requested", "quoted", "accepted", "scheduled"].includes(job.status);
+  const now = Date.now();
   const draft = quotes.find((q) => q.status === "draft");
   const [current, ...earlier] = quotes.filter((q) => q.status !== "draft");
   const quotable = job.status === "requested" || job.status === "quoted";
@@ -163,6 +167,11 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                       <span className="chip wait">Waiting for the customer to confirm</span>
                       <ConfirmForCustomer jobId={job.id} appointmentId={visit.id} />
                     </>
+                  ) : null}
+                  {visit.status === "planned" &&
+                  visit.endsAt.getTime() > now &&
+                  visit.startsAt.getTime() - now < ON_THE_WAY_WINDOW_MS ? (
+                    <OnTheWay jobId={job.id} appointmentId={visit.id} />
                   ) : null}
                 </li>
               ))}

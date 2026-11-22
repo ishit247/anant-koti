@@ -25,11 +25,13 @@ export interface Notices {
   quoteAnswered(client: DbClient, quoteId: string): Promise<void>;
   /** A visit was planned (a site visit, or the work once its time is confirmed) or moved: the customer is told when. */
   visitPlanned(client: DbClient, appointmentId: string): Promise<void>;
+  /** The owner set out for a planned visit: the customer is told. */
+  visitOnTheWay(client: DbClient, appointmentId: string): Promise<void>;
   /** The owner proposed the work's time: the customer is asked to confirm it or ask for another. */
   visitProposed(client: DbClient, appointmentId: string): Promise<void>;
   /** The customer confirmed the proposed time or asked for another: the owner is told. */
   visitAnswered(client: DbClient, appointmentId: string): Promise<void>;
-  /** Worker only: runs the expiry notices. Call after `jobs.start`. */
+  /** Worker only: runs the expiry notices and the visit reminders. Call after `jobs.start`. */
   startWorking(db: Db): Promise<void>;
 }
 
@@ -85,6 +87,14 @@ async function ownerTo(client: DbClient): Promise<NotifyMessage["to"]> {
 }
 
 const quoteExpiry = z.object({ businessId: z.uuid(), quoteId: z.uuid() });
+// The time is part of the payload: a visit moved since is no longer the one this reminder was queued for.
+const visitReminder = z.object({
+  businessId: z.uuid(),
+  appointmentId: z.uuid(),
+  startsAt: z.iso.datetime(),
+});
+
+const REMINDER_LEAD_MS = 24 * 60 * 60 * 1000;
 
 export function createNotices(deps: NoticesDeps): Notices {
   const { notify, jobs } = deps;
@@ -93,6 +103,18 @@ export function createNotices(deps: NoticesDeps): Notices {
   // A failed attempt is retried once a minute; after that the owner has the job page in any case.
   const expiry = defineJob("kaamkoti.quote_expiry", quoteExpiry, {
     retry: { retryLimit: 5, retryDelay: 60 },
+  });
+  const reminder = defineJob("kaamkoti.visit_reminder", visitReminder, {
+    retry: { retryLimit: 5, retryDelay: 60 },
+  });
+
+  /** A planned visit's variables for the customer's messages about it. */
+  const visitVars = (visit: JobFacts & { kind: string; starts_at: Date }) => ({
+    customerName: visit.customer_name,
+    businessName: visit.business_name,
+    visit: visit.kind === "work" ? ("work visit" as const) : ("site visit" as const),
+    when: formatWhen(visit.starts_at),
+    link: customerLink(visit),
   });
 
   /** A quote with its job, as a quote's messages name it; null if no quote of that id has this status. */
@@ -137,7 +159,7 @@ export function createNotices(deps: NoticesDeps): Notices {
   }
 
   return {
-    jobTypes: [expiry],
+    jobTypes: [expiry, reminder],
 
     async requestReceived(client, jobId) {
       const job = await jobFacts(client, jobId);
@@ -260,16 +282,42 @@ export function createNotices(deps: NoticesDeps): Notices {
           businessId: visit.business_id,
           template: "appointment.confirmed",
           to: customerTo(visit),
-          vars: {
-            customerName: visit.customer_name,
-            businessName: visit.business_name,
-            visit: visit.kind === "work" ? "work visit" : "site visit",
-            when: formatWhen(visit.starts_at),
-            link: customerLink(visit),
-          },
+          vars: visitVars(visit),
         },
         // A moved visit is told again; the same time twice is one message.
         `appointment.confirmed:${appointmentId}:${visit.starts_at.toISOString()}`,
+      );
+      // A visit less than a day away was just told; the reminder is for the ones further out.
+      const remindAt = new Date(visit.starts_at.getTime() - REMINDER_LEAD_MS);
+      if (remindAt.getTime() > Date.now()) {
+        await jobs.send(
+          client,
+          reminder,
+          {
+            businessId: visit.business_id,
+            appointmentId,
+            startsAt: visit.starts_at.toISOString(),
+          },
+          { startAfter: remindAt },
+        );
+      }
+    },
+
+    async visitOnTheWay(client, appointmentId) {
+      const visit = await visitFacts(client, appointmentId, ["planned"]);
+      if (!visit)
+        throw new Error(`notices: appointment ${appointmentId} is not a planned visit here`);
+      const { customerName, businessName, link } = visitVars(visit);
+      await notify.send(
+        client,
+        {
+          businessId: visit.business_id,
+          template: "appointment.on_the_way",
+          to: customerTo(visit),
+          vars: { customerName, businessName, link },
+        },
+        // Once per visit time: a second tap does not message the customer again.
+        `appointment.on_the_way:${appointmentId}:${visit.starts_at.toISOString()}`,
       );
     },
 
@@ -344,6 +392,23 @@ export function createNotices(deps: NoticesDeps): Notices {
               },
             },
             `quote.expired:${quoteId}`,
+          );
+        }),
+      );
+      await jobs.work(reminder, ({ businessId, appointmentId, startsAt }) =>
+        db.withTenant(businessId, async (client) => {
+          const visit = await visitFacts(client, appointmentId, ["planned"]);
+          // Moved or cancelled since: the new time queued its own reminder, if it needs one.
+          if (!visit || visit.starts_at.toISOString() !== startsAt) return;
+          await notify.send(
+            client,
+            {
+              businessId,
+              template: "appointment.reminder",
+              to: customerTo(visit),
+              vars: visitVars(visit),
+            },
+            `appointment.reminder:${appointmentId}:${startsAt}`,
           );
         }),
       );

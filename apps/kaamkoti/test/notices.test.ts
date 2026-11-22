@@ -11,6 +11,7 @@ import {
   createNotices,
   logPhoneEnquiry,
   migrations,
+  moveVisit,
   type Notices,
   openDraft,
   planVisit,
@@ -352,5 +353,118 @@ describe("notices", () => {
 
     await until(expiryDone(quoteId), "the expiry job");
     expect(await queued(`notify:quote.expired:${quoteId}`)).toEqual([]);
+  });
+
+  /** A planned site visit of a new phone request, told as the planner's action does. */
+  async function plannedVisit(start: string): Promise<{ jobId: string; appointmentId: string }> {
+    const jobId = await phoneRequest();
+    const appointmentId = await sharma(async (c) => {
+      const planned = await planVisit(c, audit, sharmaOwner, {
+        jobId,
+        kind: "site_visit",
+        technicianId: SHARMA_OWNER,
+        start,
+        minutes: 60,
+      });
+      if (!planned.ok) throw new Error(planned.error);
+      await notices.visitPlanned(c, planned.appointmentId);
+      return planned.appointmentId;
+    });
+    return { jobId, appointmentId };
+  }
+
+  const reminderJobs = (appointmentId: string) =>
+    owner.tx((c) =>
+      c.query<{ state: string; start_after: Date; starts_at: string }>(
+        `select state, start_after, data->>'startsAt' as starts_at from pgboss.job
+         where name = 'kaamkoti.visit_reminder' and data->>'appointmentId' = $1 order by created_on`,
+        [appointmentId],
+      ),
+    );
+  const remindersRan = (appointmentId: string, count: number) => async () => {
+    const { rows } = await reminderJobs(appointmentId);
+    return rows.length === count && rows.every((row) => row.state === "completed");
+  };
+  /** Brings the visit's reminders forward to now, as if the day before had come. */
+  const dayBefore = (appointmentId: string) =>
+    owner.tx((c) =>
+      c.query(
+        "update pgboss.job set start_after = now() where name = 'kaamkoti.visit_reminder' and data->>'appointmentId' = $1",
+        [appointmentId],
+      ),
+    );
+
+  it("reminds the customer the day before a visit", async () => {
+    const { jobId, appointmentId } = await plannedVisit("2026-12-08T10:30");
+    const queuedJobs = (await reminderJobs(appointmentId)).rows;
+    expect(queuedJobs).toHaveLength(1);
+    const [only] = queuedJobs;
+    expect(only?.start_after.getTime()).toBe(
+      new Date(only?.starts_at ?? "").getTime() - 86_400_000,
+    );
+
+    await dayBefore(appointmentId);
+    await until(remindersRan(appointmentId, 1), "the reminder job");
+    const reminders = (await ofTemplate("appointment.reminder")).filter((payload) =>
+      String((payload.vars as Record<string, string>).link).endsWith(jobId),
+    );
+    expect(reminders).toMatchObject([
+      { to: { phone: "+919000001099" }, vars: { visit: "site visit", when: "8 Dec, 10:30 am" } },
+    ]);
+  });
+
+  it("does not remind about a time the visit has moved from", async () => {
+    const { appointmentId } = await plannedVisit("2026-12-09T10:30");
+    await sharma(async (c) => {
+      const moved = await moveVisit(c, audit, sharmaOwner, appointmentId, {
+        technicianId: SHARMA_OWNER,
+        start: "2026-12-10T10:30",
+        minutes: 60,
+      });
+      if (!moved.ok) throw new Error(moved.error);
+      await notices.visitPlanned(c, appointmentId);
+    });
+
+    await dayBefore(appointmentId);
+    await until(remindersRan(appointmentId, 2), "both reminder jobs");
+    expect(
+      await queued(`notify:appointment.reminder:${appointmentId}:2026-12-09T05:00:00.000Z`),
+    ).toEqual([]);
+    expect(
+      await queued(`notify:appointment.reminder:${appointmentId}:2026-12-10T05:00:00.000Z`),
+    ).toHaveLength(1);
+  });
+
+  it("queues no reminder for a visit less than a day away", async () => {
+    const soon = new Date(Date.now() + 3 * 3_600_000);
+    const { appointmentId } = await plannedVisit(
+      new Date(soon.getTime() + 330 * 60_000).toISOString().slice(0, 16),
+    );
+    expect((await reminderJobs(appointmentId)).rows).toEqual([]);
+  });
+
+  it("tells the customer the owner is on the way, once for a visit time", async () => {
+    const { jobId, appointmentId } = await plannedVisit("2026-12-11T10:30");
+    await sharma((c) => notices.visitOnTheWay(c, appointmentId));
+    await sharma((c) => notices.visitOnTheWay(c, appointmentId));
+
+    const [message, ...rest] = await ofTemplate("appointment.on_the_way").then((all) =>
+      all.filter((p) => String((p.vars as Record<string, string>).link).endsWith(jobId)),
+    );
+    expect(rest).toEqual([]);
+    expect(message).toMatchObject({
+      to: { phone: "+919000001099" },
+      vars: { businessName: "Sharma Cooling Services" },
+    });
+  });
+
+  it("will not say the owner is on the way for a visit that is not planned", async () => {
+    const { appointmentId } = await plannedVisit("2026-12-12T10:30");
+    await owner.tx((c) =>
+      c.query("update kk.appointment set status = 'cancelled' where id = $1", [appointmentId]),
+    );
+    await expect(sharma((c) => notices.visitOnTheWay(c, appointmentId))).rejects.toThrow(
+      "is not a planned visit",
+    );
   });
 });

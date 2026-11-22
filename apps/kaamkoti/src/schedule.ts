@@ -336,6 +336,19 @@ export async function moveVisit(
   return { ok: true, appointmentId: id.data, status: "planned" };
 }
 
+/** Whether the appointment is a planned visit of this job: the check before a route acts on a posted pair of ids. */
+export async function isPlannedVisitOf(
+  client: DbClient,
+  jobId: string,
+  appointmentId: string,
+): Promise<boolean> {
+  const { rowCount } = await client.query(
+    "select 1 from kk.appointment where id = $1 and job_id = $2 and status = 'planned'",
+    [appointmentId, jobId],
+  );
+  return rowCount === 1;
+}
+
 /**
  * The visits holding time from `from` on (planned, and the work proposed), soonest first; one job's, or the
  * whole business's when no job is given.

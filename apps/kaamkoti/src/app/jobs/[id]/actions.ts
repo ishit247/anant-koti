@@ -6,6 +6,7 @@ import { requireMember } from "../../../guard.ts";
 import { openDraft } from "../../../quote.ts";
 import {
   confirmVisitFor,
+  isPlannedVisitOf,
   planVisit,
   type VisitAnswerError,
   type VisitError,
@@ -80,6 +81,29 @@ export async function confirmVisitAction(
   });
   if (!result.ok) return { error: CONFIRM_ERROR[result.error] };
   redirect(`/jobs/${jobId.data}`);
+}
+
+export interface OnTheWayState {
+  readonly error?: string;
+  readonly sent?: boolean;
+}
+
+/** The owner has set out for a planned visit: the customer is told. */
+export async function onTheWayAction(
+  _previous: OnTheWayState,
+  form: FormData,
+): Promise<OnTheWayState> {
+  const jobId = z.uuid().safeParse(form.get("jobId"));
+  const appointmentId = z.uuid().safeParse(form.get("appointmentId"));
+  if (!jobId.success || !appointmentId.success) return { error: CONFIRM_ERROR.not_found };
+  const owner = await requireMember(route, `/jobs/${jobId.data}`);
+  const { db, notices } = server();
+  const found = await db.withTenant(owner.businessId, async (client) => {
+    if (!(await isPlannedVisitOf(client, jobId.data, appointmentId.data))) return false;
+    await notices.visitOnTheWay(client, appointmentId.data);
+    return true;
+  });
+  return found ? { sent: true } : { error: CONFIRM_ERROR.not_found };
 }
 
 export interface StartQuoteState {
