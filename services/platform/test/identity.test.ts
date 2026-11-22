@@ -80,6 +80,7 @@ describe("identity", () => {
       log,
       clients: {},
       topics: {},
+      hooks: {},
       identity,
     });
   });

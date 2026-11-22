@@ -38,7 +38,16 @@ const signInClients = jsonObject.pipe(
 
 export type SignInClients = z.infer<typeof signInClients>;
 
-export const platformConfig = z.object({
+/** The WhatsApp channel's settings: all set, or none (the channel is off and email is the one channel). */
+const WHATSAPP_KEYS = [
+  "WHATSAPP_PHONE_NUMBER_ID",
+  "WHATSAPP_ACCESS_TOKEN",
+  "WHATSAPP_APP_SECRET",
+  "WHATSAPP_VERIFY_TOKEN",
+  "NOTIFY_WHATSAPP_MONTHLY_QUOTA",
+] as const;
+
+const settings = z.object({
   /** Connects as the runtime role, platform_app. */
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
   PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
@@ -56,4 +65,57 @@ export const platformConfig = z.object({
   EMAIL_FROM: z.string().min(3),
   /** The sender of notify's emails to customers and owners. */
   NOTIFY_EMAIL_FROM: z.string().min(3),
+  /** Meta's Graph API, with its version. Tests point it at a fake. */
+  WHATSAPP_API_URL: z.url({ protocol: /^https?$/ }).default("https://graph.facebook.com/v23.0"),
+  /** The sending number's id in Meta's WhatsApp Manager (not the number itself). */
+  WHATSAPP_PHONE_NUMBER_ID: z
+    .string()
+    .regex(/^[0-9]{1,30}$/)
+    .optional(),
+  /** A system user's permanent token with `whatsapp_business_messaging`. */
+  WHATSAPP_ACCESS_TOKEN: z.string().min(20).optional(),
+  /** The Meta app's secret, which signs the status webhook. */
+  WHATSAPP_APP_SECRET: z.string().min(16).optional(),
+  /** Any random string, given to Meta when the webhook is subscribed. */
+  WHATSAPP_VERIFY_TOKEN: z.string().min(16).optional(),
+  /** WhatsApp messages per business per month, until plans carry the quota (5.1). */
+  NOTIFY_WHATSAPP_MONTHLY_QUOTA: z.coerce.number().int().min(1).optional(),
+});
+
+export const platformConfig = settings.transform((config, ctx) => {
+  const set = WHATSAPP_KEYS.filter((key) => config[key] !== undefined);
+  if (set.length > 0 && set.length < WHATSAPP_KEYS.length) {
+    for (const key of WHATSAPP_KEYS.filter((k) => !set.includes(k)))
+      ctx.addIssue({
+        code: "custom",
+        path: [key],
+        message: "required with the other WHATSAPP_ settings",
+      });
+    return z.NEVER;
+  }
+  const {
+    WHATSAPP_API_URL,
+    WHATSAPP_PHONE_NUMBER_ID,
+    WHATSAPP_ACCESS_TOKEN,
+    WHATSAPP_APP_SECRET,
+    WHATSAPP_VERIFY_TOKEN,
+    NOTIFY_WHATSAPP_MONTHLY_QUOTA,
+    ...rest
+  } = config;
+  const whatsapp =
+    WHATSAPP_PHONE_NUMBER_ID &&
+    WHATSAPP_ACCESS_TOKEN &&
+    WHATSAPP_APP_SECRET &&
+    WHATSAPP_VERIFY_TOKEN &&
+    NOTIFY_WHATSAPP_MONTHLY_QUOTA
+      ? {
+          apiUrl: WHATSAPP_API_URL,
+          phoneNumberId: WHATSAPP_PHONE_NUMBER_ID,
+          accessToken: WHATSAPP_ACCESS_TOKEN,
+          appSecret: WHATSAPP_APP_SECRET,
+          verifyToken: WHATSAPP_VERIFY_TOKEN,
+          monthlyQuota: NOTIFY_WHATSAPP_MONTHLY_QUOTA,
+        }
+      : undefined;
+  return { ...rest, whatsapp };
 });

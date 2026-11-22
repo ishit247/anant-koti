@@ -1,6 +1,7 @@
 // Kaam Koti's message templates (docs/architecture.md 9.2), one version per channel. Variables arrive as display
-// text the app formatted; a template only places them. WhatsApp versions join in 3.3, mirroring Meta's approved
-// templates. Customers' links open their own page on the bare domain, behind their sign-in; owners' links open
+// text the app formatted; a template only places them. The customer's messages also have a WhatsApp version,
+// mirroring the template submitted to Meta; owners' go by email until members' phones reach notify (3.3c).
+// Customers' links open their own page on the bare domain, behind their sign-in; owners' links open
 // the job in the app.
 import { z } from "zod";
 import { defineTemplate } from "./template.ts";
@@ -11,6 +12,11 @@ const link = z.url({ protocol: /^https?$/ });
 const number = z.string().regex(/^#[0-9]{1,9}$/);
 
 const SIGN_IN = "Sign in there with this email address to see it.";
+/**
+ * WhatsApp bodies end on this line, not on the link: Meta refuses a template that ends with a parameter. It names
+ * no address, since the customer may sign in with their email or (3.3c) this number.
+ */
+const WA_SIGN_IN = "Sign in on that page to see it.";
 
 export const kaamkoti = {
   /** To the owner: a customer sent a request from the business's page. */
@@ -33,6 +39,13 @@ export const kaamkoti = {
         `${v.businessName} has your request ${v.number}. You will hear back with a quote.\n\n` +
         `Follow it here:\n${v.link}\n\n${SIGN_IN}`,
     }),
+    whatsapp: {
+      name: "kaamkoti_request_acknowledged",
+      body:
+        "Hello {{1}}, {{2}} has your request {{3}}. You will hear back with a quote.\n\n" +
+        `Follow it here: {{4}}\n\n${WA_SIGN_IN}`,
+      params: (v) => [v.customerName, v.businessName, v.number, v.link],
+    },
   }),
   /** To the owner: the customer changed the work items or the place; an open quote was set aside. */
   "request.edited": defineTemplate({
@@ -59,6 +72,13 @@ export const kaamkoti = {
         `${v.businessName} has sent you a quote for ${v.total}, valid until ${v.validUntil}.\n\n` +
         `See the details and answer here:\n${v.link}\n\n${SIGN_IN}`,
     }),
+    whatsapp: {
+      name: "kaamkoti_quote_sent",
+      body:
+        "Hello {{1}}, {{2}} has sent you a quote for {{3}}, valid until {{4}}.\n\n" +
+        `See the details and answer here: {{5}}\n\n${WA_SIGN_IN}`,
+      params: (v) => [v.customerName, v.businessName, v.total, v.validUntil, v.link],
+    },
   }),
   /** To the owner: the customer's answer to a quote. A counter carries the price they offered. */
   "quote.response": defineTemplate({
@@ -112,6 +132,13 @@ export const kaamkoti = {
         `${v.businessName} can come to do the work on ${v.when}. ` +
         `Please confirm the time, or ask for another one:\n${v.link}\n\n${SIGN_IN}`,
     }),
+    whatsapp: {
+      name: "kaamkoti_appointment_proposed",
+      body:
+        "Hello {{1}}, {{2}} can come to do the work on {{3}}. " +
+        `Please confirm the time, or ask for another one: {{4}}\n\n${WA_SIGN_IN}`,
+      params: (v) => [v.customerName, v.businessName, v.when, v.link],
+    },
   }),
   /** To the owner: the customer confirmed the proposed time, or asked for another (with their note, if any). */
   "appointment.response": defineTemplate({
@@ -155,5 +182,10 @@ export const kaamkoti = {
         `${v.businessName} will come for a ${v.visit} on ${v.when}.\n\n` +
         `Your request:\n${v.link}\n\n${SIGN_IN}`,
     }),
+    whatsapp: {
+      name: "kaamkoti_appointment_confirmed",
+      body: `Hello {{1}}, {{2}} will come for a {{3}} on {{4}}.\n\nYour request: {{5}}\n\n${WA_SIGN_IN}`,
+      params: (v) => [v.customerName, v.businessName, v.visit, v.when, v.link],
+    },
   }),
 };

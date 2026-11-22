@@ -1,6 +1,7 @@
 // Platform's HTTP surface. The handler speaks Web-standard Request and Response, so it can be mounted elsewhere
 // later. `listen` puts it on node:http. Routes now: the health check, the internal API apps call with signed
-// requests (docs/architecture.md 1 and 9.1), and identity's sign-in routes (3). Provider webhooks (3.3) join here.
+// requests (docs/architecture.md 1 and 9.1), identity's sign-in routes (3), and providers' webhooks at
+// `/hooks/<name>` (reached on `hooks.`), each verifying its own provider's signature.
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { Db, DbClient } from "@bodhchakra/db";
 import type { Logger } from "@bodhchakra/log";
@@ -12,6 +13,7 @@ import type { Identity } from "./identity.ts";
 /** Larger bodies are refused before they are read in full. Messages carry ids and short variables. */
 export const MAX_BODY_BYTES = 64 * 1024;
 const INTERNAL = /^\/internal\/v1\/([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+)$/;
+const HOOK = /^\/hooks\/([a-z][a-z0-9_]{0,39})$/;
 
 /** One message type apps send to platform. It is handled in the transaction that records it in the inbox. */
 export interface Topic<P> {
@@ -28,6 +30,8 @@ export interface PlatformDeps {
   // biome-ignore lint/suspicious/noExplicitAny: each topic's payload type is checked by its own schema.
   topics: Readonly<Record<string, Topic<any>>>;
   identity: Identity;
+  /** Provider webhooks by name; each checks its provider's signature itself. */
+  hooks: Readonly<Record<string, (request: Request) => Promise<Response>>>;
 }
 
 const json = (status: number, body: Record<string, string>) => Response.json(body, { status });
@@ -84,6 +88,10 @@ export function createHandler(deps: PlatformDeps): (request: Request) => Promise
       const internalPath = INTERNAL.exec(url.pathname);
       if (internalPath?.[1] && request.method === "POST")
         return await internal(request, url, internalPath[1]);
+      const hookName = HOOK.exec(url.pathname)?.[1];
+      const hook =
+        hookName && Object.hasOwn(deps.hooks, hookName) ? deps.hooks[hookName] : undefined;
+      if (hook) return await hook(request);
       const signIn = deps.identity.handle(request, url);
       if (signIn) return await signIn;
       return json(404, { error: "not_found" });

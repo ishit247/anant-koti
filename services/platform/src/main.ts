@@ -13,6 +13,7 @@ import { createIdentity, registerClients } from "./identity.ts";
 import { codeMailer, emailSender } from "./mail.ts";
 import { createNotifyService } from "./notify.ts";
 import { createHandler, listen } from "./server.ts";
+import { whatsappSender } from "./whatsapp.ts";
 
 const config = defineConfig(platformConfig);
 const log = createLogger({ service: "platform" });
@@ -30,7 +31,17 @@ const notify = createNotifyService({
   log,
   audit: createAudit(log),
   sendEmail: emailSender(config.SMTP_URL, config.NOTIFY_EMAIL_FROM),
+  ...(config.whatsapp && {
+    whatsapp: {
+      send: whatsappSender(config.whatsapp),
+      appSecret: config.whatsapp.appSecret,
+      verifyToken: config.whatsapp.verifyToken,
+      monthlyQuota: config.whatsapp.monthlyQuota,
+    },
+  }),
 });
+// Development has no Meta account (D7): the channel is off until its settings are given.
+log.info("notify channels", { whatsapp: config.whatsapp !== undefined });
 await jobs.start(notify.jobTypes);
 await notify.startSending();
 
@@ -53,6 +64,7 @@ const server = await listen(
     clients: config.SERVICE_CLIENTS,
     topics: { [NOTIFY_TOPIC]: notify.topic },
     identity,
+    hooks: notify.hooks,
   }),
   log,
   config.PORT,

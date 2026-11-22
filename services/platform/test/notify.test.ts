@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { createAudit } from "@bodhchakra/audit";
 import { type Db, type TestDb, testDb } from "@bodhchakra/db";
 import { createJobs, type Jobs, type JobType } from "@bodhchakra/jobs";
@@ -8,6 +9,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { migrations, RUNTIME_ROLE } from "../src/index.ts";
 import { createNotifyService, type SendEmail } from "../src/notify.ts";
 import { createHandler } from "../src/server.ts";
+import { kaamkoti } from "../src/templates/kaamkoti.ts";
+import type { SendWhatsApp } from "../src/whatsapp.ts";
 
 const SECRET = "kaamkoti-test-secret-".padEnd(48, "x");
 const PATH = `/internal/v1/${NOTIFY_TOPIC}`;
@@ -22,10 +25,21 @@ const until = async (check: () => boolean | Promise<boolean>, what: string, ms =
   }
 };
 
-const quoteSent = (email: string | undefined, customerName = "Anita Deshpande"): NotifyMessage => ({
-  businessId: BUSINESS,
+/** Each WhatsApp test has a business of its own, so their quotas do not mix. */
+const business = (n: number) => `00000000-0000-4000-8000-0000000002${String(n).padStart(2, "0")}`;
+const QUOTA = 2;
+const APP_SECRET = "meta-app-secret-for-tests";
+const VERIFY_TOKEN = "verify-token-for-tests";
+
+const quoteSent = (
+  email: string | undefined,
+  customerName = "Anita Deshpande",
+  phone?: string,
+  businessId = BUSINESS,
+): NotifyMessage => ({
+  businessId,
   template: "quote.sent",
-  to: { ...(email && { email }), phone: "+919000000101" },
+  to: { ...(email && { email }), ...(phone && { phone }) },
   vars: {
     customerName,
     businessName: "Sharma Cooling Services",
@@ -63,6 +77,52 @@ describe("notify", () => {
     }
     sent.push(email);
   };
+
+  /** Numbers Meta refuses a number of times before accepting, as `refusals` does for email. */
+  const waRefusals = new Map<string, number>();
+  const waSent: (Parameters<SendWhatsApp>[0] & { providerId: string })[] = [];
+  const sendWhatsApp: SendWhatsApp = async (message) => {
+    const left = waRefusals.get(message.to) ?? 0;
+    if (left > 0) {
+      waRefusals.set(message.to, left - 1);
+      throw Object.assign(new Error(`whatsapp: not accepted for ${message.to}`), {
+        code: "WHATSAPP_131000",
+        responseCode: 500,
+      });
+    }
+    const providerId = `wamid.test-${waSent.length + 1}`;
+    waSent.push({ ...message, providerId });
+    return { providerId };
+  };
+
+  /** Meta's status webhook, signed with `secret`. */
+  const hook = (statuses: object[], secret = APP_SECRET, signature?: string) => {
+    const body = JSON.stringify({
+      object: "whatsapp_business_account",
+      entry: [{ id: "waba", changes: [{ field: "messages", value: { statuses } }] }],
+    });
+    const signed = `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
+    return handler(
+      new Request("http://hooks/hooks/whatsapp", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(signature !== "" && { "x-hub-signature-256": signature ?? signed }),
+        },
+        body,
+      }),
+    );
+  };
+
+  const byName = async (customerName: string) =>
+    (
+      await owner.tx((client) =>
+        client.query<{ id: string; status: string; channel: string | null }>(
+          "select id, status, channel from notify.message where vars->>'customerName' = $1 order by created_at",
+          [customerName],
+        ),
+      )
+    ).rows;
 
   const post = (key: string, message: NotifyMessage) => {
     const body = JSON.stringify({ key, payload: message });
@@ -116,6 +176,12 @@ describe("notify", () => {
       log,
       audit: createAudit(log),
       sendEmail,
+      whatsapp: {
+        send: sendWhatsApp,
+        appSecret: APP_SECRET,
+        verifyToken: VERIFY_TOKEN,
+        monthlyQuota: QUOTA,
+      },
       retry: { retryLimit: RETRY_LIMIT, retryDelay: 1 },
     });
     jobTypes = notify.jobTypes;
@@ -127,6 +193,7 @@ describe("notify", () => {
       clients: { kaamkoti: SECRET },
       topics: { [NOTIFY_TOPIC]: notify.topic },
       identity: { handle: () => null },
+      hooks: notify.hooks,
     });
   });
   afterAll(async () => {
@@ -189,9 +256,9 @@ describe("notify", () => {
     ]);
   });
 
-  it("records a message with no email as having no channel, and sends nothing", async () => {
+  it("records a message with no address as having no channel, and sends nothing", async () => {
     const before = sent.length;
-    await post("phone-only", quoteSent(undefined, "Suresh Gowda"));
+    await post("no-address", quoteSent(undefined, "Suresh Gowda"));
 
     const { rows } = await owner.tx((client) =>
       client.query<{ id: string; status: string; channel: string | null }>(
@@ -307,5 +374,204 @@ describe("notify", () => {
     const refusal = lines.find((line) => line.includes("has bad variables"));
     expect(refusal).toContain("(link)");
     expect(refusal).not.toContain("not a link");
+  });
+
+  describe("WhatsApp", () => {
+    const providerIdOf = async (messageId: string) =>
+      (
+        await owner.tx((client) =>
+          client.query<{ provider_id: string | null }>(
+            "select provider_id from notify.message where id = $1",
+            [messageId],
+          ),
+        )
+      ).rows[0]?.provider_id;
+
+    it("sends a message with a phone on WhatsApp, with the template's parameters in order", async () => {
+      await post(
+        "wa-first",
+        quoteSent("kavya@example.com", "Kavya Rao", "+919000000201", business(1)),
+      );
+
+      await until(async () => (await byName("Kavya Rao"))[0]?.status === "sent", "the send");
+      const [message] = await byName("Kavya Rao");
+      expect(message?.channel).toBe("whatsapp");
+      const wa = waSent.find((m) => m.to === "+919000000201");
+      expect(wa).toMatchObject({
+        name: "kaamkoti_quote_sent",
+        language: "en",
+        params: [
+          "Kavya Rao",
+          "Sharma Cooling Services",
+          "₹295.00",
+          "29 Nov 2026",
+          "http://localhost:45450/b/sharma-cooling/requests/test-job",
+        ],
+      });
+      expect(await providerIdOf(message?.id ?? "")).toBe(wa?.providerId);
+      expect(sent.some((e) => e.to === "kavya@example.com")).toBe(false);
+    });
+
+    it("goes by email once the business's monthly quota is used, and counts per business", async () => {
+      for (const n of [1, 2, 3])
+        await post(
+          `quota-${n}`,
+          quoteSent(`q${n}@example.com`, "Quota Customer", `+91900000030${n}`, business(2)),
+        );
+      await post(
+        "quota-other",
+        quoteSent(undefined, "Other Business", "+919000000309", business(3)),
+      );
+      await post(
+        "quota-phone-only",
+        quoteSent(undefined, "Phone Only", "+919000000304", business(2)),
+      );
+
+      expect((await byName("Quota Customer")).map((m) => m.channel)).toEqual([
+        "whatsapp",
+        "whatsapp",
+        "email",
+      ]);
+      expect((await byName("Other Business")).map((m) => m.channel)).toEqual(["whatsapp"]);
+      // Over quota with no email: nothing to send it on.
+      expect((await byName("Phone Only")).map((m) => m.status)).toEqual(["no_channel"]);
+      const { rows } = await owner.tx((client) =>
+        client.query<{ used: number }>("select used from notify.quota where business_id = $1", [
+          business(2),
+        ]),
+      );
+      expect(rows).toEqual([{ used: QUOTA }]);
+    });
+
+    it("sends a template with no WhatsApp version by email, without using the quota", async () => {
+      await post("wa-email-only", {
+        businessId: business(4),
+        template: "quote.expired",
+        to: { email: "owner4@example.com", phone: "+919000000401" },
+        vars: {
+          customerName: "Expired Quote",
+          number: "#4",
+          total: "₹10.00",
+          link: "http://x.test/j",
+        },
+      });
+      expect((await byName("Expired Quote")).map((m) => m.channel)).toEqual(["email"]);
+      const { rows } = await owner.tx((client) =>
+        client.query("select 1 from notify.quota where business_id = $1", [business(4)]),
+      );
+      expect(rows).toEqual([]);
+    });
+
+    it("retries a refused WhatsApp send and logs Meta's code, never the number", async () => {
+      waRefusals.set("+919000000501", 1);
+      await post("wa-retry", quoteSent(undefined, "Retry Customer", "+919000000501", business(5)));
+
+      await until(async () => (await byName("Retry Customer"))[0]?.status === "sent", "the retry");
+      const failure = lines.find(
+        (l) => l.includes('"notify: send failed"') && l.includes("WHATSAPP_131000"),
+      );
+      expect(failure).toContain('"code":"WHATSAPP_131000 500"');
+      for (const line of lines) expect(line).not.toContain("9000000501");
+    });
+
+    it("marks a sent message delivered, and failed with an audit when Meta says it was not delivered", async () => {
+      await post(
+        "wa-hook-1",
+        quoteSent(undefined, "Delivered Customer", "+919000000601", business(6)),
+      );
+      await post(
+        "wa-hook-2",
+        quoteSent(undefined, "Undelivered Customer", "+919000000602", business(6)),
+      );
+      await until(
+        async () =>
+          (await byName("Delivered Customer"))[0]?.status === "sent" &&
+          (await byName("Undelivered Customer"))[0]?.status === "sent",
+        "both sends",
+      );
+      const [delivered] = await byName("Delivered Customer");
+      const [undelivered] = await byName("Undelivered Customer");
+      const ids = {
+        delivered: await providerIdOf(delivered?.id ?? ""),
+        undelivered: await providerIdOf(undelivered?.id ?? ""),
+      };
+
+      const response = await hook([
+        { id: ids.delivered, status: "read", recipient_id: "919000000601" },
+        {
+          id: ids.undelivered,
+          status: "failed",
+          recipient_id: "919000000602",
+          errors: [{ code: 131026, title: "Message undeliverable to 919000000602" }],
+        },
+        { id: "wamid.not-ours", status: "delivered" },
+      ]);
+
+      expect(response.status).toBe(200);
+      expect((await byName("Delivered Customer"))[0]?.status).toBe("delivered");
+      expect((await byName("Undelivered Customer"))[0]?.status).toBe("failed");
+      expect((await audited(undelivered?.id ?? "")).map((e) => e.action)).toEqual([
+        "notify.sent",
+        "notify.failed",
+      ]);
+      const notice = lines.find((l) => l.includes('"notify: whatsapp not delivered"'));
+      expect(notice).toContain('"code":131026');
+      for (const line of lines) expect(line).not.toContain("9000000602");
+
+      // Replayed: nothing changes twice.
+      await hook([{ id: ids.undelivered, status: "failed", errors: [{ code: 131026 }] }]);
+      expect(await audited(undelivered?.id ?? "")).toHaveLength(2);
+    });
+
+    it("refuses a webhook that is unsigned or signed with another secret, and changes nothing", async () => {
+      await post(
+        "wa-forged",
+        quoteSent(undefined, "Forged Customer", "+919000000701", business(7)),
+      );
+      await until(async () => (await byName("Forged Customer"))[0]?.status === "sent", "the send");
+      const [message] = await byName("Forged Customer");
+      const id = await providerIdOf(message?.id ?? "");
+
+      const forged = await hook([{ id, status: "failed" }], "not-the-app-secret");
+      const unsigned = await hook([{ id, status: "failed" }], APP_SECRET, "");
+      const garbled = await hook([{ id, status: "failed" }], APP_SECRET, "sha256=00");
+
+      expect([forged.status, unsigned.status, garbled.status]).toEqual([401, 401, 401]);
+      expect((await byName("Forged Customer"))[0]?.status).toBe("sent");
+    });
+
+    it("answers Meta's subscription handshake only with the verify token", async () => {
+      const handshake = (token: string) =>
+        handler(
+          new Request(
+            `http://hooks/hooks/whatsapp?hub.mode=subscribe&hub.verify_token=${token}&hub.challenge=1158201444`,
+          ),
+        );
+      const right = await handshake(VERIFY_TOKEN);
+      const wrong = await handshake("verify-token-for-other");
+
+      expect([right.status, await right.text()]).toEqual([200, "1158201444"]);
+      expect(wrong.status).toBe(403);
+    });
+
+    it("gives each WhatsApp body as many placeholders as its parameters, and none at either end", () => {
+      for (const [name, template] of Object.entries(kaamkoti)) {
+        const version = (template as { whatsapp?: { body: string; params: unknown } }).whatsapp;
+        if (!version) continue;
+        const placeholders = [...version.body.matchAll(/\{\{(\d+)\}\}/g)].map((m) => Number(m[1]));
+        const sample = Object.fromEntries(
+          Object.keys((template.vars as unknown as { shape?: object }).shape ?? {}).map((k) => [
+            k,
+            k,
+          ]),
+        );
+        const params = (version.params as (v: unknown) => string[])(sample);
+        expect({ name, placeholders }).toEqual({
+          name,
+          placeholders: params.map((_, i) => i + 1),
+        });
+        expect(version.body).not.toMatch(/^\{\{|\}\}$/);
+      }
+    });
   });
 });
