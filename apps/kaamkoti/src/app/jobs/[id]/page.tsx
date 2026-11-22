@@ -6,6 +6,7 @@ import { requireMember } from "../../../guard.ts";
 import { ownerJob } from "../../../inbox.ts";
 import {
   formatDay,
+  formatTime,
   formatWhen,
   quoteLabel,
   quoteTone,
@@ -14,9 +15,11 @@ import {
   statusTone,
 } from "../../../job-labels.ts";
 import { ownerQuotes } from "../../../quote.ts";
+import { assignableMembers, plannedVisits } from "../../../schedule.ts";
 import { server } from "../../../server.ts";
 import { OwnerNav } from "../../owner-nav.tsx";
 import { QuoteSummary } from "../../quote-summary.tsx";
+import { PlanVisit } from "./plan-visit.tsx";
 import { ResendLink } from "./resend-link.tsx";
 import { StartQuote } from "./start-quote.tsx";
 
@@ -29,12 +32,19 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   if (!id.success) notFound();
   const owner = await requireMember(route, `/jobs/${id.data}`);
   const { db, storage } = server();
-  const { job, business, quotes } = await db.withTenant(owner.businessId, async (client) => ({
-    job: await ownerJob(client, id.data),
-    business: await currentBusiness(client),
-    quotes: await ownerQuotes(client, id.data),
-  }));
+  const { job, business, quotes, visits, team } = await db.withTenant(
+    owner.businessId,
+    async (client) => ({
+      job: await ownerJob(client, id.data),
+      business: await currentBusiness(client),
+      quotes: await ownerQuotes(client, id.data),
+      visits: await plannedVisits(client, new Date(0), id.data),
+      team: await assignableMembers(client),
+    }),
+  );
   if (!job) notFound();
+  // The same states the planner accepts: the work needs `accepted`, a site visit any open state.
+  const visitable = ["requested", "quoted", "accepted", "scheduled"].includes(job.status);
   const draft = quotes.find((q) => q.status === "draft");
   const [current, ...earlier] = quotes.filter((q) => q.status !== "draft");
   const quotable = job.status === "requested" || job.status === "quoted";
@@ -122,6 +132,28 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             .map((q) => `version ${q.version}, ${formatMoney(q.total)} (${quoteLabel(q)})`)
             .join("; ")}
         </p>
+      ) : null}
+
+      <h2>Visits</h2>
+      {visits.length > 0 ? (
+        <ul className="cards">
+          {visits.map((visit) => (
+            <li key={visit.id} className="card">
+              <div className="row">
+                <strong>{visit.kind === "work" ? "The work" : "Site visit"}</strong>
+                <span className="muted">{visit.technicianName}</span>
+              </div>
+              <span className="muted small">
+                {formatWhen(visit.startsAt)} to {formatTime(visit.endsAt)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="empty">Nothing planned yet.</p>
+      )}
+      {visitable ? (
+        <PlanVisit jobId={job.id} workable={job.status === "accepted"} team={team} />
       ) : null}
 
       <h2>Where and when</h2>

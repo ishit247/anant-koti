@@ -4,8 +4,17 @@ What we are building: [product-brief.md](product-brief.md). Shared modules:
 [platform-modules.md](platform-modules.md). The design is in [architecture.md](architecture.md);
 its first table says which sections each step reads.
 
-**Current position:** Step 2.5 done (2026-11-22); phase 2 done (`validate full` green, tag `phase-2-done`).
-Next: step 3.1 (STANDARD: scheduling), best in a fresh session. Negotiation: the job state machine in `src/job.ts`
+**Current position:** Step 3.1 done (2026-11-22). Next: step 3.2 (STANDARD: `notify` email channel through the
+outbox), best in a fresh session. Step 3.1: migration `0008_appointment.sql` (`kk.appointment`; `EXCLUDE USING gist`
+on technician and time range for planned visits, so a double booking is refused by the database; no delete for the
+app role) and `unique (business_id, id)` added to `tenancy.member` in place. `src/schedule.ts`: `planVisit` (a
+`work` visit needs an `accepted` job and moves it to `scheduled` through `transitionJob`; a `site_visit` is allowed
+while the job is open and moves nothing; conflict caught in a savepoint, audited `appointment.planned`), `moveVisit`
+(`appointment.moved`), `plannedVisits`, `assignableMembers`; times are typed in the business's time zone. Owner's
+`/jobs/[id]` has a "Visits" list and a plan form. Seed: one site visit for Sharma #1; Kaveri #3 stays unplanned.
+Verified: `validate quick` and 9 tests on real Postgres, one mutant (overlap operator `&&` → `=`) killed by 3
+tests; the form was NOT checked in a browser and there is no cross-business `/schedule` day view yet, and no
+cancel-appointment or reschedule-the-job's-work screen (a visit can be moved). Earlier, phase 2 done (`validate full` green, tag `phase-2-done`). Negotiation: the job state machine in `src/job.ts`
 (`jobTransition` is section 6's table; `transitionJob` locks the job, moves it and audits `job.<event>`, naming
 the customer when they act by link; `sendQuote` now moves the job through it, `quote_sent` or `revise`, so the
 old `quote.sent` audit is `job.quote_sent`). `answerQuote` in `src/quote.ts`: the customer answers the version
@@ -158,7 +167,7 @@ also write the module's README, and their tests run through the module's public 
 
 | Id  | Step                                                                                                                                                                                                                                                                          | Size | Model    | Status | Done when                                                                                                      |
 | --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | -------- | ------ | -------------------------------------------------------------------------------------------------------------- |
-| 3.1 | Scheduling: slots, technician assignment, conflict check                                                                                                                                                                                                                      | M    | STANDARD | todo   | Double-booking a technician is refused                                                                         |
+| 3.1 | Scheduling: slots, technician assignment, conflict check                                                                                                                                                                                                                      | M    | STANDARD | done   | Double-booking a technician is refused                                                                         |
 | 3.2 | `[module]` `notify`, served from the shared `platform` container through the outbox: templates, email channel, retries, audit log                                                                                                                                             | M    | STANDARD | todo   | A failed send retries and is logged without personal data                                                      |
 | 3.3 | `[module]` `notify` WhatsApp channel (D7): confirmations, reminders, "on the way"; per-business monthly quota; sign-in by phone code (moved from 0.6a: needs this channel, and better-auth's phone plugin stores codes in plain text, so its codes need our own hashed store) | M    | HIGH     | todo   | Quota is enforced; delivery webhook is signature-verified; a phone sign-in issues the same `sub` flow as email |
 

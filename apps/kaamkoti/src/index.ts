@@ -88,6 +88,19 @@ export {
 } from "./quote.ts";
 export { type AnswerForm, type QuoteForm, readAnswerForm, readQuoteForm } from "./quote-form.ts";
 export {
+  assignableMembers,
+  moveVisit,
+  type Planner,
+  plannedVisits,
+  planVisit,
+  VISIT_KINDS,
+  type Visit,
+  type VisitError,
+  type VisitInput,
+  type VisitKind,
+  type VisitResult,
+} from "./schedule.ts";
+export {
   latestTradeTemplate,
   listTradeTemplates,
   saveTradeTemplate,

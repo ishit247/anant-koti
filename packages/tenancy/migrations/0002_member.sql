@@ -9,7 +9,9 @@ create table tenancy.member (
   removed_at timestamptz,
   created_at timestamptz not null default now(),
   -- Also the index for the business_id foreign key and for listing a business's members.
-  unique (business_id, identity_id)
+  unique (business_id, identity_id),
+  -- Target of composite foreign keys: an app row can name a member of its own business only.
+  unique (business_id, id)
 );
 
 -- One owner per business in the MVP (4.1).

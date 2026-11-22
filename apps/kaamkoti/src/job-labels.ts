@@ -64,6 +64,14 @@ const WHEN = new Intl.DateTimeFormat("en-IN", {
 
 export const formatWhen = (date: Date) => WHEN.format(date);
 
+const TIME = new Intl.DateTimeFormat("en-IN", {
+  hour: "numeric",
+  minute: "2-digit",
+  timeZone: "Asia/Kolkata",
+});
+
+export const formatTime = (date: Date) => TIME.format(date);
+
 const DAY = new Intl.DateTimeFormat("en-IN", {
   day: "numeric",
   month: "short",

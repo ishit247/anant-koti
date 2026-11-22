@@ -5,6 +5,7 @@ import { z } from "zod";
 import { requireMember } from "../../../guard.ts";
 import { reissueJobLink } from "../../../inbox.ts";
 import { openDraft } from "../../../quote.ts";
+import { planVisit, type VisitError, type VisitKind } from "../../../schedule.ts";
 import { server } from "../../../server.ts";
 
 const route = defineRoute({ scope: "member", roles: ["owner"] });
@@ -25,6 +26,40 @@ export async function resendJobLink(_previous: ResendState, form: FormData): Pro
     reissueJobLink(client, audit, owner, jobId.data),
   );
   return result ? { secret: result.secret } : { error: "That request was not found." };
+}
+
+export interface PlanVisitState {
+  readonly error?: string;
+}
+
+const VISIT_ERROR: Record<VisitError, string> = {
+  input: "Check the date, time and length of the visit.",
+  not_found: "That request was not found.",
+  closed: "This request cannot take that visit now.",
+  technician: "Choose someone from your team.",
+  conflict: "That person already has a visit at that time. Pick another time or person.",
+};
+
+/** Plans a site visit or the work. The job and technician come from the form, so both are checked in the business. */
+export async function planVisitAction(
+  _previous: PlanVisitState,
+  form: FormData,
+): Promise<PlanVisitState> {
+  const jobId = z.uuid().safeParse(form.get("jobId"));
+  if (!jobId.success) return { error: VISIT_ERROR.not_found };
+  const owner = await requireMember(route, `/jobs/${jobId.data}`);
+  const { db, audit } = server();
+  const result = await db.withTenant(owner.businessId, (client) =>
+    planVisit(client, audit, owner, {
+      jobId: jobId.data,
+      kind: String(form.get("kind")) as VisitKind,
+      technicianId: String(form.get("technicianId")),
+      start: String(form.get("start")),
+      minutes: form.get("minutes"),
+    }),
+  );
+  if (!result.ok) return { error: VISIT_ERROR[result.error] };
+  redirect(`/jobs/${jobId.data}`);
 }
 
 export interface StartQuoteState {

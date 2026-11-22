@@ -162,3 +162,10 @@ insert into tokens.token (hash, purpose, business_id, subject_id, expires_at) va
    '10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-0000000e0001', now() + interval '30 days'),
   (sha256(convert_to('dev-job-link-kaveri-request-1-xxxxxxxxxxxxx', 'UTF8')), 'job',
    '20000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-0000000e0001', now() + interval '30 days');
+
+-- A planned site visit for Sharma's first request, tomorrow from 10:00 with the technician. Kaveri's accepted
+-- request is left unplanned, so scheduling the work can be tried from the app.
+insert into kk.appointment (business_id, job_id, kind, technician_member_id, starts_at, ends_at) values
+  ('10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-0000000e0001', 'site_visit',
+   '10000000-0000-4000-8000-0000000a0002',
+   date_trunc('day', now()) + interval '1 day 10 hours', date_trunc('day', now()) + interval '1 day 11 hours');
