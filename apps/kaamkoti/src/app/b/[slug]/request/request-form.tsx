@@ -1,7 +1,8 @@
 "use client";
 import { type FormEvent, useEffect, useRef, useState } from "react";
+import { Icon } from "../../../icons.tsx";
 
-// Two views in one form: the request (contact, address, the list of work items) and the editor of one work
+// Two screens in one form: the request (contact, address, the list of work items) and the editor of one work
 // item. Every item's fields stay in the form while hidden, so the post carries them all, photos included.
 // The route handler checks everything again; what this component refuses is only a convenience.
 
@@ -22,7 +23,8 @@ interface Item {
   readonly key: number;
   readonly title: string;
   readonly details: string;
-  readonly photos: number;
+  /** Object URLs of the chosen photos, for the previews. Not revoked: a page holds at most a few. */
+  readonly previews: readonly string[];
 }
 
 /** As the server compares names: case and spacing do not matter. */
@@ -58,15 +60,18 @@ export function RequestForm({
 
   // Known only in the browser; the server render offers no location button.
   useEffect(() => setCanLocate("geolocation" in navigator), []);
+  // Each screen starts at its top; a new item's editor puts the cursor in the title.
   useEffect(() => {
-    if (editing !== null) titles.current.get(editing)?.focus();
+    window.scrollTo({ top: 0 });
+    if (editing !== null && !before.current) titles.current.get(editing)?.focus();
   }, [editing]);
 
   const prices = new Map(services.map((s) => [sameName(s.name), s.price]));
   const priceOf = (title: string) => prices.get(sameName(title)) ?? null;
-  const photosIn = (list: readonly Item[]) => list.reduce((n, item) => n + item.photos, 0);
+  const photosIn = (list: readonly Item[]) => list.reduce((n, item) => n + item.previews.length, 0);
   const change = (key: number, update: Partial<Omit<Item, "key">>) =>
     setItems((list) => list.map((item) => (item.key === key ? { ...item, ...update } : item)));
+  const drop = (key: number) => setItems((list) => list.filter((item) => item.key !== key));
 
   const add = () => {
     if (items.length >= limits.items) {
@@ -74,7 +79,7 @@ export function RequestForm({
       return;
     }
     const key = nextKey.current++;
-    setItems((list) => [...list, { key, title: "", details: "", photos: 0 }]);
+    setItems((list) => [...list, { key, title: "", details: "", previews: [] }]);
     before.current = null;
     setItemProblem(null);
     setEditing(key);
@@ -90,7 +95,7 @@ export function RequestForm({
     const key = editing;
     if (key === null) return;
     const saved = before.current;
-    if (!saved) setItems((list) => list.filter((item) => item.key !== key));
+    if (!saved) drop(key);
     else {
       change(key, saved.item);
       const input = files.current.get(key);
@@ -99,11 +104,17 @@ export function RequestForm({
     setEditing(null);
   };
 
+  const remove = () => {
+    if (editing !== null) drop(editing);
+    setEditing(null);
+  };
+
   const save = () => {
     const item = items.find((i) => i.key === editing);
     if (!item) return;
     if (!item.title.trim()) {
       setItemProblem("Say what needs doing, like “AC service”.");
+      titles.current.get(item.key)?.focus();
       return;
     }
     if (photosIn(items) > limits.photos) {
@@ -148,151 +159,193 @@ export function RequestForm({
             {message}
           </p>
         ) : null}
-        <label>
-          Your name
-          <input name="name" autoComplete="name" required maxLength={120} />
-        </label>
-        <label>
-          Mobile number
-          <input name="phone" type="tel" autoComplete="tel" inputMode="tel" required />
-        </label>
-        <label>
-          Address
-          <textarea
-            name="address"
-            autoComplete="street-address"
-            required
-            maxLength={500}
-            rows={3}
-          />
-        </label>
-        <input type="hidden" name="latitude" value={place?.latitude ?? ""} />
-        <input type="hidden" name="longitude" value={place?.longitude ?? ""} />
-        {place ? (
-          <div className="row">
-            <span role="status">Your location is added.</span>
-            <button type="button" className="quiet" onClick={() => setPlace(null)}>
-              Remove
-            </button>
-          </div>
-        ) : canLocate ? (
-          <button type="button" className="quiet" onClick={locate} disabled={locating === "busy"}>
-            {locating === "busy" ? "Finding you…" : "Use my location"}
-          </button>
-        ) : null}
-        {locating === "failed" && !place ? (
-          <p className="muted small" role="status">
-            Could not get your location. The address is enough.
-          </p>
-        ) : null}
 
-        <h2>Work needed</h2>
-        {items.length === 0 ? (
-          <p className="empty">
-            Add each piece of work you need, like “AC service” or “Broken wire”.
-          </p>
-        ) : (
-          <ul className="cards">
-            {items.map((item) => (
-              <li key={item.key} className="card">
-                <strong>{item.title}</strong>
-                <span className="muted small">
-                  {[
-                    priceOf(item.title) ?? "Price to be quoted",
-                    item.photos > 0 ? `${item.photos} photo${item.photos === 1 ? "" : "s"}` : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
+        <section className="panel" aria-labelledby="details-title">
+          <h2 id="details-title">Your details</h2>
+          <label>
+            Your name
+            <input name="name" autoComplete="name" required maxLength={120} />
+          </label>
+          <label>
+            Mobile number
+            <input name="phone" type="tel" autoComplete="tel" inputMode="tel" required />
+          </label>
+          <label>
+            Address
+            <textarea
+              name="address"
+              autoComplete="street-address"
+              required
+              maxLength={500}
+              rows={2}
+              placeholder="House, street, area"
+            />
+          </label>
+          <input type="hidden" name="latitude" value={place?.latitude ?? ""} />
+          <input type="hidden" name="longitude" value={place?.longitude ?? ""} />
+          {place ? (
+            <span className="pill" role="status">
+              <Icon name="pin" size={16} />
+              Location added
+              <button type="button" aria-label="Remove location" onClick={() => setPlace(null)}>
+                <Icon name="close" size={16} />
+              </button>
+            </span>
+          ) : canLocate ? (
+            <button type="button" className="link" onClick={locate} disabled={locating === "busy"}>
+              <Icon name="pin" size={18} />
+              {locating === "busy" ? "Finding you…" : "Use my current location"}
+            </button>
+          ) : null}
+          {locating === "failed" && !place ? (
+            <p className="hint" role="status">
+              Could not get your location. The address is enough.
+            </p>
+          ) : null}
+        </section>
+
+        <section className="panel" aria-labelledby="work-title">
+          <h2 id="work-title">
+            Work needed
+            {items.length > 0 ? <span className="count">{items.length}</span> : null}
+          </h2>
+          {items.map((item) => {
+            const price = priceOf(item.title);
+            const [first] = item.previews;
+            return (
+              <button key={item.key} type="button" className="tile" onClick={() => open(item)}>
+                {first ? (
+                  // biome-ignore lint/performance/noImgElement: a local preview (object URL), never served
+                  <img className="thumb" src={first} alt="" />
+                ) : (
+                  <span className="thumb">
+                    <Icon name="wrench" />
+                  </span>
+                )}
+                <span className="text">
+                  <strong>{item.title}</strong>
+                  <span className="muted small">
+                    {item.details ||
+                      (item.previews.length > 0
+                        ? `${item.previews.length} photo${item.previews.length === 1 ? "" : "s"}`
+                        : "Tap to add details")}
+                  </span>
                 </span>
-                {item.details ? <span className="small">{item.details}</span> : null}
-                <div className="actions">
-                  <button type="button" className="quiet" onClick={() => open(item)}>
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    className="quiet"
-                    onClick={() => setItems((list) => list.filter((i) => i.key !== item.key))}
-                  >
-                    Remove
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-        <div className="actions">
-          <button type="button" className="quiet" onClick={add}>
+                <span className={price ? "price" : "price ask"}>{price ?? "Quote"}</span>
+                <Icon name="chevron" size={18} />
+              </button>
+            );
+          })}
+          <button type="button" className="add" onClick={add}>
+            <Icon name="plus" size={18} />
             Add work item
           </button>
+        </section>
+
+        <div className="dock">
           <button type="submit" disabled={sending}>
             {sending ? "Sending…" : "Send request"}
           </button>
+          <p className="muted small">Free to ask. You get a quote before any work starts.</p>
         </div>
       </div>
 
       {items.map((item, i) => {
         const price = priceOf(item.title);
         return (
-          <fieldset key={item.key} className="item" hidden={editing !== item.key}>
-            <legend>Work item</legend>
-            <label>
-              What needs doing?
-              <input
-                ref={(el) => {
-                  if (el) titles.current.set(item.key, el);
-                  else titles.current.delete(item.key);
-                }}
-                name={`item.${i}.title`}
-                list="services"
-                autoComplete="off"
-                maxLength={limits.title}
-                value={item.title}
-                onChange={(e) => change(item.key, { title: e.target.value })}
-              />
-            </label>
-            {item.title.trim() ? (
-              <p className="muted small">
-                {price ? `${price}, from the price list.` : "The business will quote a price."}
-              </p>
-            ) : null}
-            <label>
-              Details (optional)
-              <textarea
-                name={`item.${i}.details`}
-                maxLength={limits.details}
-                rows={4}
-                value={item.details}
-                onChange={(e) => change(item.key, { details: e.target.value })}
-              />
-            </label>
-            <label>
-              Photos (optional)
-              <input
-                ref={(el) => {
-                  if (el) files.current.set(item.key, el);
-                  else files.current.delete(item.key);
-                }}
-                type="file"
-                name={`item.${i}.photo`}
-                accept={imageTypes}
-                multiple
-                onChange={(e) => change(item.key, { photos: e.target.files?.length ?? 0 })}
-              />
-            </label>
-            <p className="muted small">Up to {limits.photos} photos in all.</p>
+          <fieldset key={item.key} className="sheet" hidden={editing !== item.key}>
+            <legend className="visually-hidden">Work item</legend>
+            <div className="sheet-head">
+              <button type="button" className="icon" aria-label="Back" onClick={back}>
+                <Icon name="back" size={22} />
+              </button>
+              <h2>{before.current ? "Edit work item" : "Add work item"}</h2>
+            </div>
+            <div className="panel">
+              <label>
+                What needs doing?
+                <input
+                  ref={(el) => {
+                    if (el) titles.current.set(item.key, el);
+                    else titles.current.delete(item.key);
+                  }}
+                  name={`item.${i}.title`}
+                  list="services"
+                  autoComplete="off"
+                  maxLength={limits.title}
+                  placeholder="Pick a service or type your own"
+                  value={item.title}
+                  onChange={(e) => change(item.key, { title: e.target.value })}
+                />
+              </label>
+              {item.title.trim() ? (
+                <p className="hint">
+                  {price ? (
+                    <>
+                      <strong>{price}</strong> from the price list
+                    </>
+                  ) : (
+                    "The business will quote a price for this."
+                  )}
+                </p>
+              ) : null}
+              <label>
+                Details (optional)
+                <textarea
+                  name={`item.${i}.details`}
+                  maxLength={limits.details}
+                  rows={4}
+                  placeholder="What is wrong, which room, brand or model…"
+                  value={item.details}
+                  onChange={(e) => change(item.key, { details: e.target.value })}
+                />
+              </label>
+              <label className="drop">
+                <Icon name="camera" size={28} />
+                <span>Photos (optional)</span>
+                <span className="muted small">
+                  Up to {limits.photos} in all. A photo helps the quote.
+                </span>
+                <input
+                  ref={(el) => {
+                    if (el) files.current.set(item.key, el);
+                    else files.current.delete(item.key);
+                  }}
+                  className="visually-hidden"
+                  type="file"
+                  name={`item.${i}.photo`}
+                  accept={imageTypes}
+                  multiple
+                  onChange={(e) =>
+                    change(item.key, {
+                      previews: Array.from(e.target.files ?? [], (f) => URL.createObjectURL(f)),
+                    })
+                  }
+                />
+              </label>
+              {item.previews.length > 0 ? (
+                <div className="thumbs">
+                  {item.previews.map((src, n) => (
+                    // biome-ignore lint/performance/noImgElement: a local preview (object URL), never served
+                    <img key={src} src={src} alt={`Chosen ${n + 1} of ${item.previews.length}`} />
+                  ))}
+                </div>
+              ) : null}
+            </div>
             {itemProblem ? (
               <p className="error" role="alert">
                 {itemProblem}
               </p>
             ) : null}
-            <div className="actions">
-              <button type="button" className="quiet" onClick={back}>
-                Back
-              </button>
+            <div className="dock">
               <button type="button" onClick={save}>
                 Save
               </button>
+              {before.current ? (
+                <button type="button" className="danger" onClick={remove}>
+                  Remove this item
+                </button>
+              ) : null}
             </div>
           </fieldset>
         );

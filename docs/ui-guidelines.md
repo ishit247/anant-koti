@@ -25,7 +25,9 @@ Defined on `:root`; use them, never a literal colour in a component.
 | ------------------------------------------------------- | ------------------------------------------- |
 | `--ink`, `--muted`                                      | Text, secondary text (`.muted`, `.small`)   |
 | `--paper`, `--card`, `--line`                           | Page background, card background, hairlines |
-| `--field`                                               | Input borders, quiet buttons                |
+| `--fill`, `--fill-edge`                                 | Filled inputs and tiles, their soft edge    |
+| `--shadow`                                              | Depth of cards and panels                   |
+| `--field`                                               | Strong borders (rare)                       |
 | `--brand`, `--brand-dark`, `--brand-tint`               | Primary action, hover, soft highlight       |
 | `--ok` / `--ok-tint`, `--warn` / `--warn-tint`, `--bad` | Positive, waiting, error states             |
 | `--radius`, `--tabs`                                    | Card corner radius, tab bar height          |
@@ -48,7 +50,16 @@ Contrast: text on `--paper` and `--card` meets WCAG AA; keep it so when adding a
 | Priced lines and totals      | `QuoteSummary`: `ul.lines` of `.row`s, `.row.total`, figures in `.amount`           |
 | Nothing here yet             | `<p className="empty">` with the next step in words                                 |
 | A rare or second action      | `<details className="card">` with a `summary` verb, the form inside (no JavaScript) |
-| One form, two views          | Each view a `.stack` (or `fieldset.item`) toggled with `hidden`; the request form   |
+| One form, two views          | Main view a `.stack`, the other a `fieldset.sheet`, toggled with `hidden`           |
+| Customer page header         | `header.hero`: `.who` (`.avatar` initial + business name), `h1`, one muted line     |
+| A step of a form             | `section.panel` with an `h2` (sentence case; `.count` badge for a list)             |
+| A row to tap open            | `button.tile`: `.thumb`, `.text` (two lines), `.price`, `Icon name="chevron"`       |
+| Add another                  | `button.add` (dashed, with `Icon name="plus"`) closing a list of tiles              |
+| The screen's main action     | `.dock` at the end of the view: sticky at the bottom, full-width primary button     |
+| A screen inside a page       | `.sheet` with `.sheet-head` (`button.icon` back arrow + `h2`)                       |
+| Small inline action / state  | `button.link` (with an icon); `.pill` for a done state with a remove `×`            |
+| Photo picker                 | `label.drop` around a `.visually-hidden` file input; `.thumbs` previews below       |
+| Icons                        | `Icon` in `app/icons.tsx` (inline SVG, always beside words, `aria-hidden`)          |
 | Link to pass on              | `ShareLink` (copy and WhatsApp), never a hand-built share row                       |
 | Member navigation            | `OwnerNav` at the end of every owner page, with `current` set                       |
 

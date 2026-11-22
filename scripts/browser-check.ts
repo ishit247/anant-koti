@@ -259,7 +259,7 @@ try {
     problems.push("a request without a work item is not explained");
   await shoot(form, "12-request-form-error");
   // Saved items keep their (hidden) fields in the form; labels are looked up in the open editor only.
-  const editor = () => form.locator("fieldset.item:not([hidden])");
+  const editor = () => form.locator(".sheet:not([hidden])");
   // A price-list item with a photo: the editor shows its price.
   await form.getByRole("button", { name: "Add work item" }).click();
   await editor().getByLabel("What needs doing?").fill("AC gas refill");
@@ -278,7 +278,7 @@ try {
   // The customer's own words: priced by the business.
   await form.getByRole("button", { name: "Add work item" }).click();
   await editor().getByLabel("What needs doing?").fill("Broken wire");
-  if (!(await form.getByText("The business will quote a price.").count()))
+  if (!(await form.getByText("The business will quote a price").count()))
     problems.push("a title of the customer's own does not say it will be quoted");
   await form.getByRole("button", { name: "Save" }).click();
   // Back on a new item discards it.

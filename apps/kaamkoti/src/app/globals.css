@@ -3,10 +3,14 @@
 :root {
   --ink: #1c1b1a;
   --muted: #5c5750;
-  --line: #e4ded5;
+  --line: #ebe5dc;
   --field: #8a847c;
-  --paper: #faf8f5;
+  /* Inputs are filled, not boxed: the fill and the label mark them, the edge only frames them. */
+  --fill: #f4f0ea;
+  --fill-edge: #ddd5ca;
+  --paper: #f6f3ee;
   --card: #fff;
+  --shadow: 0 1px 2px rgb(28 27 26 / 0.05), 0 6px 20px rgb(28 27 26 / 0.06);
   --brand: #b4411c;
   --brand-dark: #8f3213;
   --brand-tint: #fbe9e2;
@@ -15,7 +19,7 @@
   --warn: #8a5a00;
   --warn-tint: #fdf0d2;
   --bad: #a01818;
-  --radius: 0.75rem;
+  --radius: 1rem;
   --tabs: 4rem;
 }
 * {
@@ -78,20 +82,33 @@ form,
 }
 label {
   display: grid;
-  gap: 0.25rem;
+  gap: 0.35rem;
+  font-size: 0.9rem;
   font-weight: 600;
 }
 input,
 select,
 textarea {
   font: inherit;
-  padding: 0.7rem 0.8rem;
-  border: 1px solid var(--field);
-  border-radius: 0.6rem;
-  background: #fff;
+  font-weight: 400;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--fill-edge);
+  border-radius: 0.8rem;
+  background: var(--fill);
   color: inherit;
   min-width: 0;
   width: 100%;
+}
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  background: var(--card);
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-tint);
+}
+textarea {
+  resize: vertical;
 }
 /* A disclosure ("Offer a different price"): the summary is a full tap target. */
 summary {
@@ -112,10 +129,10 @@ button,
 .button {
   font: inherit;
   font-weight: 600;
-  min-height: 2.75rem;
-  padding: 0.65rem 1.1rem;
+  min-height: 3rem;
+  padding: 0.7rem 1.2rem;
   border: 0;
-  border-radius: 0.6rem;
+  border-radius: 0.8rem;
   background: var(--brand);
   color: #fff;
   cursor: pointer;
@@ -137,9 +154,9 @@ button:disabled {
 }
 button.quiet,
 .button.quiet {
-  background: transparent;
+  background: var(--card);
   color: var(--ink);
-  border: 1px solid var(--field);
+  border: 1px solid var(--fill-edge);
 }
 button.quiet:hover,
 .button.quiet:hover {
@@ -201,15 +218,16 @@ label.choice {
 .card {
   display: grid;
   gap: 0.35rem;
-  padding: 0.9rem 1rem;
+  padding: 1rem 1.1rem;
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--radius);
+  box-shadow: var(--shadow);
   color: inherit;
   text-decoration: none;
 }
 a.card:hover {
-  border-color: var(--field);
+  border-color: var(--fill-edge);
 }
 .cards {
   display: grid;
@@ -324,6 +342,269 @@ dl.facts dd {
   padding: 2rem 1rem;
   border: 1px dashed var(--field);
   border-radius: var(--radius);
+}
+
+/* A customer page's header: who they are dealing with, then what the page is for. */
+.hero {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.5rem 0 1.25rem;
+}
+.hero .who {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 600;
+}
+.avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  background: var(--brand);
+  color: #fff;
+  font-weight: 700;
+}
+.hero h1 {
+  font-size: 1.75rem;
+  letter-spacing: -0.01em;
+  margin: 0.4rem 0 0;
+}
+
+/* A titled group of fields or rows: one card per step of a form. */
+.panel {
+  display: grid;
+  gap: 1rem;
+  padding: 1.1rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.panel > h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 1.05rem;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink);
+}
+.panel > h2 .count {
+  min-width: 1.5rem;
+  padding: 0 0.45rem;
+  border-radius: 999px;
+  background: var(--brand-tint);
+  color: var(--brand-dark);
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+/* A text-weight action inside a panel ("Use my location"); still a 44 px tap target. */
+button.link {
+  justify-self: start;
+  min-height: 2.75rem;
+  padding: 0 0.25rem;
+  background: none;
+  color: var(--brand-dark);
+}
+button.link:hover {
+  background: none;
+  text-decoration: underline;
+}
+.pill {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.4rem 0.35rem 0.75rem;
+  border-radius: 999px;
+  background: var(--ok-tint);
+  color: var(--ok);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.pill button {
+  min-height: 2rem;
+  width: 2rem;
+  padding: 0;
+  border-radius: 50%;
+  background: none;
+  color: inherit;
+}
+.pill button:hover {
+  background: rgb(0 0 0 / 0.06);
+}
+
+/* A row you tap to open (a work item): thumbnail or icon, two lines, a chevron. */
+button.tile {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.6rem 0.4rem 0.6rem 0.6rem;
+  background: var(--fill);
+  color: var(--ink);
+  text-align: left;
+  white-space: normal;
+  font-weight: 400;
+}
+button.tile:hover {
+  background: var(--brand-tint);
+}
+.tile .thumb {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 0.65rem;
+  background: var(--card);
+  color: var(--brand);
+  object-fit: cover;
+}
+.tile .text {
+  display: grid;
+  min-width: 0;
+}
+.tile .text strong,
+.tile .text span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tile .price {
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.tile .price.ask {
+  color: var(--muted);
+  font-weight: 400;
+}
+.tile svg.chevron {
+  color: var(--muted);
+}
+/* The add-another tile closes a list of tiles. */
+button.add {
+  width: 100%;
+  background: none;
+  color: var(--brand-dark);
+  border: 1.5px dashed var(--fill-edge);
+}
+button.add:hover {
+  background: var(--brand-tint);
+  border-color: var(--brand);
+}
+
+/* The screen's one main action, kept in thumb reach at the bottom while the page scrolls. */
+.dock {
+  position: sticky;
+  bottom: 0;
+  display: grid;
+  gap: 0.25rem;
+  margin: 0 -1rem -3rem;
+  padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
+  background: var(--paper);
+  box-shadow: 0 -1px 0 var(--line);
+  text-align: center;
+}
+.dock .muted {
+  margin: 0;
+}
+
+/* A screen inside a page (one work item's editor): a back arrow and a title on top. */
+.sheet {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: -0.5rem;
+}
+.sheet-head h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink);
+}
+button.icon {
+  width: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--ink);
+}
+button.icon:hover {
+  background: var(--fill);
+}
+.hint {
+  margin: -0.5rem 0 0;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+.hint strong {
+  color: var(--ok);
+}
+button.danger {
+  background: none;
+  color: var(--bad);
+}
+button.danger:hover {
+  background: #fbe4e4;
+}
+
+/* Photo picker: a big dashed target around a hidden file input, the chosen photos shown below. */
+.drop {
+  place-items: center;
+  gap: 0.2rem;
+  padding: 1.25rem 1rem;
+  border: 1.5px dashed var(--fill-edge);
+  border-radius: var(--radius);
+  background: var(--fill);
+  color: var(--brand-dark);
+  text-align: center;
+  cursor: pointer;
+}
+.drop:hover,
+.drop:focus-within {
+  border-color: var(--brand);
+  background: var(--brand-tint);
+}
+.drop .muted {
+  font-weight: 400;
+}
+.thumbs {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+}
+.thumbs img {
+  flex: none;
+  width: 4.5rem;
+  height: 4.5rem;
+  border-radius: 0.65rem;
+  object-fit: cover;
+}
+/* Out of sight but still in the form and reachable by keyboard and screen readers. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 /* The member tab bar: thumb reach on a phone, a plain bar on a desktop. */

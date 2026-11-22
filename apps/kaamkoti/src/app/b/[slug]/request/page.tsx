@@ -41,8 +41,21 @@ export default async function RequestPage({
   const refused = error && error in ERRORS ? ERRORS[error as keyof typeof ERRORS] : null;
   return (
     <>
-      <p className="muted">{page.name}</p>
-      <h1>Request a visit</h1>
+      <header className="hero">
+        <p className="who">
+          <span className="avatar" aria-hidden="true">
+            {page.name.trim().charAt(0).toUpperCase()}
+          </span>
+          <span>
+            {page.name}
+            <span className="muted small"> · {page.city}</span>
+          </span>
+        </p>
+        <h1>Request a visit</h1>
+        <p className="muted">
+          Tell {page.name} what needs doing. You will get a quote by link before any work starts.
+        </p>
+      </header>
       <RequestForm
         action={`/b/${encodeURIComponent(slug)}/request/send`}
         services={page.services.map((s) => ({ name: s.name, price: formatPrice(s.price, s.unit) }))}
