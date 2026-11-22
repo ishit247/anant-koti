@@ -38,7 +38,7 @@ export default async function BusinessPage({ params }: { params: Promise<{ slug:
       <ul>
         {page.services.map((s) => (
           <li key={s.id}>
-            {s.name} — {formatPrice(s.unitPriceMinor, s.unit)}
+            {s.name} — {formatPrice(s.price, s.unit)}
           </li>
         ))}
       </ul>

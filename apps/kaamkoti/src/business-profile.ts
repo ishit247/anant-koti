@@ -1,6 +1,7 @@
 // A business's own profile and price list (docs/architecture.md 5.3). Every function runs inside withTenant, so row-level
 // security supplies the business; business_id is passed only where an insert has to name it.
 import type { DbClient } from "@bodhchakra/db";
+import { parseDecimal } from "@bodhchakra/money";
 import { z } from "zod";
 import { checklistItem, intakeQuestion, latestTradeTemplate, UNITS } from "./trade-template.ts";
 
@@ -103,11 +104,13 @@ export async function listCatalogue(client: DbClient): Promise<CatalogueItem[]> 
 function hundredths(max: number) {
   return z
     .string()
-    .trim()
-    .regex(/^\d{1,9}(\.\d{1,2})?$/)
-    .transform((text) => {
-      const [whole = "0", fraction = ""] = text.split(".");
-      return Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
+    .transform((text, ctx) => {
+      const value = parseDecimal(text, 2);
+      if (value === null) {
+        ctx.addIssue({ code: "custom", message: "not a number with at most two decimals" });
+        return z.NEVER;
+      }
+      return value;
     })
     .pipe(z.int().max(max));
 }

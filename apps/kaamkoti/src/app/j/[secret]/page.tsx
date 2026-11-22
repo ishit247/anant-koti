@@ -1,7 +1,9 @@
 import { defineRoute } from "@bodhchakra/tenancy";
 import type { JobStatus } from "../../../job.ts";
+import { formatDay } from "../../../job-labels.ts";
 import { openJobLink } from "../../../job-link.ts";
 import { server } from "../../../server.ts";
+import { QuoteSummary } from "../../quote-summary.tsx";
 
 // The path secret is the credential: it resolves to one job, read inside withTenant of that job's business.
 // No cookie is read or set; the app-wide Referrer-Policy keeps the secret out of Referer headers.
@@ -47,6 +49,17 @@ export default async function JobPage({ params }: { params: Promise<{ secret: st
             <li key={i}>{task}</li>
           ))}
         </ul>
+      ) : null}
+      {job.quote ? (
+        <>
+          <h2>Your quote</h2>
+          {job.quote.expired ? (
+            <p role="alert">This quote has expired. Ask {job.businessName} for a new one.</p>
+          ) : job.quote.validUntil ? (
+            <p className="muted small">Valid until {formatDay(job.quote.validUntil)}.</p>
+          ) : null}
+          <QuoteSummary quote={job.quote} />
+        </>
       ) : null}
       {job.photos.map((photo) => (
         // Signed after the link resolved to this job: each URL opens one object for five minutes.

@@ -44,7 +44,7 @@ export {
   submitRequest,
   toE164,
 } from "./intake.ts";
-export { JOB_STATUSES, type JobStatus } from "./job.ts";
+export { JOB_STATUSES, type JobStatus, jobTasks } from "./job.ts";
 export {
   type CustomerJobView,
   issueJobLink,
@@ -54,6 +54,23 @@ export {
 } from "./job-link.ts";
 export { CLIENT_IP_HEADER, clientIp, LIMITS, overLimit } from "./limits.ts";
 export { type PublicPage, publicPage } from "./public-page.ts";
+export {
+  customerQuote,
+  MAX_QUOTE_LINES,
+  openDraft,
+  ownerQuotes,
+  QUOTE_STATUSES,
+  QUOTE_VALID_DAYS,
+  type Quote,
+  type QuoteError,
+  type QuoteLine,
+  type QuoteLineInput,
+  type QuoteResult,
+  type QuoteStatus,
+  saveDraft,
+  sendQuote,
+} from "./quote.ts";
+export { type QuoteForm, readQuoteForm } from "./quote-form.ts";
 export {
   latestTradeTemplate,
   listTradeTemplates,

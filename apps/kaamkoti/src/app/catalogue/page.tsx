@@ -1,3 +1,4 @@
+import { formatDecimal } from "@bodhchakra/money";
 import { defineRoute } from "@bodhchakra/tenancy";
 import { redirect } from "next/navigation";
 import { businessProfile, listCatalogue } from "../../business-profile.ts";
@@ -8,8 +9,8 @@ import { CatalogueForm, type FormRow } from "./catalogue-form.tsx";
 
 const route = defineRoute({ scope: "member", roles: ["owner"] });
 
-/** Hundredths as the owner types them: 45000 is "450", 45050 is "450.50". */
-const hundredths = (n: number) => (n % 100 === 0 ? String(n / 100) : (n / 100).toFixed(2));
+/** Paise and basis points are both hundredths, as the owner types them: 45000 is "450". */
+const hundredths = (n: number) => formatDecimal(n, 2);
 
 export default async function CataloguePage() {
   const owner = await requireMember(route, "/catalogue");

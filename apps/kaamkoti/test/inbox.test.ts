@@ -54,7 +54,8 @@ describe("the owner's inbox on the seeded database", () => {
   });
 
   it("counts requests that still wait for a quote", async () => {
-    expect(await app.withTenant(SHARMA, countNewRequests)).toBe(2);
+    // Request #2 has a quote (seed.sql).
+    expect(await app.withTenant(SHARMA, countNewRequests)).toBe(1);
   });
 
   it("shows a request in full, with the question as the label of each answer", async () => {

@@ -4,8 +4,27 @@ What we are building: [product-brief.md](product-brief.md). Shared modules:
 [platform-modules.md](platform-modules.md). The design is in [architecture.md](architecture.md);
 its first table says which sections each step reads.
 
-**Current position:** Step 2.3 done (2026-11-22). Next: step 2.4 (HIGH: money and quotes; start it on Opus or
-Fable, in a fresh session). Owner inbox: `src/inbox.ts` (`listInbox`, `ownerJob`, `logPhoneEnquiry`,
+**Current position:** Step 2.4 done (2026-11-22). Next: step 2.5 (HIGH: negotiation; start it on Opus or Fable,
+in a fresh session). `@bodhchakra/money` (foundation): `lineTotals` in `BigInt` with line-level rounding, halves
+away from zero; `formatMoney`, `minorDigits`, `parseDecimal`/`formatDecimal` (the catalogue form now uses them);
+`currentBusiness` returns `currency`. Quotes: migration `0007_quote.sql` (`kk.quote`, `kk.quote_line`; `job_task`
+gained `unique (business_id, job_id, id)` in place), triggers `quote_guard` (born a draft; leaving draft needs
+lines whose sums are the stored totals; after that only `status` changes) and `quote_line_guard` (lines change
+only on a draft, `FOR SHARE` on the quote); `CHECK`s restate line rounding; no delete on `quote` for the app role.
+`src/quote.ts`: `openDraft` (first draft prefilled from the tasks at price-list prices, a revision copies the
+latest version), `saveDraft`, `sendQuote` (supersedes the version out, job and tasks → `quoted`, audited
+`quote.sent`), `ownerQuotes`, `customerQuote` (newest sent only; expiry computed at read). Edge `src/quote-form.ts`.
+Pages: quote section on `/jobs/[id]` ("Write a quote" / "Revise the quote"), editor `/jobs/[id]/quote` (save or
+send in one transaction; send issues a fresh customer link shown with `ShareLink`), `/j/` shows the sent quote
+(`QuoteSummary`, `.lines` in globals.css). Seeds: Sharma #2 has a sent quote with a discount line (job `quoted`),
+Kaveri #2 a draft; task ids fixed. Handed on to 2.5: accept/reject/counter, `transitionJob`, `decided_at` and
+counter columns (add them to `0007` and to the guard's allowed columns), `job.accepted_quote_id`; the owner's
+expiry notice waits for notify (3.2). Verified: `validate standard` (286 tests; money 36, kaamkoti 101),
+`up:fresh` (6.4 s), 6 mutants killed (line trigger off; sent quote columns editable; totals-vs-lines check off;
+task of another job with both the app check and the composite key removed, and the key alone shown to refuse;
+customer view showing drafts; rounding half toward zero), `check:browser` extended with write → refused deposit
+→ send → customer reads the quote → revise offered, at 375 px and 1280 px, screenshots viewed. Step 2.3 before
+it: owner inbox: `src/inbox.ts` (`listInbox`, `ownerJob`, `logPhoneEnquiry`,
 `reissueJobLink`, `countNewRequests`), pages `/jobs`, `/jobs/[id]`, `/jobs/new` (scope `member`, owner only; the
 id in the path is read inside `withTenant`, so another business's id is a 404). Phone enquiries reuse the
 intake's customer and job rules (`source = 'phone'`, tasks `added_by = 'business'`); a new link revokes the old
@@ -111,7 +130,7 @@ also write the module's README, and their tests run through the module's public 
 | 2.1 | `[module]` `tokens` links; customer magic links: scoped to one job, expiring, revocable                                                                                                                                      | M    | HIGH     | done   | A token cannot read another job; expired token is refused; mutant proves both                                      |
 | 2.2 | `[module]` `storage`; request intake: public form (pick one or more catalogue tasks), trade questions, photo upload (type and size checks, private storage); the app's per-IP rate limiter, for intake and for `/j/` lookups | M    | HIGH     | done   | Upload rejects wrong types and sizes; photos are not publicly listable; intake and `/j/` answer 429 past the limit |
 | 2.3 | Owner inbox: new requests, log a phone enquiry; a link to the owner's public page from home; on a job, "revoke links and send a new one" (`revokeJobLinks` + `issueJobLink`, audited)                                        | S    | STANDARD | done   | Both request sources appear in one list                                                                            |
-| 2.4 | `[module]` `money`; quotes (`job_task` came in 2.2): lines from the catalogue at task or request level, versions, expiry                                                                                                     | M    | HIGH     | todo   | Totals and tax are tested; old versions are immutable                                                              |
+| 2.4 | `[module]` `money`; quotes (`job_task` came in 2.2): lines from the catalogue at task or request level, versions, expiry                                                                                                     | M    | HIGH     | done   | Totals and tax are tested; old versions are immutable                                                              |
 | 2.5 | Negotiation: customer accepts, rejects or counters; owner revises; accepted quote locked                                                                                                                                     | M    | HIGH     | todo   | State machine test covers every transition; a locked quote cannot be edited                                        |
 
 ## Phase 3: Scheduling and notifications

@@ -1,4 +1,6 @@
-// A catalogue price as customers read it: "₹2,500.00 each". Rupees only until money (2.4) carries the currency.
+// A price as customers and owners read it: "₹2,500.00 each".
+import { formatMoney, type Money } from "@bodhchakra/money";
+
 const PER: Record<string, string> = {
   job: "per job",
   hour: "per hour",
@@ -8,7 +10,5 @@ const PER: Record<string, string> = {
   visit: "per visit",
 };
 
-const rupees = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" });
-
-export const formatPrice = (unitPriceMinor: number, unit: string) =>
-  `${rupees.format(unitPriceMinor / 100)} ${PER[unit] ?? ""}`.trim();
+export const formatPrice = (price: Money, unit: string) =>
+  `${formatMoney(price)} ${PER[unit] ?? ""}`.trim();

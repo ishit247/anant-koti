@@ -283,6 +283,26 @@ dl.facts dd {
   border-radius: 0.5rem;
   background: var(--line);
 }
+/* Priced lines and their totals: a quote now, an invoice later. */
+.lines {
+  display: grid;
+  gap: 0.5rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.lines > li + li,
+.row.total {
+  border-top: 1px solid var(--line);
+  padding-top: 0.5rem;
+}
+.row.total {
+  font-weight: 700;
+}
+.amount {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
 .empty {
   text-align: center;
   color: var(--muted);

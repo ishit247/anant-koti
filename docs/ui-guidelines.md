@@ -21,33 +21,34 @@ Established in step 2.3. Change a rule here and in the CSS in the same commit.
 
 Defined on `:root`; use them, never a literal colour in a component.
 
-| Token                            | Use                                                      |
-| -------------------------------- | -------------------------------------------------------- |
-| `--ink`, `--muted`               | Text, secondary text (`.muted`, `.small`)                |
-| `--paper`, `--card`, `--line`    | Page background, card background, hairlines              |
-| `--field`                        | Input borders, quiet buttons                             |
-| `--brand`, `--brand-dark`, `--brand-tint` | Primary action, hover, soft highlight           |
-| `--ok` / `--ok-tint`, `--warn` / `--warn-tint`, `--bad` | Positive, waiting, error states   |
-| `--radius`, `--tabs`             | Card corner radius, tab bar height                       |
+| Token                                                   | Use                                         |
+| ------------------------------------------------------- | ------------------------------------------- |
+| `--ink`, `--muted`                                      | Text, secondary text (`.muted`, `.small`)   |
+| `--paper`, `--card`, `--line`                           | Page background, card background, hairlines |
+| `--field`                                               | Input borders, quiet buttons                |
+| `--brand`, `--brand-dark`, `--brand-tint`               | Primary action, hover, soft highlight       |
+| `--ok` / `--ok-tint`, `--warn` / `--warn-tint`, `--bad` | Positive, waiting, error states             |
+| `--radius`, `--tabs`                                    | Card corner radius, tab bar height          |
 
 Contrast: text on `--paper` and `--card` meets WCAG AA; keep it so when adding a tone.
 
 ## Building blocks
 
-| Need                         | Use                                                                                  |
-| ---------------------------- | ------------------------------------------------------------------------------------ |
-| Page title with an action    | `<header className="bar"><h1>…</h1><a className="button">…</a></header>`             |
-| Section heading              | `<h2>` (small caps label style; do not restyle)                                      |
-| A thing, or a group of facts | `.card`; a clickable one is `<a className="card">`                                   |
-| A list of things             | `<ul className="cards"><li><a className="card">…</a></li></ul>`; row inside: `.row`  |
-| Label and value pairs        | `<dl className="facts card">` with `dt` and `dd`                                     |
-| Status                       | `.chip` plus `new`, `go` or `wait` (`statusTone()` in `src/job-labels.ts`)           |
-| Headline number / entry card | `.card.stat` (brand colour, count on the right)                                      |
-| Two or three buttons         | `.actions` (equal-width grid that wraps)                                             |
-| Photos                       | `.photos` (square thumbnails, `loading="lazy"`)                                      |
-| Nothing here yet             | `<p className="empty">` with the next step in words                                  |
-| Link to pass on              | `ShareLink` (copy and WhatsApp), never a hand-built share row                        |
-| Member navigation            | `OwnerNav` at the end of every owner page, with `current` set                        |
+| Need                         | Use                                                                                 |
+| ---------------------------- | ----------------------------------------------------------------------------------- |
+| Page title with an action    | `<header className="bar"><h1>…</h1><a className="button">…</a></header>`            |
+| Section heading              | `<h2>` (small caps label style; do not restyle)                                     |
+| A thing, or a group of facts | `.card`; a clickable one is `<a className="card">`                                  |
+| A list of things             | `<ul className="cards"><li><a className="card">…</a></li></ul>`; row inside: `.row` |
+| Label and value pairs        | `<dl className="facts card">` with `dt` and `dd`                                    |
+| Status                       | `.chip` plus `new`, `go` or `wait` (`statusTone()` in `src/job-labels.ts`)          |
+| Headline number / entry card | `.card.stat` (brand colour, count on the right)                                     |
+| Two or three buttons         | `.actions` (equal-width grid that wraps)                                            |
+| Photos                       | `.photos` (square thumbnails, `loading="lazy"`)                                     |
+| Priced lines and totals      | `QuoteSummary`: `ul.lines` of `.row`s, `.row.total`, figures in `.amount`           |
+| Nothing here yet             | `<p className="empty">` with the next step in words                                 |
+| Link to pass on              | `ShareLink` (copy and WhatsApp), never a hand-built share row                       |
+| Member navigation            | `OwnerNav` at the end of every owner page, with `current` set                       |
 
 Buttons: primary is the default `button`/`.button`; `quiet` is outlined. Minimum height 2.75 rem
 (44 px); labels never wrap. One primary button per card or screen section.
@@ -75,8 +76,9 @@ Buttons: primary is the default `button`/`.button`; `quiet` is outlined. Minimum
 
 - Plain words a tradesperson would say: "Requests", "Prices", "Phone enquiry", not "Leads" or "Catalogue".
 - Buttons are verbs ("Save request", "Send request"). Errors say what to do ("Pick at least one service").
-- Times in `Asia/Kolkata`, `en-IN` (`formatWhen`); money through `formatPrice`. Rupees until `money` (2.4)
-  carries currency.
+- Times in `Asia/Kolkata`, `en-IN` (`formatWhen`); money through `formatMoney` from `@bodhchakra/money`,
+  or `formatPrice` for a price per unit. Amounts carry the business's currency; form labels say ₹ while it is
+  INR only.
 
 ## Accessibility
 

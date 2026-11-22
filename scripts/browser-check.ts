@@ -130,6 +130,42 @@ try {
     problems.push("the re-sent customer link does not open the request");
   await stranger.close();
   await shoot(page, "7d-link-resent");
+
+  // A quote: the first draft prices the request's task from the price list; add a discount line, have a deposit
+  // above the total refused without losing the lines, send, and read it through the customer's new link.
+  const jobUrl = page.url();
+  await page.getByRole("button", { name: "Write a quote" }).click();
+  await page.waitForURL(/\/quote$/);
+  await shoot(page, "7d1-quote-draft");
+  await page.getByRole("button", { name: "Custom line" }).click();
+  await page.locator("input[name=description]").last().fill("Discount");
+  await page.locator("input[name=price]").last().fill("-55");
+  await page.fill("input[name=deposit]", "999999");
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await page.getByRole("alert").filter({ hasText: "deposit cannot be more" }).waitFor();
+  if ((await page.locator("input[name=description]").count()) !== 2)
+    problems.push("a refused quote save lost a line");
+  await shoot(page, "7d2-quote-refused");
+  await page.fill("input[name=deposit]", "");
+  await page.getByRole("button", { name: "Send quote" }).click();
+  await page.getByRole("status").filter({ hasText: "is sent" }).waitFor();
+  const quoteLink = await page.getByLabel("Customer link").inputValue();
+  await shoot(page, "7d3-quote-sent");
+  const reader = await browser.newContext({ viewport: WIDTHS.phone });
+  const readerPage = await reader.newPage();
+  watchConsole(readerPage, "customer quote");
+  await readerPage.goto(quoteLink);
+  if (!(await readerPage.getByRole("heading", { name: "Your quote" }).count()))
+    problems.push("the customer's link does not show the sent quote");
+  if (!(await readerPage.getByText("Discount").count()))
+    problems.push("the customer's quote lacks the discount line");
+  await shoot(readerPage, "7d4-customer-quote");
+  if ((await reader.cookies()).length > 0) problems.push("customer quote context holds cookies");
+  await reader.close();
+  await page.goto(jobUrl);
+  if (!(await page.getByRole("button", { name: "Revise the quote" }).count()))
+    problems.push("a quoted request offers no revision");
+  await shoot(page, "7d5-job-quoted");
   await tabs.getByRole("link", { name: "Requests" }).click();
   await page.waitForURL(`${APP}/jobs`);
   if (!(await page.getByText("Phone Caller").count()))

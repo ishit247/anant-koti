@@ -183,30 +183,35 @@ Each module's own section in 12 lists its tables. Section 4.1 covers tenancy.
 
 ### 5.3 App tables (schema `kk`)
 
-| Table               | Purpose and key columns                                                                                                                                                                                                                     |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `trade_template`    | Global, read-only, from seeds: `key`, `version`, `body` (catalogue, intake questions, checklist, terms)                                                                                                                                     |
-| `business_profile`  | 1:1 with business: `trade_key`, `about`, `service_area`, `logo_object_id`, `intake` (questions), `checklist`, `terms`; copied from the template at onboarding, then the business's own                                                      |
-| `catalogue_item`    | `name`, `unit` (`job`, `hour`, `unit`, `sq_ft`, …), `unit_price_minor`, `tax_rate_bp`, `active`                                                                                                                                             |
-| `customer`          | `name`, `phone_e164`, `email`, `address`; unique (`business_id`, `phone_e164`); found or created on request                                                                                                                                 |
-| `job`               | The request and everything after: `customer_id`, `number` (per business), `source` (`public_form`, `whatsapp_link`, `qr`, `phone`), `answers`, `address`, `preferred_window`, `status` (section 6), `accepted_quote_id`, `cancel_reason`    |
-| `job_task`          | One piece of work in a request: `job_id`, `catalogue_item_id` (nullable: custom task), `title`, `status` (`requested`, `quoted`, `approved`, `done`, `dropped`), `added_by` (`customer`, `business`), `added_at`. A request has one or more |
-| `quote`             | `job_id`, `version` (unique per job), `status` (`draft`, `sent`, `accepted`, `rejected`, `countered`, `superseded`), `valid_until`, totals, `deposit_minor`, `counter_note`, `counter_total_minor`, `sent_at`, `decided_at`                 |
-| `quote_line`        | `quote_id`, `job_task_id` (nullable: null = request-level charge), `catalogue_item_id` (nullable), `description`, `unit`, `quantity_milli`, `unit_price_minor`, `tax_rate_bp`, `net_minor`, `tax_minor`                                     |
-| `appointment`       | `job_id`, `kind` (`site_visit`, `work`), `technician_member_id`, `starts_at`, `ends_at`, `status` (`planned`, `done`, `cancelled`), `on_the_way_at`                                                                                         |
-| `job_visit`         | `appointment_id`, `checked_in_at`, `checklist` (results), `completed_at`, `note`                                                                                                                                                            |
-| `change_order`      | `job_id`, `number`, `status` (`proposed`, `approved`, `rejected`), totals, `decided_at`                                                                                                                                                     |
-| `change_order_line` | Same shape as `quote_line`                                                                                                                                                                                                                  |
-| `invoice`           | `job_id` (unique while not void), `number` (per business, gap-free sequence row), `status` (`issued`, `paid`, `void`), totals, `issued_at`, `paid_at`                                                                                       |
-| `invoice_line`      | Snapshot of the accepted quote's lines plus approved change-order lines                                                                                                                                                                     |
-| `job_photo`         | `job_id`, `object_id` → `storage.object`, `kind` (`request`, `before`, `after`)                                                                                                                                                             |
-| `review`            | `job_id` (unique), `rating` 1–5, `text`, `status` (`held`, `published`), `owner_response`, `publish_after`                                                                                                                                  |
+| Table               | Purpose and key columns                                                                                                                                                                                                                                                                                           |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `trade_template`    | Global, read-only, from seeds: `key`, `version`, `body` (catalogue, intake questions, checklist, terms)                                                                                                                                                                                                           |
+| `business_profile`  | 1:1 with business: `trade_key`, `about`, `service_area`, `logo_object_id`, `intake` (questions), `checklist`, `terms`; copied from the template at onboarding, then the business's own                                                                                                                            |
+| `catalogue_item`    | `name`, `unit` (`job`, `hour`, `unit`, `sq_ft`, …), `unit_price_minor`, `tax_rate_bp`, `active`                                                                                                                                                                                                                   |
+| `customer`          | `name`, `phone_e164`, `email`, `address`; unique (`business_id`, `phone_e164`); found or created on request                                                                                                                                                                                                       |
+| `job`               | The request and everything after: `customer_id`, `number` (per business), `source` (`public_form`, `whatsapp_link`, `qr`, `phone`), `answers`, `address`, `preferred_window`, `status` (section 6), `accepted_quote_id`, `cancel_reason`                                                                          |
+| `job_task`          | One piece of work in a request: `job_id`, `catalogue_item_id` (nullable: custom task), `title`, `status` (`requested`, `quoted`, `approved`, `done`, `dropped`), `added_by` (`customer`, `business`), `added_at`. A request has one or more                                                                       |
+| `quote`             | `job_id`, `version` (unique per job), `status` (`draft`, `sent`, `accepted`, `rejected`, `countered`, `superseded`), `valid_until`, `sent_at`, totals (`net_minor`, `tax_minor`, `total_minor`), `deposit_minor` (2.4); `counter_note`, `counter_total_minor`, `decided_at` (2.5)                                 |
+| `quote_line`        | `job_id`, `quote_id`, `position`, `job_task_id` (nullable: null = request-level charge), `catalogue_item_id` (nullable), `description`, `unit`, `quantity_milli`, `unit_price_minor`, `tax_rate_bp`, `net_minor`, `tax_minor`. Composite keys carry `job_id`, so a line prices only a task of its own quote's job |
+| `appointment`       | `job_id`, `kind` (`site_visit`, `work`), `technician_member_id`, `starts_at`, `ends_at`, `status` (`planned`, `done`, `cancelled`), `on_the_way_at`                                                                                                                                                               |
+| `job_visit`         | `appointment_id`, `checked_in_at`, `checklist` (results), `completed_at`, `note`                                                                                                                                                                                                                                  |
+| `change_order`      | `job_id`, `number`, `status` (`proposed`, `approved`, `rejected`), totals, `decided_at`                                                                                                                                                                                                                           |
+| `change_order_line` | Same shape as `quote_line`                                                                                                                                                                                                                                                                                        |
+| `invoice`           | `job_id` (unique while not void), `number` (per business, gap-free sequence row), `status` (`issued`, `paid`, `void`), totals, `issued_at`, `paid_at`                                                                                                                                                             |
+| `invoice_line`      | Snapshot of the accepted quote's lines plus approved change-order lines                                                                                                                                                                                                                                           |
+| `job_photo`         | `job_id`, `object_id` → `storage.object`, `kind` (`request`, `before`, `after`)                                                                                                                                                                                                                                   |
+| `review`            | `job_id` (unique), `rating` 1–5, `text`, `status` (`held`, `published`), `owner_response`, `publish_after`                                                                                                                                                                                                        |
 
 Rules the database enforces, not just the code:
 
-- **Sent quotes are immutable.** A trigger refuses `UPDATE` and `DELETE` on `quote_line` unless its quote is a
-  `draft`. On `quote`, after `draft`, only `status` and `decided_at` may change. A partial unique index allows at
-  most one `sent` quote per job.
+- **Sent quotes are immutable** (`kk.quote_guard`, `kk.quote_line_guard`, 2.4). A quote is born a `draft`. Lines
+  may be inserted, changed or deleted only while their quote is a draft (the line trigger locks the quote `FOR
+  SHARE`, so a line write and a send wait for each other). Leaving `draft` needs at least one line, and stored
+  totals equal to the sums of the lines. After that only `status` may change, never back to `draft`; 2.5 adds
+  `decided_at` and the counter columns by name. The runtime role cannot delete a quote. Partial unique indexes
+  allow at most one `draft` and one `sent` quote per job.
+- **Line amounts are restated.** `CHECK`s on `quote_line` recompute net and tax with `round(numeric)`, the same
+  rule as `lineTotals` (section 8), so a line with wrong arithmetic cannot be stored.
 - **No double booking.** `EXCLUDE USING gist (technician_member_id WITH =, tstzrange(starts_at, ends_at) WITH &&)
   WHERE (status = 'planned')` (extension `btree_gist`).
 - **Paid invoices are immutable.** A trigger refuses changes to an invoice and its lines once `status = 'paid'`,
@@ -291,9 +296,11 @@ Customers never have accounts. They open their job by a link: `https://kaamkoti.
 - `money` (2.4): an amount is an integer in minor units (paise) together with an ISO currency. A business has
   one currency in the MVP (INR). Mixing currencies throws.
 - Quantity is an integer in thousandths (`quantity_milli`), so 1.5 hours is 1500.
-- Line net = `round_half_up(quantity_milli × unit_price_minor / 1000)`. Line tax =
-  `round_half_up(net × tax_rate_bp / 10000)`. Totals are sums of rounded lines (line-level rounding, as GST
-  invoices do). Prices are tax-exclusive. Most sole traders are not GST-registered, so the default tax rate is 0.
+- Line net = `round(quantity_milli × unit_price_minor / 1000)`. Line tax = `round(net × tax_rate_bp / 10000)`.
+  Halves round away from zero (Postgres `round(numeric)`), so a discount line mirrors the charge it offsets.
+  Totals are sums of rounded lines (line-level rounding, as GST invoices do). Prices are tax-exclusive. Most
+  sole traders are not GST-registered, so the default tax rate is 0. The arithmetic runs in `BigInt` and throws
+  rather than lose a paisa.
 - A discount is a line with a negative unit price, which is how a counter-offer usually ends. A quote or
   invoice total below zero is refused.
 - Amount due on an invoice = total − captured payments for the job, which include any deposit. When it
@@ -395,7 +402,7 @@ them in its README.
 | `auth` (app side)  | `createAuth(options)` → `startLogin`, `handleCallback`, `getSession`, `signOut`; `SignInRefused`, `SignInUnavailable`                                    | `auth.login_attempt`, `auth.session`                                              | 0.6  |
 | `storage`          | `checkImage(bytes)`, `createStorage(cfg)` → `putImage(tx, image, by)`, `signedUrl(object)`; `remove` comes with its first use                            | `storage.object`                                                                  | 2.2  |
 | `rate-limit`       | `redisLimiter(url, log)` → `limit(key, rule)`, `close()`                                                                                                 | — (Redis)                                                                         | 2.2  |
-| `money`            | `money(minor, cur)`, `add`, `lineTotals(lines)`, `formatINR`                                                                                             | —                                                                                 | 2.4  |
+| `money`            | `money(minor, cur)`, `lineTotals(lines, cur)`, `formatMoney`, `minorDigits`, `parseDecimal`, `formatDecimal`; `add` with payments (4.1)                  | —                                                                                 | 2.4  |
 | `notify` (client)  | `send(tx, message)`, through the outbox                                                                                                                  | — (server tables in platform)                                                     | 3.2  |
 | `payments`         | `connectAccount`, `createPaymentLink(tx, …)`, `handleWebhook(req)` → typed events, `recordManual(tx, …)`                                                 | `payments.account`, `payments.link`, `payments.payment`, `payments.webhook_event` | 4.1  |
 | `billing` (client) | `status(businessId)` → `{ plan, live, limits }`, `assertWithin(limit)`, event handler for status updates                                                 | `billing.status`                                                                  | 5.1  |

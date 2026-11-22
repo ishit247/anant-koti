@@ -6,7 +6,7 @@ import type { DbClient } from "@bodhchakra/db";
 import { z } from "zod";
 import { businessProfile } from "./business-profile.ts";
 import { activeItems, contact, createJob, findOrCreateCustomer } from "./intake.ts";
-import type { JobStatus } from "./job.ts";
+import { type JobStatus, jobTasks } from "./job.ts";
 import { issueJobLink, revokeJobLinks } from "./job-link.ts";
 
 export type JobSource = "public_form" | "whatsapp_link" | "qr" | "phone";
@@ -97,10 +97,7 @@ export async function ownerJob(client: DbClient, jobId: string): Promise<OwnerJo
   );
   const job = rows[0];
   if (!job) return null;
-  const tasks = await client.query<{ title: string }>(
-    "select title from kk.job_task where job_id = $1 and status <> 'dropped' order by added_at, id",
-    [jobId],
-  );
+  const tasks = await jobTasks(client, jobId);
   const photos = await client.query<{ key: string }>(
     `select o.key from kk.job_photo p
      join storage.object o on o.business_id = p.business_id and o.id = p.object_id
@@ -122,7 +119,7 @@ export async function ownerJob(client: DbClient, jobId: string): Promise<OwnerJo
     source: job.source,
     customerName: job.customer_name,
     createdAt: job.created_at,
-    tasks: tasks.rows.map((t) => t.title),
+    tasks: tasks.map((t) => t.title),
     customerPhone: job.phone_e164,
     address: job.address,
     preferredWindow: job.preferred_window,

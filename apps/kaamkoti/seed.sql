@@ -1,8 +1,8 @@
 -- Development seed, run by `pnpm run up:fresh` as kaamkoti_owner in one transaction. Fixed ids so tests and
 -- manual checks can name rows. Two businesses with three customers each, so isolation always has rows on both
 -- sides. Phone numbers are in the fictional +91 90000 range; emails use example.com.
--- Grows with the schema: two new requests per business now; jobs across the other states of section 6 arrive
--- with the steps that move them there.
+-- Grows with the schema: two requests per business, one of Sharma's quoted; jobs across the other states of
+-- section 6 arrive with the steps that move them there.
 insert into tenancy.business (id, slug, name, phone, city) values
   ('10000000-0000-4000-8000-000000000001', 'sharma-cooling', 'Sharma Cooling Services', '+919000000101', 'Pune'),
   ('20000000-0000-4000-8000-000000000002', 'kaveri-electricals', 'Kaveri Electricals', '+919000000202', 'Bengaluru');
@@ -75,17 +75,42 @@ insert into kk.job (id, business_id, customer_id, number, source, answers, addre
   ('20000000-0000-4000-8000-0000000e0002', '20000000-0000-4000-8000-000000000002',
    '20000000-0000-4000-8000-0000000c0003', 2, 'phone', '{}', '21 Residency Road, Bengaluru', null);
 
-insert into kk.job_task (business_id, job_id, catalogue_item_id, title, added_by) values
-  ('10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-0000000e0001',
-   '10000000-0000-4000-8000-0000000b0002', 'AC gas refill', 'customer'),
-  ('10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-0000000e0001',
-   '10000000-0000-4000-8000-0000000b0003', 'AC general service', 'customer'),
+insert into kk.job_task (id, business_id, job_id, catalogue_item_id, title, added_by) values
+  ('10000000-0000-4000-8000-0000000f0001', '10000000-0000-4000-8000-000000000001',
+   '10000000-0000-4000-8000-0000000e0001', '10000000-0000-4000-8000-0000000b0002', 'AC gas refill', 'customer'),
+  ('10000000-0000-4000-8000-0000000f0002', '10000000-0000-4000-8000-000000000001',
+   '10000000-0000-4000-8000-0000000e0001', '10000000-0000-4000-8000-0000000b0003', 'AC general service', 'customer'),
+  ('10000000-0000-4000-8000-0000000f0003', '10000000-0000-4000-8000-000000000001',
+   '10000000-0000-4000-8000-0000000e0002', '10000000-0000-4000-8000-0000000b0001', 'Inspection visit', 'business'),
+  ('20000000-0000-4000-8000-0000000f0001', '20000000-0000-4000-8000-000000000002',
+   '20000000-0000-4000-8000-0000000e0001', '20000000-0000-4000-8000-0000000b0001', 'Fan installation', 'customer'),
+  ('20000000-0000-4000-8000-0000000f0002', '20000000-0000-4000-8000-000000000002',
+   '20000000-0000-4000-8000-0000000e0002', null, 'Check tripping main switch', 'business');
+
+-- Quotes. Sharma's request #2 has one sent (an inspection visit and a request-level discount, both at 18 % GST),
+-- so the job is `quoted`; Kaveri's request #2 has a draft pricing its custom task. Requests #1 are unquoted, for
+-- the browser check to quote. A quote is born a draft (the trigger refuses anything else) and its lines can only
+-- be written while it is one, so the sent quote is inserted as a draft and then sent. Amounts in paise.
+insert into kk.quote (id, business_id, job_id, version, net_minor, tax_minor, total_minor) values
+  ('10000000-0000-4000-8000-000000100001', '10000000-0000-4000-8000-000000000001',
+   '10000000-0000-4000-8000-0000000e0002', 1, 25000, 4500, 29500),
+  ('20000000-0000-4000-8000-000000100001', '20000000-0000-4000-8000-000000000002',
+   '20000000-0000-4000-8000-0000000e0002', 1, 35000, 0, 35000);
+insert into kk.quote_line (business_id, job_id, quote_id, position, job_task_id, catalogue_item_id, description,
+                           unit, quantity_milli, unit_price_minor, tax_rate_bp, net_minor, tax_minor) values
   ('10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-0000000e0002',
-   '10000000-0000-4000-8000-0000000b0001', 'Inspection visit', 'business'),
-  ('20000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-0000000e0001',
-   '20000000-0000-4000-8000-0000000b0001', 'Fan installation', 'customer'),
+   '10000000-0000-4000-8000-000000100001', 0, '10000000-0000-4000-8000-0000000f0003',
+   '10000000-0000-4000-8000-0000000b0001', 'Inspection visit', 'visit', 1000, 30000, 1800, 30000, 5400),
+  ('10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-0000000e0002',
+   '10000000-0000-4000-8000-000000100001', 1, null, null, 'Returning customer discount', 'job', 1000, -5000,
+   1800, -5000, -900),
   ('20000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-0000000e0002',
-   null, 'Check tripping main switch', 'business');
+   '20000000-0000-4000-8000-000000100001', 0, '20000000-0000-4000-8000-0000000f0002', null,
+   'Check tripping main switch', 'visit', 1000, 35000, 0, 35000, 0);
+update kk.quote set status = 'sent', sent_at = now(), valid_until = now() + interval '7 days'
+  where id = '10000000-0000-4000-8000-000000100001';
+update kk.job_task set status = 'quoted' where id = '10000000-0000-4000-8000-0000000f0003';
+update kk.job set status = 'quoted' where id = '10000000-0000-4000-8000-0000000e0002';
 
 -- One customer link per business to its request #1, with a fixed development secret (stored, as always, only
 -- as its SHA-256) so manual and browser checks can open /j/<secret>. Real links come from issueJobLink.

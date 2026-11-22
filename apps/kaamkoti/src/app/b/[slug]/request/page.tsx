@@ -52,7 +52,7 @@ export default async function RequestPage({
             <label key={s.id} className="choice">
               <input type="checkbox" name="task" value={s.id} />
               <span>
-                {s.name} <span className="muted">· {formatPrice(s.unitPriceMinor, s.unit)}</span>
+                {s.name} <span className="muted">· {formatPrice(s.price, s.unit)}</span>
               </span>
             </label>
           ))}

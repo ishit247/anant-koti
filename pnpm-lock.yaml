@@ -217,6 +217,9 @@ importers:
       '@bodhchakra/log':
         specifier: workspace:*
         version: link:../../packages/log
+      '@bodhchakra/money':
+        specifier: workspace:*
+        version: link:../../packages/money
       '@bodhchakra/outbox':
         specifier: workspace:*
         version: link:../../packages/outbox
@@ -330,6 +333,8 @@ importers:
         version: 4.6.7
 
   packages/log: {}
+
+  packages/money: {}
 
   packages/outbox:
     dependencies:

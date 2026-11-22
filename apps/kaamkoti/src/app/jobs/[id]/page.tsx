@@ -1,12 +1,23 @@
+import { formatMoney } from "@bodhchakra/money";
 import { currentBusiness, defineRoute } from "@bodhchakra/tenancy";
 import { notFound } from "next/navigation";
 import { z } from "zod";
 import { requireMember } from "../../../guard.ts";
 import { ownerJob } from "../../../inbox.ts";
-import { formatWhen, SOURCE_LABEL, STATUS_LABEL, statusTone } from "../../../job-labels.ts";
+import {
+  formatDay,
+  formatWhen,
+  quoteLabel,
+  SOURCE_LABEL,
+  STATUS_LABEL,
+  statusTone,
+} from "../../../job-labels.ts";
+import { ownerQuotes } from "../../../quote.ts";
 import { server } from "../../../server.ts";
 import { OwnerNav } from "../../owner-nav.tsx";
+import { QuoteSummary } from "../../quote-summary.tsx";
 import { ResendLink } from "./resend-link.tsx";
+import { StartQuote } from "./start-quote.tsx";
 
 // The id in the path is only a lookup key: the job is read inside withTenant of the signed-in owner's
 // business, so another business's id is a 404 like an unknown one.
@@ -17,11 +28,15 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   if (!id.success) notFound();
   const owner = await requireMember(route, `/jobs/${id.data}`);
   const { db, storage } = server();
-  const { job, business } = await db.withTenant(owner.businessId, async (client) => ({
+  const { job, business, quotes } = await db.withTenant(owner.businessId, async (client) => ({
     job: await ownerJob(client, id.data),
     business: await currentBusiness(client),
+    quotes: await ownerQuotes(client, id.data),
   }));
   if (!job) notFound();
+  const draft = quotes.find((q) => q.status === "draft");
+  const [current, ...earlier] = quotes.filter((q) => q.status !== "draft");
+  const quotable = job.status === "requested" || job.status === "quoted";
   const digits = job.customerPhone.replace(/\D/g, "");
   return (
     <>
@@ -59,6 +74,41 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           </li>
         ))}
       </ul>
+
+      <h2>Quote</h2>
+      {current ? (
+        <>
+          <div className="row">
+            <strong>Version {current.version}</strong>
+            <span className={`chip ${current.expired ? "" : "wait"}`}>{quoteLabel(current)}</span>
+          </div>
+          {current.sentAt && current.validUntil ? (
+            <p className="muted small">
+              Sent {formatWhen(current.sentAt)} · valid until {formatDay(current.validUntil)}
+            </p>
+          ) : null}
+          <QuoteSummary quote={current} />
+        </>
+      ) : draft ? null : (
+        <p className="empty">No quote yet. Price the work asked for and send it to the customer.</p>
+      )}
+      {draft ? (
+        <p>
+          <a className="button" href={`/jobs/${job.id}/quote`}>
+            Continue the draft (version {draft.version})
+          </a>
+        </p>
+      ) : quotable ? (
+        <StartQuote jobId={job.id} label={current ? "Revise the quote" : "Write a quote"} />
+      ) : null}
+      {earlier.length > 0 ? (
+        <p className="muted small">
+          Earlier:{" "}
+          {earlier
+            .map((q) => `version ${q.version}, ${formatMoney(q.total)} (${quoteLabel(q)})`)
+            .join("; ")}
+        </p>
+      ) : null}
 
       <h2>Where and when</h2>
       <dl className="facts card">

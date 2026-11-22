@@ -1,6 +1,7 @@
 // How the owner's pages name a job's state and source, and show when it arrived.
 import type { JobSource } from "./inbox.ts";
 import type { JobStatus } from "./job.ts";
+import type { Quote, QuoteStatus } from "./quote.ts";
 
 export const STATUS_LABEL: Record<JobStatus, string> = {
   requested: "New",
@@ -22,6 +23,21 @@ export function statusTone(status: JobStatus): "new" | "go" | "wait" | "" {
   return "";
 }
 
+/** A quote's state as the owner reads it; a sent quote past its validity reads "Expired". */
+export function quoteLabel(quote: Pick<Quote, "status" | "expired">): string {
+  if (quote.expired) return "Expired";
+  return QUOTE_LABEL[quote.status];
+}
+
+const QUOTE_LABEL: Record<QuoteStatus, string> = {
+  draft: "Draft",
+  sent: "Sent",
+  accepted: "Accepted",
+  rejected: "Rejected",
+  countered: "Counter-offer",
+  superseded: "Replaced",
+};
+
 export const SOURCE_LABEL: Record<JobSource, string> = {
   public_form: "Web form",
   whatsapp_link: "WhatsApp link",
@@ -38,3 +54,12 @@ const WHEN = new Intl.DateTimeFormat("en-IN", {
 });
 
 export const formatWhen = (date: Date) => WHEN.format(date);
+
+const DAY = new Intl.DateTimeFormat("en-IN", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  timeZone: "Asia/Kolkata",
+});
+
+export const formatDay = (date: Date) => DAY.format(date);
