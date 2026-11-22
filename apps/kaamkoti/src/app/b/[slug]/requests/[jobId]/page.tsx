@@ -168,20 +168,28 @@ export default async function RequestDetail({
           }}
         />
       ) : (
-        <>
-          <div className="panel">
+        <div className="stack">
+          <section className="panel" aria-labelledby="where-title">
+            <h2 id="where-title">Where</h2>
             <p>
               <strong>{job.place.contactName}</strong>
+              <br />
+              <span className="muted">{job.place.address}</span>
             </p>
-            <p className="muted">{job.place.address}</p>
-          </div>
-          {/* Signed after the job was found under this customer: each URL opens one object for five minutes. */}
-          <WorkItems
-            items={job.items}
-            sign={(photo) => storage.signedUrl(photo)}
-            photoAlt="Sent with your request"
-          />
-        </>
+          </section>
+          <section className="panel" aria-labelledby="work-title">
+            <h2 id="work-title">
+              Work needed
+              <span className="count">{job.items.length}</span>
+            </h2>
+            {/* Signed after the job was found under this customer: each URL opens one object for five minutes. */}
+            <WorkItems
+              items={job.items}
+              sign={(photo) => storage.signedUrl(photo)}
+              photoAlt="Sent with your request"
+            />
+          </section>
+        </div>
       )}
       <CustomerNav space={space} current="requests" />
     </>

@@ -58,13 +58,14 @@ export default async function QuotePage({ params }: { params: Promise<{ id: stri
     : null;
   return (
     <>
-      <p>
-        <a href={`/jobs/${id.data}`}>← Request #{data.number}</a>
-      </p>
-      <h1>{draft ? `Quote, version ${draft.version}` : "Quote"}</h1>
+      <header className="bar">
+        <h1>{draft ? `Quote, version ${draft.version}` : "Quote"}</h1>
+        <a className="button quiet" href={`/jobs/${id.data}`}>
+          ← Request #{data.number}
+        </a>
+      </header>
       <p className="muted small">
-        Prices are before tax. Lines for a task price that task; lines for the whole request are
-        charges like a visit fee or a discount.
+        Prices are before tax. Lines for the whole request are charges or discounts.
       </p>
       <QuoteEditor
         jobId={id.data}

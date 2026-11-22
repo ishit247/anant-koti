@@ -127,7 +127,9 @@ try {
 
   await page.waitForURL(`${APP}/catalogue`);
   await shoot(page, "5-catalogue");
+  await page.locator("button.tile").first().click();
   await page.locator("input[name=price]").first().fill("555");
+  await page.getByRole("button", { name: "Done" }).click();
   await page.getByRole("button", { name: "Save prices" }).click();
   await page.getByRole("status").filter({ hasText: "Saved." }).waitFor();
   await shoot(page, "6-catalogue-saved");
@@ -367,11 +369,15 @@ try {
   const jobUrl = page.url();
   await page.getByRole("button", { name: "Write a quote" }).click();
   await page.waitForURL(/\/quote$/);
+  await shoot(page, "13a-quote-lines");
+  await page.locator("button.tile").first().click();
   await page.locator("input[name=price]").first().fill("800");
-  await shoot(page, "13b-quote-draft");
+  await shoot(page, "13b-quote-line");
+  await page.getByRole("button", { name: "Done" }).click();
   await page.getByRole("button", { name: "Custom line" }).click();
   await page.locator("input[name=description]").last().fill("Discount");
   await page.locator("input[name=price]").last().fill("-55");
+  await page.getByRole("button", { name: "Done" }).click();
   await page.fill("input[name=deposit]", "999999");
   await page.getByRole("button", { name: "Save draft" }).click();
   await page.getByRole("alert").filter({ hasText: "deposit cannot be more" }).waitFor();
@@ -689,7 +695,7 @@ try {
   await ownerPage.waitForURL(`${APP}/jobs`);
   await ownerPage.locator(".cards a.card").first().click();
   await ownerPage.waitForURL(/\/jobs\/[0-9a-f-]{36}$/);
-  const contactCard = await ownerPage.locator(".card").first().textContent();
+  const contactCard = await ownerPage.locator("section[aria-label=Customer]").textContent();
   if (!contactCard?.includes("Vasant Deshpande") || !contactCard.includes("Requested by Anita D"))
     problems.push(`the owner's job for someone else shows ${JSON.stringify(contactCard)}`);
   if (!(await ownerPage.getByRole("link", { name: "Call" }).getAttribute("href"))?.endsWith("1011"))

@@ -53,139 +53,149 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const forSomeoneElse = job.contactPhone !== job.customerPhone;
   return (
     <>
-      <p>
-        <a href="/jobs">← Requests</a>
-      </p>
       <header className="bar">
         <h1>Request #{job.number}</h1>
-        <span className={`chip ${statusTone(job.status)}`}>{STATUS_LABEL[job.status]}</span>
+        <a className="button quiet" href="/jobs">
+          ← Requests
+        </a>
       </header>
       <p className="muted small">
+        <span className={`chip ${statusTone(job.status)}`}>{STATUS_LABEL[job.status]}</span>{" "}
         {SOURCE_LABEL[job.source]} · {formatWhen(job.createdAt)}
       </p>
 
-      <div className="card">
-        <strong>{job.contactName}</strong>
-        <span className="muted">{job.contactPhone}</span>
-        {forSomeoneElse ? (
-          <span className="muted small">
-            Requested by {job.customerName} · {job.customerPhone}
-          </span>
-        ) : null}
-        <div className="actions">
-          <a className="button" href={`tel:${job.contactPhone}`}>
-            Call
-          </a>
-          <a className="button quiet" href={`https://wa.me/${digits}`}>
-            WhatsApp
-          </a>
-        </div>
-      </div>
-
-      <h2>Work asked for</h2>
-      {/* Signed after the job was found in this business: each URL opens one object for five minutes. */}
-      <WorkItems
-        items={job.items}
-        sign={(photo) => storage.signedUrl(photo)}
-        photoAlt="Sent with the request"
-      />
-
-      <h2>Quote</h2>
-      {current ? (
-        <>
-          <div className="row">
-            <strong>Version {current.version}</strong>
-            <span className={`chip ${quoteTone(current)}`}>{quoteLabel(current)}</span>
+      <div className="stack">
+        <section className="panel" aria-label="Customer">
+          <strong>{job.contactName}</strong>
+          <span className="muted">{job.contactPhone}</span>
+          {forSomeoneElse ? (
+            <span className="muted small">
+              Requested by {job.customerName} · {job.customerPhone}
+            </span>
+          ) : null}
+          <div className="actions">
+            <a className="button" href={`tel:${job.contactPhone}`}>
+              Call
+            </a>
+            <a className="button quiet" href={`https://wa.me/${digits}`}>
+              WhatsApp
+            </a>
           </div>
-          {current.sentAt && current.validUntil ? (
-            <p className="muted small">
-              Sent {formatWhen(current.sentAt)} · valid until {formatDay(current.validUntil)}
-            </p>
-          ) : null}
-          {current.decidedAt ? (
-            <p role="status" className="card">
-              {current.status === "accepted"
-                ? `${job.customerName} accepted this quote`
-                : current.counter
-                  ? `${job.customerName} offered ${formatMoney(current.counter.total)}`
-                  : `${job.customerName} turned this quote down`}{" "}
-              on {formatWhen(current.decidedAt)}.
-              {current.counter?.note ? (
-                <span className="muted">"{current.counter.note}"</span>
-              ) : null}
-            </p>
-          ) : null}
-          <QuoteSummary quote={current} />
-        </>
-      ) : draft ? null : (
-        <p className="empty">No quote yet. Price the work asked for and send it to the customer.</p>
-      )}
-      {draft && quotable ? (
-        <p>
-          <a className="button" href={`/jobs/${job.id}/quote`}>
-            Continue the draft (version {draft.version})
-          </a>
-        </p>
-      ) : quotable ? (
-        <StartQuote jobId={job.id} label={current ? "Revise the quote" : "Write a quote"} />
-      ) : null}
-      {earlier.length > 0 ? (
-        <p className="muted small">
-          Earlier:{" "}
-          {earlier
-            .map((q) => `version ${q.version}, ${formatMoney(q.total)} (${quoteLabel(q)})`)
-            .join("; ")}
-        </p>
-      ) : null}
+        </section>
 
-      <h2>Visits</h2>
-      {visits.length > 0 ? (
-        <ul className="cards">
-          {visits.map((visit) => (
-            <li key={visit.id} className="card">
+        <section className="panel" aria-labelledby="work-title">
+          <h2 id="work-title">Work asked for</h2>
+          {/* Signed after the job was found in this business: each URL opens one object for five minutes. */}
+          <WorkItems
+            items={job.items}
+            sign={(photo) => storage.signedUrl(photo)}
+            photoAlt="Sent with the request"
+          />
+        </section>
+
+        <section className="panel" aria-labelledby="quote-title">
+          <h2 id="quote-title">Quote</h2>
+          {current ? (
+            <>
               <div className="row">
-                <strong>{visit.kind === "work" ? "The work" : "Site visit"}</strong>
-                <span className="muted">{visit.technicianName}</span>
+                <strong>Version {current.version}</strong>
+                <span className={`chip ${quoteTone(current)}`}>{quoteLabel(current)}</span>
               </div>
-              <span className="muted small">
-                {formatWhen(visit.startsAt)} to {formatTime(visit.endsAt)}
-              </span>
-              {visit.status === "proposed" ? (
-                <>
-                  <span className="chip wait">Waiting for the customer to confirm</span>
-                  <ConfirmForCustomer jobId={job.id} appointmentId={visit.id} />
-                </>
+              {current.sentAt && current.validUntil ? (
+                <p className="muted small">
+                  Sent {formatWhen(current.sentAt)} · valid until {formatDay(current.validUntil)}
+                </p>
               ) : null}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="empty">Nothing planned yet.</p>
-      )}
-      {work?.status === "declined" && job.status === "accepted" ? (
-        <p className="notice" role="status">
-          {job.customerName} asked for another time than {formatWhen(work.startsAt)}
-          {work.note ? `: "${work.note}"` : "."} Propose a new one below.
-        </p>
-      ) : null}
-      {visitable ? (
-        <PlanVisit jobId={job.id} workable={job.status === "accepted"} team={team} />
-      ) : null}
+              {current.decidedAt ? (
+                <p role="status" className="card">
+                  {current.status === "accepted"
+                    ? `${job.customerName} accepted this quote`
+                    : current.counter
+                      ? `${job.customerName} offered ${formatMoney(current.counter.total)}`
+                      : `${job.customerName} turned this quote down`}{" "}
+                  on {formatWhen(current.decidedAt)}.
+                  {current.counter?.note ? (
+                    <span className="muted">"{current.counter.note}"</span>
+                  ) : null}
+                </p>
+              ) : null}
+              <QuoteSummary quote={current} />
+            </>
+          ) : draft ? null : (
+            <p className="empty">
+              No quote yet. Price the work asked for and send it to the customer.
+            </p>
+          )}
+          {draft && quotable ? (
+            <p>
+              <a className="button" href={`/jobs/${job.id}/quote`}>
+                Continue the draft (version {draft.version})
+              </a>
+            </p>
+          ) : quotable ? (
+            <StartQuote jobId={job.id} label={current ? "Revise the quote" : "Write a quote"} />
+          ) : null}
+          {earlier.length > 0 ? (
+            <p className="muted small">
+              Earlier:{" "}
+              {earlier
+                .map((q) => `version ${q.version}, ${formatMoney(q.total)} (${quoteLabel(q)})`)
+                .join("; ")}
+            </p>
+          ) : null}
+        </section>
 
-      <h2>Where</h2>
-      <div className="card">
-        <span>{job.address ?? "No address given"}</span>
-        {job.location ? (
-          // The owner's own map app opens it; nothing is sent anywhere until they tap.
-          <a
-            className="button quiet"
-            href={`https://www.google.com/maps/search/?api=1&query=${job.location.latitude},${job.location.longitude}`}
-            rel="noreferrer"
-            target="_blank"
-          >
-            Open in Maps
-          </a>
-        ) : null}
+        <section className="panel" aria-labelledby="visits-title">
+          <h2 id="visits-title">Visits</h2>
+          {visits.length > 0 ? (
+            <ul className="cards">
+              {visits.map((visit) => (
+                <li key={visit.id} className="card">
+                  <div className="row">
+                    <strong>{visit.kind === "work" ? "The work" : "Site visit"}</strong>
+                    <span className="muted">{visit.technicianName}</span>
+                  </div>
+                  <span className="muted small">
+                    {formatWhen(visit.startsAt)} to {formatTime(visit.endsAt)}
+                  </span>
+                  {visit.status === "proposed" ? (
+                    <>
+                      <span className="chip wait">Waiting for the customer to confirm</span>
+                      <ConfirmForCustomer jobId={job.id} appointmentId={visit.id} />
+                    </>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="empty">Nothing planned yet.</p>
+          )}
+          {work?.status === "declined" && job.status === "accepted" ? (
+            <p className="notice" role="status">
+              {job.customerName} asked for another time than {formatWhen(work.startsAt)}
+              {work.note ? `: "${work.note}"` : "."} Propose a new one below.
+            </p>
+          ) : null}
+          {visitable ? (
+            <PlanVisit jobId={job.id} workable={job.status === "accepted"} team={team} />
+          ) : null}
+        </section>
+
+        <section className="panel" aria-labelledby="where-title">
+          <h2 id="where-title">Where</h2>
+          <span>{job.address ?? "No address given"}</span>
+          {job.location ? (
+            // The owner's own map app opens it; nothing is sent anywhere until they tap.
+            <a
+              className="button quiet"
+              href={`https://www.google.com/maps/search/?api=1&query=${job.location.latitude},${job.location.longitude}`}
+              rel="noreferrer"
+              target="_blank"
+            >
+              Open in Maps
+            </a>
+          ) : null}
+        </section>
       </div>
       <OwnerNav current="/jobs" />
     </>

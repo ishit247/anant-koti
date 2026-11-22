@@ -17,13 +17,13 @@ export default async function NewEnquiryPage() {
   if (!profile) redirect("/onboarding");
   return (
     <>
-      <p>
-        <a href="/jobs">← Requests</a>
-      </p>
-      <h1>Log a phone enquiry</h1>
-      <p className="muted">
-        Someone called or messaged you? Add it here, then send them their link.
-      </p>
+      <header className="bar">
+        <h1>Phone enquiry</h1>
+        <a className="button quiet" href="/jobs">
+          ← Requests
+        </a>
+      </header>
+      <p className="muted">Add it here, then send the customer their link.</p>
       <EnquiryForm items={items.filter((i) => i.active)} />
       <OwnerNav current="/jobs" />
     </>
