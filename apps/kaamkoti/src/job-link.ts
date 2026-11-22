@@ -45,6 +45,10 @@ export interface CustomerJobView {
   readonly status: JobStatus;
   readonly customerName: string;
   readonly requestedAt: Date;
+  /** Titles of the tasks the request names, in the order they were added. */
+  readonly tasks: readonly string[];
+  /** The customer's own request photos; the page signs a URL for each (storage keys). */
+  readonly photos: readonly { readonly key: string }[];
 }
 
 interface JobRow {
@@ -69,7 +73,20 @@ export async function openJobLink(db: Db, secret: string): Promise<CustomerJobVi
     const job = rows[0];
     if (!job) return null;
     const business = await currentBusiness(client);
+    const tasks = await client.query<{ title: string }>(
+      "select title from kk.job_task where job_id = $1 and status <> 'dropped' order by added_at, id",
+      [link.subjectId],
+    );
+    const photos = await client.query<{ key: string }>(
+      `select o.key from kk.job_photo p
+       join storage.object o on o.business_id = p.business_id and o.id = p.object_id
+       where p.job_id = $1 and p.kind = 'request'
+       order by p.created_at, p.id`,
+      [link.subjectId],
+    );
     return {
+      tasks: tasks.rows.map((t) => t.title),
+      photos: photos.rows,
       businessName: business.name,
       businessPhone: business.phone,
       number: job.number,

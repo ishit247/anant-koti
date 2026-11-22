@@ -8,10 +8,12 @@ const config: NextConfig = {
     "@bodhchakra/config",
     "@bodhchakra/db",
     "@bodhchakra/log",
+    "@bodhchakra/rate-limit",
+    "@bodhchakra/storage",
     "@bodhchakra/tenancy",
     "@bodhchakra/tokens",
   ],
-  // Invite links carry their secret in the path; no page may leak it in a Referer header.
+  // Invite and customer links carry their secret in the path; no page may leak it in a Referer header.
   headers: async () => [
     { source: "/:path*", headers: [{ key: "Referrer-Policy", value: "no-referrer" }] },
   ],

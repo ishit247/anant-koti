@@ -85,7 +85,8 @@ header.bar {
   gap: 1rem;
   margin-bottom: 1rem;
 }
-select {
+select,
+textarea {
   font: inherit;
   padding: 0.65rem 0.75rem;
   border: 1px solid #8a847c;

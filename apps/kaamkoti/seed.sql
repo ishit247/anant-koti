@@ -34,10 +34,22 @@ insert into kk.customer (id, business_id, name, phone_e164, email, address) valu
    'Anita Deshpande', '+919000001001', null, null);
 
 -- Both businesses are onboarded. Sharma started from the ac_repair template (as startFromTemplate would copy it);
--- Kaveri built its own list, so it has no template of its own. Prices are in paise, tax in basis points.
+-- Kaveri built its own list and asks no questions, so the form's no-questions path has a business too. Prices are
+-- in paise, tax in basis points.
 insert into kk.business_profile (business_id, trade_key, about, service_area, intake, checklist, terms) values
   ('10000000-0000-4000-8000-000000000001', 'ac_repair', 'AC and appliance repair across Pune since 2012.',
-   'Pune, Pimpri-Chinchwad', '[]', '[{"key":"power_off","label":"Power isolated before opening"}]',
+   'Pune, Pimpri-Chinchwad', '[
+     {"key":"appliance","label":"Which appliance?","type":"choice","required":true,
+      "options":["Split AC","Window AC","Refrigerator","Washing machine"]},
+     {"key":"brand","label":"Brand and model, if you know it","type":"text","required":false},
+     {"key":"age_years","label":"Approximate age in years","type":"number","required":false},
+     {"key":"symptom","label":"What is happening?","type":"choice","required":true,
+      "options":["Not cooling","Not turning on","Water leaking","Strange noise","Error code showing",
+                 "Needs installation or removal","Routine service"]},
+     {"key":"problem","label":"Anything else we should know?","type":"text","required":false},
+     {"key":"floor","label":"Floor number (for access)","type":"number","required":false},
+     {"key":"photo","label":"Photo of the appliance or error code","type":"photo","required":false}
+   ]', '[{"key":"power_off","label":"Power isolated before opening"}]',
    'Quote is valid for 7 days. Parts replaced carry a 30-day warranty. Payment is due on completion.'),
   ('20000000-0000-4000-8000-000000000002', 'electrician', '', 'Bengaluru south', '[]', '[]',
    'Payment is due on completion.');
@@ -49,15 +61,31 @@ insert into kk.catalogue_item (id, business_id, name, unit, unit_price_minor, ta
   ('20000000-0000-4000-8000-0000000b0001', '20000000-0000-4000-8000-000000000002', 'Fan installation', 'unit', 40000, 1800, 0),
   ('20000000-0000-4000-8000-0000000b0002', '20000000-0000-4000-8000-000000000002', 'House rewiring', 'sq_ft', 9000, 1800, 1);
 
-insert into kk.job (id, business_id, customer_id, number, source) values
+-- A request names one or more tasks. Photos are not seeded: their bytes live in Garage, not in this file.
+insert into kk.job (id, business_id, customer_id, number, source, answers, address, preferred_window) values
   ('10000000-0000-4000-8000-0000000e0001', '10000000-0000-4000-8000-000000000001',
-   '10000000-0000-4000-8000-0000000c0001', 1, 'public_form'),
+   '10000000-0000-4000-8000-0000000c0001', 1, 'public_form',
+   '{"appliance":"Split AC","symptom":"Not cooling","age_years":4}',
+   'Flat 4, Shanti Apartments, Kothrud, Pune', 'Weekday evenings'),
   ('10000000-0000-4000-8000-0000000e0002', '10000000-0000-4000-8000-000000000001',
-   '10000000-0000-4000-8000-0000000c0002', 2, 'phone'),
+   '10000000-0000-4000-8000-0000000c0002', 2, 'phone', '{}', '12 Lane 5, Baner, Pune', null),
   ('20000000-0000-4000-8000-0000000e0001', '20000000-0000-4000-8000-000000000002',
-   '20000000-0000-4000-8000-0000000c0001', 1, 'public_form'),
+   '20000000-0000-4000-8000-0000000c0001', 1, 'public_form', '{}',
+   '88 4th Cross, Jayanagar, Bengaluru', null),
   ('20000000-0000-4000-8000-0000000e0002', '20000000-0000-4000-8000-000000000002',
-   '20000000-0000-4000-8000-0000000c0003', 2, 'phone');
+   '20000000-0000-4000-8000-0000000c0003', 2, 'phone', '{}', '21 Residency Road, Bengaluru', null);
+
+insert into kk.job_task (business_id, job_id, catalogue_item_id, title, added_by) values
+  ('10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-0000000e0001',
+   '10000000-0000-4000-8000-0000000b0002', 'AC gas refill', 'customer'),
+  ('10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-0000000e0001',
+   '10000000-0000-4000-8000-0000000b0003', 'AC general service', 'customer'),
+  ('10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-0000000e0002',
+   '10000000-0000-4000-8000-0000000b0001', 'Inspection visit', 'business'),
+  ('20000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-0000000e0001',
+   '20000000-0000-4000-8000-0000000b0001', 'Fan installation', 'customer'),
+  ('20000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-0000000e0002',
+   null, 'Check tripping main switch', 'business');
 
 -- One customer link per business to its request #1, with a fixed development secret (stored, as always, only
 -- as its SHA-256) so manual and browser checks can open /j/<secret>. Real links come from issueJobLink.

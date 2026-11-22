@@ -1,5 +1,5 @@
--- The job: a customer's request and everything after it (docs/architecture.md 5.3, 6). The intake columns
--- (answers, address, preferred window) arrive with the request form in 2.2, quote links with 2.4.
+-- The job: a customer's request and everything after it (docs/architecture.md 5.3, 6). Quote links arrive
+-- with 2.4.
 create table kk.job (
   id uuid primary key default gen_random_uuid(),
   business_id uuid not null references tenancy.business (id),
@@ -10,10 +10,17 @@ create table kk.job (
   status text not null default 'requested' check (status in (
     'requested', 'quoted', 'accepted', 'scheduled', 'in_progress', 'completed', 'declined', 'lost', 'cancelled'
   )),
+  -- The intake answers, keyed by the business's question keys at the time (src/intake.ts parses them).
+  answers jsonb not null default '{}' check (jsonb_typeof(answers) = 'object'),
+  -- Where the work is; this request's, so a customer's later request elsewhere does not rewrite it.
+  address text check (length(address) between 1 and 500),
+  preferred_window text check (length(preferred_window) between 1 and 200),
   cancel_reason text check (length(cancel_reason) between 1 and 500),
   created_at timestamptz not null default now(),
   -- Also the index for the business_id foreign key.
   unique (business_id, number),
+  -- Target of composite foreign keys from job_task and job_photo.
+  unique (business_id, id),
   -- Composite, so a job cannot name another business's customer.
   foreign key (business_id, customer_id) references kk.customer (business_id, id)
 );

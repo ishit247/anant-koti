@@ -2,7 +2,7 @@
 // only columns meant for the public are selected. Nothing here reads a cookie or a session.
 import type { Db } from "@bodhchakra/db";
 import { currentBusiness, resolveSlug } from "@bodhchakra/tenancy";
-import { businessProfile, listCatalogue } from "./business-profile.ts";
+import { type BusinessProfile, businessProfile, listCatalogue } from "./business-profile.ts";
 
 export interface PublicPage {
   readonly name: string;
@@ -11,7 +11,9 @@ export interface PublicPage {
   readonly phone: string;
   readonly about: string;
   readonly serviceArea: string;
-  readonly services: readonly { name: string; unit: string; unitPriceMinor: number }[];
+  readonly services: readonly { id: string; name: string; unit: string; unitPriceMinor: number }[];
+  /** What the request form asks, in the business's order. */
+  readonly questions: BusinessProfile["intake"];
 }
 
 /** The page for a slug, or null if no business has it or it has not finished onboarding (nothing to show yet). */
@@ -32,7 +34,8 @@ export async function publicPage(db: Db, slug: string): Promise<PublicPage | nul
       // Hidden items are not offered; their price is the owner's business until they are shown again.
       services: items
         .filter((item) => item.active)
-        .map(({ name, unit, unitPriceMinor }) => ({ name, unit, unitPriceMinor })),
+        .map(({ id, name, unit, unitPriceMinor }) => ({ id, name, unit, unitPriceMinor })),
+      questions: profile.intake,
     };
   });
 }

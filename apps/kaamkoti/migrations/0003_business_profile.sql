@@ -21,7 +21,9 @@ create table kk.catalogue_item (
   tax_rate_bp integer not null check (tax_rate_bp between 0 and 10000),
   active boolean not null default true,
   position integer not null check (position >= 0),
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- Target of the composite foreign key from job_task: a task can only name its own business's item.
+  unique (business_id, id)
 );
 -- The price list is always read for one business, in display order; this also indexes the business_id foreign key.
 create index catalogue_item_business_position on kk.catalogue_item (business_id, position);

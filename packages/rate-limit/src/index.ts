@@ -1,5 +1,6 @@
-// Rate-limit counters in Redis (docs/architecture.md 1): the only thing platform keeps there, and nothing that must
-// survive a restart. A Redis failure fails the request instead of letting it through unlimited.
+// Rate-limit counters in Redis (docs/architecture.md 1): the only thing a project keeps there, and nothing that
+// must survive a restart. A Redis failure fails the request instead of letting it through unlimited. Platform
+// limits sign-in codes with it; Kaam Koti limits its public request form and customer links.
 import type { Logger } from "@bodhchakra/log";
 import { createClient, type RedisClientType } from "redis";
 

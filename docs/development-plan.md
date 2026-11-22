@@ -4,7 +4,18 @@ What we are building: [product-brief.md](product-brief.md). Shared modules:
 [platform-modules.md](platform-modules.md). The design is in [architecture.md](architecture.md);
 its first table says which sections each step reads.
 
-**Current position:** Step 2.1 done (2026-11-21). Next: step 2.2 (HIGH). Customer job links: `kk.job` (migration
+**Current position:** Step 2.2 done (2026-11-22). Next: step 2.3 (STANDARD); a fresh session is a good place
+to start it. Request intake: `@bodhchakra/storage` (`checkImage` by magic bytes, re-encode strips EXIF, 2048 px;
+`putImage`, `signedUrl`; `storage.object`), `@bodhchakra/rate-limit` (moved out of platform), Garage in the dev
+stack (`kaamkoti-private`, web key read+write only, set up by `pnpm run up`). Public form `/b/[slug]/request`
+posts to the route handler `…/request/send` (scope `public-intake`; a route handler, not a server action, to
+answer 429/413 and take 6 photos; see architecture.md 10); success redirects to a fresh `/j/<secret>`, which now
+lists the tasks and shows the photos by signed URL. `/j/` is limited in `src/proxy.ts`. Migrations: `job`
+gained `answers`, `address`, `preferred_window` (edited in place), new `0005_job_task.sql` (brought forward from
+2.4), `0006_job_photo.sql`. Seeds: Sharma asks the template's questions, Kaveri none; every job has tasks.
+Handed on to 2.3: the owner's view of requests and photos (`signedUrl` for the owner), `S3_PUBLIC_ENDPOINT` for
+production. Verified: `validate standard`, 7 mutants killed, `up:fresh` (7 s), browser check (form, refused
+submit, photo request, 429 on intake and `/j/`) at 375 px and 1280 px. Step 2.1 before it: customer job links: `kk.job` (migration
 `0004_job.sql`; a composite foreign key keeps a job on its own business's customer), `src/job-link.ts`
 (`issueJobLink`, `revokeJobLinks`, `openJobLink`) and the page `/j/[secret]` (scope `customer-token`, no cookies). Design
 change, recorded in architecture.md 7: **a new link per message**, live 30 days, because a hashed secret cannot be
@@ -88,9 +99,9 @@ also write the module's README, and their tests run through the module's public 
 | Id  | Step                                                                                                                                                                                                                         | Size | Model    | Status | Done when                                                                                                          |
 | --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | -------- | ------ | ------------------------------------------------------------------------------------------------------------------ |
 | 2.1 | `[module]` `tokens` links; customer magic links: scoped to one job, expiring, revocable                                                                                                                                      | M    | HIGH     | done   | A token cannot read another job; expired token is refused; mutant proves both                                      |
-| 2.2 | `[module]` `storage`; request intake: public form (pick one or more catalogue tasks), trade questions, photo upload (type and size checks, private storage); the app's per-IP rate limiter, for intake and for `/j/` lookups | M    | HIGH     | todo   | Upload rejects wrong types and sizes; photos are not publicly listable; intake and `/j/` answer 429 past the limit |
+| 2.2 | `[module]` `storage`; request intake: public form (pick one or more catalogue tasks), trade questions, photo upload (type and size checks, private storage); the app's per-IP rate limiter, for intake and for `/j/` lookups | M    | HIGH     | done   | Upload rejects wrong types and sizes; photos are not publicly listable; intake and `/j/` answer 429 past the limit |
 | 2.3 | Owner inbox: new requests, log a phone enquiry; a link to the owner's public page from home; on a job, "revoke links and send a new one" (`revokeJobLinks` + `issueJobLink`, audited)                                        | S    | STANDARD | todo   | Both request sources appear in one list                                                                            |
-| 2.4 | `[module]` `money`; `job_task`; quotes: lines from the catalogue at task or request level, versions, expiry                                                                                                                  | M    | HIGH     | todo   | Totals and tax are tested; old versions are immutable                                                              |
+| 2.4 | `[module]` `money`; quotes (`job_task` came in 2.2): lines from the catalogue at task or request level, versions, expiry                                                                                                     | M    | HIGH     | todo   | Totals and tax are tested; old versions are immutable                                                              |
 | 2.5 | Negotiation: customer accepts, rejects or counters; owner revises; accepted quote locked                                                                                                                                     | M    | HIGH     | todo   | State machine test covers every transition; a locked quote cannot be edited                                        |
 
 ## Phase 3: Scheduling and notifications

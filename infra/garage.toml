@@ -1,0 +1,15 @@
+# Garage, the S3-compatible object store (docs/architecture.md 2, 10). DEV VALUES, public in the repository:
+# production gets its own rpc_secret from the server's secret store. Single node, so replication_factor = 1.
+# No [s3_web] section: every bucket here is private, and nothing serves one as a website.
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "lmdb"
+replication_factor = 1
+
+rpc_bind_addr = "[::]:3901"
+rpc_public_addr = "127.0.0.1:3901"
+rpc_secret = "6ecd0364acfe537c8bca98129e7ed50389ee483a03d3b3f0218340cd3990dbb5"
+
+[s3_api]
+s3_region = "garage"
+api_bind_addr = "[::]:3900"

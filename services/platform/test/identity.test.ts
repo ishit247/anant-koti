@@ -6,12 +6,12 @@ import { get as httpGet, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { type TestDb, testDb } from "@bodhchakra/db";
 import { createLogger } from "@bodhchakra/log";
+import { type Limiter, redisLimiter } from "@bodhchakra/rate-limit";
 import { createLocalJWKSet, jwtVerify } from "jose";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { CLIENT_IP_HEADER, createIdentity, registerClients } from "../src/identity.ts";
 import { migrations, RUNTIME_ROLE } from "../src/index.ts";
-import { type Limiter, redisLimiter } from "../src/rate-limit.ts";
 import { createHandler, listen } from "../src/server.ts";
 import { identitySql } from "./identity-sql.ts";
 

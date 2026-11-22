@@ -5,6 +5,7 @@ import { createPool, type MigrationFolder } from "@bodhchakra/db";
 import { migrations as jobs } from "@bodhchakra/jobs";
 import type { Logger } from "@bodhchakra/log";
 import { migrations as outbox } from "@bodhchakra/outbox";
+import { migrations as storage } from "@bodhchakra/storage";
 import { migrations as tenancy } from "@bodhchakra/tenancy";
 import { migrations as tokens } from "@bodhchakra/tokens";
 import { seedTemplates } from "./seed-templates.ts";
@@ -19,6 +20,17 @@ export {
   saveCatalogue,
   startFromTemplate,
 } from "./business-profile.ts";
+export { PRIVATE_BUCKET } from "./config.ts";
+export {
+  type IntakeError,
+  type IntakeInput,
+  type IntakeResult,
+  MAX_REQUEST_PHOTOS,
+  parseAnswers,
+  readIntakeForm,
+  submitRequest,
+  toE164,
+} from "./intake.ts";
 export { JOB_STATUSES, type JobStatus } from "./job.ts";
 export {
   type CustomerJobView,
@@ -27,6 +39,7 @@ export {
   openJobLink,
   revokeJobLinks,
 } from "./job-link.ts";
+export { CLIENT_IP_HEADER, clientIp, LIMITS, overLimit } from "./limits.ts";
 export { type PublicPage, publicPage } from "./public-page.ts";
 export {
   latestTradeTemplate,
@@ -44,6 +57,7 @@ export const migrations: readonly MigrationFolder[] = [
   jobs,
   outbox,
   tokens,
+  storage,
   tenancy,
   auth,
   { name: "kaamkoti", dir: new URL("../migrations/", import.meta.url) },

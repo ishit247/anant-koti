@@ -5,6 +5,7 @@
 import { createHash, createHmac } from "node:crypto";
 import { oauthProvider } from "@better-auth/oauth-provider";
 import type { Logger } from "@bodhchakra/log";
+import type { Limit, RateLimitRule } from "@bodhchakra/rate-limit";
 import { type BetterAuthOptions, betterAuth } from "better-auth";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { emailOTP } from "better-auth/plugins/email-otp";
@@ -12,7 +13,6 @@ import { jwt } from "better-auth/plugins/jwt";
 import { PostgresDialect } from "kysely";
 import type pg from "pg";
 import type { SignInClients } from "./config.ts";
-import type { Limit, RateLimitRule } from "./rate-limit.ts";
 
 export const BASE_PATH = "/api/auth";
 export const SIGN_IN_PATH = "/sign-in";

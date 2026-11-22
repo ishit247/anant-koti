@@ -4,6 +4,9 @@ import { z } from "zod";
 const origin = (protocols: RegExp) =>
   z.url({ protocol: protocols }).transform((url) => new URL(url).origin);
 
+/** Request and job photos (docs/architecture.md 2); signed URLs only. */
+export const PRIVATE_BUCKET = "kaamkoti-private";
+
 /** What the web process reads from its environment; bad values stop start-up (`defineConfig`). */
 export const webConfig = z.object({
   /** Connects as the runtime role, kaamkoti_app. */
@@ -16,4 +19,12 @@ export const webConfig = z.object({
   PLATFORM_INTERNAL_URL: origin(/^https?$/),
   /** Must match the secret in platform's SIGN_IN_CLIENTS. */
   SIGN_IN_CLIENT_SECRET: z.string().min(MIN_SECRET_LENGTH),
+  /** Rate-limit counters for the public request form and customer links. */
+  REDIS_URL: z.url({ protocol: /^rediss?$/ }),
+  /** Garage's S3 API as this process reaches it, and as a browser does (presigned photo URLs). */
+  S3_ENDPOINT: origin(/^https?$/),
+  S3_PUBLIC_ENDPOINT: origin(/^https?$/),
+  S3_REGION: z.string().min(1),
+  S3_ACCESS_KEY_ID: z.string().regex(/^GK[0-9a-f]{24}$/),
+  S3_SECRET_ACCESS_KEY: z.string().regex(/^[0-9a-f]{64}$/),
 });

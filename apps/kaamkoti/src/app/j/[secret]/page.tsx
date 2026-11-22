@@ -22,7 +22,8 @@ const STATUS: Record<JobStatus, string> = {
 
 export default async function JobPage({ params }: { params: Promise<{ secret: string }> }) {
   const { secret } = await params;
-  const job = await openJobLink(server().db, secret);
+  const { db, storage } = server();
+  const job = await openJobLink(db, secret);
   if (!job) {
     return (
       <>
@@ -38,6 +39,25 @@ export default async function JobPage({ params }: { params: Promise<{ secret: st
       <h1>Request #{job.number}</h1>
       <p>Hello {job.customerName}.</p>
       <p role="status">{STATUS[job.status]}</p>
+      {job.tasks.length > 0 ? (
+        <ul>
+          {job.tasks.map((task, i) => (
+            // Titles may repeat (two custom tasks of the same name); their order is fixed.
+            // biome-ignore lint/suspicious/noArrayIndexKey: the list is static for this render
+            <li key={i}>{task}</li>
+          ))}
+        </ul>
+      ) : null}
+      {job.photos.map((photo) => (
+        // Signed after the link resolved to this job: each URL opens one object for five minutes.
+        // biome-ignore lint/performance/noImgElement: a presigned URL, not an asset Next can optimise
+        <img
+          key={photo.key}
+          src={storage.signedUrl(photo)}
+          alt="Sent with your request"
+          width={160}
+        />
+      ))}
       <p>
         <a className="button" href={`tel:${job.businessPhone}`}>
           Call

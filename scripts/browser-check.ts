@@ -2,7 +2,8 @@
 // the platform container, `pnpm --filter kaamkoti dev`). Chromium lives on D: (set
 // PLAYWRIGHT_BROWSERS_PATH=D:\playwright-browsers; install with `pnpm exec playwright install chromium-headless-shell`). A new owner signs in with an email code read from
 // Mailpit, creates a business, picks a trade, edits a price, and the public page and a customer's job link are
-// opened without cookies.
+// opened without cookies. A customer sends a request with a photo through the public form and lands on their
+// job link, where the photo loads by signed URL; intake and /j/ answer 429 past their per-IP limits.
 // Each page is screenshotted at phone and desktop width into .validation/browser/; the run fails on a console
 // error, a page wider than the viewport, or a cookie on the public page.
 import { mkdirSync } from "node:fs";
@@ -22,6 +23,9 @@ const email = `owner-${run}@example.test`;
 const businessName = `Check Cooling ${run}`;
 const slug = businessName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 const problems: string[] = [];
+/** A valid 1×1 PNG, the photo the customer sends. */
+const ONE_PIXEL_PNG =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
 async function signInCode(): Promise<string> {
   for (let tries = 0; tries < 50; tries++) {
@@ -130,6 +134,69 @@ try {
   await shoot(jobPage, "10-job-link-dead");
   if ((await visitor.cookies()).length > 0) problems.push("visitor context holds cookies");
   await visitor.close();
+
+  // A customer's request through the public form, cookieless. Its own address, so runs never share counters.
+  const customer = await browser.newContext({
+    viewport: WIDTHS.phone,
+    extraHTTPHeaders: { "x-client-ip": `browser-${run}` },
+  });
+  const form = await customer.newPage();
+  watchConsole(form, "request form");
+  await form.goto(`${APP}/b/sharma-cooling`);
+  await form.getByRole("link", { name: "Request a visit" }).click();
+  await form.waitForURL(`${APP}/b/sharma-cooling/request`);
+  await shoot(form, "11-request-form");
+  const fill = async () => {
+    await form.selectOption("select[name='q.appliance']", "Split AC");
+    await form.selectOption("select[name='q.symptom']", "Not cooling");
+    await form.fill("input[name=name]", "Browser Check");
+    await form.fill("input[name=phone]", "98765 00000");
+    await form.fill("textarea[name=address]", "1 Check Road, Pune");
+  };
+  // No service picked: the form comes back with the reason.
+  await fill();
+  await form.getByRole("button", { name: "Send request" }).click();
+  await form.waitForURL(/\?error=tasks$/);
+  if (!(await form.getByRole("alert").filter({ hasText: "at least one service" }).count()))
+    problems.push("a request without a service is not explained");
+  await shoot(form, "12-request-form-error");
+  await fill();
+  await form.getByRole("checkbox", { name: /AC gas refill/ }).check();
+  await form.setInputFiles("input[name='photo.photo']", {
+    name: "ac.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(ONE_PIXEL_PNG, "base64"),
+  });
+  await form.getByRole("button", { name: "Send request" }).click();
+  await form.waitForURL(/\/j\/[A-Za-z0-9_-]{43}$/);
+  if (!(await form.getByText("AC gas refill").count()))
+    problems.push("the new request's link does not list its task");
+  const photo = form.getByRole("img", { name: "Sent with your request" });
+  await photo.waitFor();
+  if (!(await photo.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)))
+    problems.push("the request photo does not load by its signed URL");
+  await shoot(form, "13-request-sent");
+  if ((await customer.cookies()).length > 0) problems.push("customer context holds cookies");
+  await customer.close();
+
+  // Past the limits. Intake counts before it looks at the slug, so an unknown one keeps real counters clean.
+  const hammer = async (url: string, method: string, times: number) => {
+    let last = 0;
+    for (let i = 0; i < times; i++)
+      last = (
+        await fetch(url, {
+          method,
+          redirect: "manual",
+          headers: { "x-client-ip": `limit-${run}` },
+          ...(method === "POST" ? { body: new FormData() } : {}),
+        })
+      ).status;
+    return last;
+  };
+  const intake = await hammer(`${APP}/b/limit-check-${run}/request/send`, "POST", 11);
+  if (intake !== 429) problems.push(`intake past its limit answered ${intake}`);
+  const lookups = await hammer(`${APP}/j/${"y".repeat(43)}`, "GET", 61);
+  if (lookups !== 429) problems.push(`job link lookups past their limit answered ${lookups}`);
 } finally {
   await owner?.close();
   await browser.close();

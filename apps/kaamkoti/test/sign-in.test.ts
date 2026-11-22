@@ -6,6 +6,7 @@ import type { AddressInfo } from "node:net";
 import { type Auth, createAuth, SignInRefused } from "@bodhchakra/auth";
 import { type TestDb, testDb } from "@bodhchakra/db";
 import { createLogger } from "@bodhchakra/log";
+import { type Limiter, redisLimiter } from "@bodhchakra/rate-limit";
 import pg from "pg";
 import * as platform from "platform";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -24,7 +25,7 @@ describe("signing in to Kaam Koti through platform", () => {
   let kaamkoti: TestDb;
   let platformDb: TestDb;
   let identityPool: pg.Pool;
-  let limiter: ReturnType<typeof platform.redisLimiter>;
+  let limiter: Limiter;
   let server: Server;
   let origin: string;
   let auth: Auth;
@@ -50,7 +51,7 @@ describe("signing in to Kaam Koti through platform", () => {
     ]);
 
     identityPool = new pg.Pool({ connectionString: platformDb.url(platform.RUNTIME_ROLE), max: 3 });
-    limiter = platform.redisLimiter(REDIS_URL, log);
+    limiter = redisLimiter(REDIS_URL, log);
     await platform.registerClients(identityPool, {
       [CLIENT]: {
         secret: CLIENT_SECRET,

@@ -3,11 +3,11 @@
 import { defineConfig } from "@bodhchakra/config";
 import { createPool } from "@bodhchakra/db";
 import { createLogger } from "@bodhchakra/log";
+import { redisLimiter } from "@bodhchakra/rate-limit";
 import pg from "pg";
 import { platformConfig } from "./config.ts";
 import { createIdentity, registerClients } from "./identity.ts";
 import { codeMailer } from "./mail.ts";
-import { redisLimiter } from "./rate-limit.ts";
 import { createHandler, listen } from "./server.ts";
 
 const config = defineConfig(platformConfig);

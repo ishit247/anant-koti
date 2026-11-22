@@ -279,8 +279,9 @@ Customers never have accounts. They open their job by a link: `https://kaamkoti.
   for example after a wrong number. (Changed in 2.1 from "one link per job, extended on each send", which
   needed the secret stored.)
 - The token sits in the path. Caddy writes no access logs, and pages set `Referrer-Policy: no-referrer` and load
-  no third-party resources, so it does not leak. Lookups are rate limited per IP (from 2.2, which brings the
-  app's rate limiter for `public-intake`; a 256-bit token cannot be guessed meanwhile).
+  no third-party resources, so it does not leak. Lookups are rate limited per IP (60 per 10 minutes) in the
+  app's proxy (`src/proxy.ts`, matcher `/j/:path*`), which answers 429; the address is `x-client-ip`, which
+  Caddy sets.
 - Customer actions are form posts carrying the token. With no cookies there is no ambient authority, and so
   no CSRF.
 - **Lapsed business** (section 13): the link still opens, but shows a contact card and allows no actions.
@@ -358,6 +359,13 @@ invites in 0.7 are shared by the owner: copy the link, or a `wa.me` share. Sendi
 - `storage.object`: `business_id`, `bucket`, `key` (random, never the file name), `content_type`, `bytes`,
   `sha256`, `created_by`. Up to 6 photos per request on the public form. Limits are per IP, and per business
   per day.
+- **The public request form** (2.2) is a plain multipart post to a route handler,
+  `/b/[slug]/request/send` (scope `public-intake`), not a server action like the app's other forms. It has to
+  answer 429 and 413 and take six photos, and a server action can do neither. The proxy cannot limit it, because
+  it buffers bodies only to 10 MB. Limits: 10 per IP per hour, then 200 per business per day, counted in that
+  order. Photos answer the business's `photo` questions (field `photo.<key>`); a business with no photo question
+  takes none. On success the customer is sent to a fresh job link (`/j/<secret>`), which shows their tasks and
+  photos (by `signedUrl`). `job_task` arrived with this step, not 2.4, because the form picks the tasks.
 
 ## 11. Audit
 
@@ -385,7 +393,8 @@ them in its README.
 | `jobs`             | `createJobs(pool)`, `defineJob(name, zodPayload, handler)`, `send(tx, …)`, `sendAt`                                                                      | `pgboss.*`                                                                        | 0.5  |
 | `outbox`           | `enqueue(tx, topic, payload, key)`, `startDelivery`, `receive(source, key, tx, fn)`                                                                      | `outbox.message`, `outbox.inbox`                                                  | 0.5  |
 | `auth` (app side)  | `createAuth(options)` → `startLogin`, `handleCallback`, `getSession`, `signOut`; `SignInRefused`, `SignInUnavailable`                                    | `auth.login_attempt`, `auth.session`                                              | 0.6  |
-| `storage`          | `upload(stream, rules)`, `signedUrl(object)`, `remove`                                                                                                   | `storage.object`                                                                  | 2.2  |
+| `storage`          | `checkImage(bytes)`, `createStorage(cfg)` → `putImage(tx, image, by)`, `signedUrl(object)`; `remove` comes with its first use                            | `storage.object`                                                                  | 2.2  |
+| `rate-limit`       | `redisLimiter(url, log)` → `limit(key, rule)`, `close()`                                                                                                 | — (Redis)                                                                         | 2.2  |
 | `money`            | `money(minor, cur)`, `add`, `lineTotals(lines)`, `formatINR`                                                                                             | —                                                                                 | 2.4  |
 | `notify` (client)  | `send(tx, message)`, through the outbox                                                                                                                  | — (server tables in platform)                                                     | 3.2  |
 | `payments`         | `connectAccount`, `createPaymentLink(tx, …)`, `handleWebhook(req)` → typed events, `recordManual(tx, …)`                                                 | `payments.account`, `payments.link`, `payments.payment`, `payments.webhook_event` | 4.1  |

@@ -2,7 +2,6 @@
 # and role pair per app). Start and reset with `pnpm run up` and `pnpm run up:fresh` (scripts/stack.ts).
 # Every value here is a DEV default and public in the repository. Host ports sit below 49152 (Windows reserves
 # shifting blocks above it for Hyper-V) and differ from Profile's (45432), so both stacks can run at once.
-# Garage joins this file with its first use (uploads in 2.2).
 name: bodhchakra-dev
 
 services:
@@ -59,7 +58,7 @@ services:
       mailpit:
         condition: service_healthy
 
-  # Rate-limit counters for platform (docs/architecture.md 1). Nothing in it must survive a restart: no volume.
+  # Rate-limit counters (docs/architecture.md 1), for platform and Kaam Koti; their key names do not overlap. Nothing in it must survive a restart: no volume.
   redis:
     image: redis:8
     ports:
@@ -67,6 +66,23 @@ services:
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 1s
+      timeout: 3s
+      retries: 30
+    networks: [internal]
+
+  # Object store for uploads (docs/architecture.md 10). `pnpm run up` gives the node a layout and creates the
+  # bucket and the app's key (scripts/stack.ts). The S3 API on 45447 is the only port.
+  garage:
+    image: dxflrs/garage:v2.1.0
+    ports:
+      - "127.0.0.1:45447:3900"
+    volumes:
+      - ./garage.toml:/etc/garage.toml:ro
+      - garage-meta:/var/lib/garage/meta
+      - garage-data:/var/lib/garage/data
+    healthcheck:
+      test: ["CMD", "/garage", "status"]
+      interval: 2s
       timeout: 3s
       retries: 30
     networks: [internal]
@@ -90,3 +106,5 @@ networks:
 
 volumes:
   pgdata:
+  garage-meta:
+  garage-data:
