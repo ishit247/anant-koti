@@ -102,6 +102,43 @@ export const kaamkoti = {
         `so it can no longer be accepted. Send a new one if the work is still wanted:\n${v.link}`,
     }),
   }),
+  /** To the customer: the business proposes a time for the work, to confirm or change on their page. */
+  "appointment.proposed": defineTemplate({
+    vars: z.object({ customerName: text, businessName: text, when: text, link }),
+    email: (v) => ({
+      subject: `${v.businessName} proposes ${v.when} for your work`,
+      text:
+        `Hello ${v.customerName},\n\n` +
+        `${v.businessName} can come to do the work on ${v.when}. ` +
+        `Please confirm the time, or ask for another one:\n${v.link}\n\n${SIGN_IN}`,
+    }),
+  }),
+  /** To the owner: the customer confirmed the proposed time, or asked for another (with their note, if any). */
+  "appointment.response": defineTemplate({
+    vars: z.discriminatedUnion("answer", [
+      z.object({ answer: z.literal("confirmed"), customerName: text, number, when: text, link }),
+      z.object({
+        answer: z.literal("declined"),
+        customerName: text,
+        number,
+        when: text,
+        note: z.string().min(1).max(500).optional(),
+        link,
+      }),
+    ]),
+    email: (v) =>
+      v.answer === "confirmed"
+        ? {
+            subject: `${v.customerName} confirmed ${v.when} (${v.number})`,
+            text: `${v.customerName} has confirmed the work on ${v.when} for request ${v.number}.\n\n${v.link}`,
+          }
+        : {
+            subject: `${v.customerName} asks for another time (${v.number})`,
+            text:
+              `${v.customerName} cannot do ${v.when} for request ${v.number}` +
+              `${v.note ? ` and says:\n"${v.note}"` : "."}\n\nPropose another time:\n${v.link}`,
+          },
+  }),
   /** To the customer: a visit was planned, or moved to another time. */
   "appointment.confirmed": defineTemplate({
     vars: z.object({

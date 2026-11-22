@@ -15,12 +15,12 @@ import {
   statusTone,
 } from "../../../job-labels.ts";
 import { ownerQuotes } from "../../../quote.ts";
-import { assignableMembers, plannedVisits } from "../../../schedule.ts";
+import { assignableMembers, plannedVisits, workTime } from "../../../schedule.ts";
 import { server } from "../../../server.ts";
 import { OwnerNav } from "../../owner-nav.tsx";
 import { QuoteSummary } from "../../quote-summary.tsx";
 import { WorkItems } from "../../work-items.tsx";
-import { PlanVisit } from "./plan-visit.tsx";
+import { ConfirmForCustomer, PlanVisit } from "./plan-visit.tsx";
 import { StartQuote } from "./start-quote.tsx";
 
 // The id in the path is only a lookup key: the job is read inside withTenant of the signed-in owner's
@@ -32,12 +32,16 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   if (!id.success) notFound();
   const owner = await requireMember(route, `/jobs/${id.data}`);
   const { db, storage } = server();
-  const { job, quotes, visits, team } = await db.withTenant(owner.businessId, async (client) => ({
-    job: await ownerJob(client, id.data),
-    quotes: await ownerQuotes(client, id.data),
-    visits: await plannedVisits(client, new Date(0), id.data),
-    team: await assignableMembers(client),
-  }));
+  const { job, quotes, visits, work, team } = await db.withTenant(
+    owner.businessId,
+    async (client) => ({
+      job: await ownerJob(client, id.data),
+      quotes: await ownerQuotes(client, id.data),
+      visits: await plannedVisits(client, new Date(0), id.data),
+      work: await workTime(client, id.data),
+      team: await assignableMembers(client),
+    }),
+  );
   if (!job) notFound();
   // The same states the planner accepts: the work needs `accepted`, a site visit any open state.
   const visitable = ["requested", "quoted", "accepted", "scheduled"].includes(job.status);
@@ -146,12 +150,24 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
               <span className="muted small">
                 {formatWhen(visit.startsAt)} to {formatTime(visit.endsAt)}
               </span>
+              {visit.status === "proposed" ? (
+                <>
+                  <span className="chip wait">Waiting for the customer to confirm</span>
+                  <ConfirmForCustomer jobId={job.id} appointmentId={visit.id} />
+                </>
+              ) : null}
             </li>
           ))}
         </ul>
       ) : (
         <p className="empty">Nothing planned yet.</p>
       )}
+      {work?.status === "declined" && job.status === "accepted" ? (
+        <p className="notice" role="status">
+          {job.customerName} asked for another time than {formatWhen(work.startsAt)}
+          {work.note ? `: "${work.note}"` : "."} Propose a new one below.
+        </p>
+      ) : null}
       {visitable ? (
         <PlanVisit jobId={job.id} workable={job.status === "accepted"} team={team} />
       ) : null}

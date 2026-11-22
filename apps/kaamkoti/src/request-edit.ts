@@ -25,6 +25,7 @@ import {
   type Quote,
   type QuoteAnswer,
 } from "./quote.ts";
+import { type WorkTime, workTime } from "./schedule.ts";
 
 export interface CustomerRequest {
   readonly id: string;
@@ -39,6 +40,8 @@ export interface CustomerRequest {
   readonly quote: Quote | null;
   /** True until the customer accepts a quote: the items can still be changed. */
   readonly editable: boolean;
+  /** The work's time, once the business has proposed one. */
+  readonly workTime: WorkTime | null;
 }
 
 export async function customerRequest(
@@ -84,6 +87,7 @@ export async function customerRequest(
     items: await workItems(client, job.id),
     quote: await customerQuote(client, job.id),
     editable: job.status === "requested" || job.status === "quoted",
+    workTime: await workTime(client, job.id),
   };
 }
 

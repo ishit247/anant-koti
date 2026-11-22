@@ -4,7 +4,13 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireMember } from "../../../guard.ts";
 import { openDraft } from "../../../quote.ts";
-import { planVisit, type VisitError, type VisitKind } from "../../../schedule.ts";
+import {
+  confirmVisitFor,
+  planVisit,
+  type VisitAnswerError,
+  type VisitError,
+  type VisitKind,
+} from "../../../schedule.ts";
 import { server } from "../../../server.ts";
 
 const route = defineRoute({ scope: "member", roles: ["owner"] });
@@ -38,10 +44,41 @@ export async function planVisitAction(
       start: String(form.get("start")),
       minutes: form.get("minutes"),
     });
-    if (planned.ok) await notices.visitPlanned(client, planned.appointmentId);
+    if (planned.ok && planned.status === "proposed")
+      await notices.visitProposed(client, planned.appointmentId);
+    else if (planned.ok) await notices.visitPlanned(client, planned.appointmentId);
     return planned;
   });
   if (!result.ok) return { error: VISIT_ERROR[result.error] };
+  redirect(`/jobs/${jobId.data}`);
+}
+
+export interface ConfirmVisitState {
+  readonly error?: string;
+}
+
+const CONFIRM_ERROR: Record<VisitAnswerError, string> = {
+  not_found: "That visit was not found.",
+  answered: "The customer has already answered this time, or a newer one was proposed.",
+  closed: "This request cannot be scheduled now.",
+};
+
+/** The customer agreed to the proposed time another way (by phone): the owner confirms it for them. */
+export async function confirmVisitAction(
+  _previous: ConfirmVisitState,
+  form: FormData,
+): Promise<ConfirmVisitState> {
+  const jobId = z.uuid().safeParse(form.get("jobId"));
+  if (!jobId.success) return { error: CONFIRM_ERROR.not_found };
+  const owner = await requireMember(route, `/jobs/${jobId.data}`);
+  const { db, audit, notices } = server();
+  const appointmentId = String(form.get("appointmentId"));
+  const result = await db.withTenant(owner.businessId, async (client) => {
+    const confirmed = await confirmVisitFor(client, audit, owner, appointmentId);
+    if (confirmed.ok) await notices.visitPlanned(client, appointmentId);
+    return confirmed;
+  });
+  if (!result.ok) return { error: CONFIRM_ERROR[result.error] };
   redirect(`/jobs/${jobId.data}`);
 }
 

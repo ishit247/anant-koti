@@ -146,10 +146,11 @@ update kk.job set status = 'quoted' where id = '10000000-0000-4000-8000-0000000e
 
 -- A negotiation that ended in acceptance: Kaveri's request #3 had version 1 (₹472) countered at ₹400, then
 -- version 2 with a discount bringing it to ₹400, accepted. Each step is the update the app makes, in order,
--- because the quote trigger allows only those moves. The job is `accepted` and its task `approved`.
+-- because the quote trigger allows only those moves. The job is `accepted` and its task `approved`. Signed-in
+-- Suresh asked for it at Lakshmi's place, so agreeing the work's time can be tried on his page (3.1b).
 insert into kk.job (id, business_id, customer_id, number, source, contact_name, contact_phone_e164, address) values
   ('20000000-0000-4000-8000-0000000e0003', '20000000-0000-4000-8000-000000000002',
-   '20000000-0000-4000-8000-0000000c0002', 3, 'public_form', 'Lakshmi Rao', '+919000002002',
+   '20000000-0000-4000-8000-0000000c0001', 3, 'public_form', 'Lakshmi Rao', '+919000002002',
    '3 MG Road, Bengaluru');
 insert into kk.job_task (id, business_id, job_id, catalogue_item_id, title, added_by) values
   ('20000000-0000-4000-8000-0000000f0003', '20000000-0000-4000-8000-000000000002',

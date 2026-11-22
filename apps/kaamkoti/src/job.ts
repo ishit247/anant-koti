@@ -56,7 +56,8 @@ const TRANSITIONS: readonly Transition[] = [
   { from: ["quoted"], event: "revise", to: "quoted", by: ["owner"] },
   { from: ["quoted"], event: "edit", to: "requested", by: ["customer"] },
   { from: ["quoted"], event: "close_lost", to: "lost", by: ["owner"] },
-  { from: ["accepted"], event: "schedule", to: "scheduled", by: ["owner"] },
+  // The customer confirms the proposed time; the owner does it for one who agreed by phone (3.1b).
+  { from: ["accepted"], event: "schedule", to: "scheduled", by: ["owner", "customer"] },
   { from: ["scheduled"], event: "check_in", to: "in_progress", by: ["technician", "owner"] },
   { from: ["in_progress"], event: "complete", to: "completed", by: ["technician", "owner"] },
   {

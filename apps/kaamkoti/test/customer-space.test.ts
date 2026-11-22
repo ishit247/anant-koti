@@ -59,7 +59,7 @@ describe("the customer space on the seeded database", () => {
   it("shows a signed-in customer only their own jobs with that business", async () => {
     // Sharma's #2 belongs to another customer, Rahul; Kaveri's #1 to Suresh.
     expect(await home(SHARMA, ANITA)).toEqual([1]);
-    expect(await home(KAVERI, SURESH)).toEqual([1]);
+    expect(await home(KAVERI, SURESH)).toEqual([3, 1]);
     expect(await home(SHARMA, SURESH)).toBeNull();
   });
 

@@ -23,8 +23,12 @@ export interface Notices {
   quoteSent(client: DbClient, quoteId: string): Promise<void>;
   /** The customer accepted, rejected or countered the quote: the owner is told. */
   quoteAnswered(client: DbClient, quoteId: string): Promise<void>;
-  /** A visit was planned or moved: the customer is told when. */
+  /** A visit was planned (a site visit, or the work once its time is confirmed) or moved: the customer is told when. */
   visitPlanned(client: DbClient, appointmentId: string): Promise<void>;
+  /** The owner proposed the work's time: the customer is asked to confirm it or ask for another. */
+  visitProposed(client: DbClient, appointmentId: string): Promise<void>;
+  /** The customer confirmed the proposed time or asked for another: the owner is told. */
+  visitAnswered(client: DbClient, appointmentId: string): Promise<void>;
   /** Worker only: runs the expiry notices. Call after `jobs.start`. */
   startWorking(db: Db): Promise<void>;
 }
@@ -108,6 +112,26 @@ export function createNotices(deps: NoticesDeps): Notices {
        ${JOB_JOINS}
        where q.id = $1 and q.status = any($2)`,
       [quoteId, statuses],
+    );
+    return rows[0] ?? null;
+  }
+
+  /** A visit with its job, as a visit's messages name it; null if no visit of that id has this status. */
+  async function visitFacts(client: DbClient, appointmentId: string, statuses: readonly string[]) {
+    const { rows } = await client.query<
+      JobFacts & {
+        kind: string;
+        status: string;
+        starts_at: Date;
+        customer_note: string | null;
+      }
+    >(
+      `select ${JOB_COLUMNS}, a.kind, a.status, a.starts_at, a.customer_note
+       from kk.appointment a
+       join kk.job j on j.business_id = a.business_id and j.id = a.job_id
+       ${JOB_JOINS}
+       where a.id = $1 and a.status = any($2)`,
+      [appointmentId, statuses],
     );
     return rows[0] ?? null;
   }
@@ -227,30 +251,75 @@ export function createNotices(deps: NoticesDeps): Notices {
     },
 
     async visitPlanned(client, appointmentId) {
-      const { rows } = await client.query<{ job_id: string; kind: string; starts_at: Date }>(
-        "select job_id, kind, starts_at from kk.appointment where id = $1 and status = 'planned'",
-        [appointmentId],
-      );
-      const visit = rows[0];
+      const visit = await visitFacts(client, appointmentId, ["planned"]);
       if (!visit)
         throw new Error(`notices: appointment ${appointmentId} is not a planned visit here`);
-      const job = await jobFacts(client, visit.job_id);
       await notify.send(
         client,
         {
-          businessId: job.business_id,
+          businessId: visit.business_id,
           template: "appointment.confirmed",
-          to: customerTo(job),
+          to: customerTo(visit),
           vars: {
-            customerName: job.customer_name,
-            businessName: job.business_name,
+            customerName: visit.customer_name,
+            businessName: visit.business_name,
             visit: visit.kind === "work" ? "work visit" : "site visit",
             when: formatWhen(visit.starts_at),
-            link: customerLink(job),
+            link: customerLink(visit),
           },
         },
         // A moved visit is told again; the same time twice is one message.
         `appointment.confirmed:${appointmentId}:${visit.starts_at.toISOString()}`,
+      );
+    },
+
+    async visitProposed(client, appointmentId) {
+      const visit = await visitFacts(client, appointmentId, ["proposed"]);
+      if (!visit)
+        throw new Error(`notices: appointment ${appointmentId} is not a proposed visit here`);
+      await notify.send(
+        client,
+        {
+          businessId: visit.business_id,
+          template: "appointment.proposed",
+          to: customerTo(visit),
+          vars: {
+            customerName: visit.customer_name,
+            businessName: visit.business_name,
+            when: formatWhen(visit.starts_at),
+            link: customerLink(visit),
+          },
+        },
+        `appointment.proposed:${appointmentId}`,
+      );
+    },
+
+    async visitAnswered(client, appointmentId) {
+      const visit = await visitFacts(client, appointmentId, ["planned", "declined"]);
+      if (!visit)
+        throw new Error(`notices: appointment ${appointmentId} is not an answered visit here`);
+      const common = {
+        customerName: visit.customer_name,
+        number: `#${visit.number}`,
+        when: formatWhen(visit.starts_at),
+        link: ownerLink(visit.job_id),
+      };
+      await notify.send(
+        client,
+        {
+          businessId: visit.business_id,
+          template: "appointment.response",
+          to: await ownerTo(client),
+          vars:
+            visit.status === "planned"
+              ? { ...common, answer: "confirmed" }
+              : {
+                  ...common,
+                  answer: "declined",
+                  ...(visit.customer_note && { note: visit.customer_note }),
+                },
+        },
+        `appointment.response:${appointmentId}`,
       );
     },
 

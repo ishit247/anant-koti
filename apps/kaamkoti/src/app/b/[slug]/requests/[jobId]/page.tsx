@@ -21,8 +21,10 @@ import { CustomerNav } from "../../../../customer-nav.tsx";
 import { WorkItems } from "../../../../work-items.tsx";
 import { RequestForm } from "../../request/request-form.tsx";
 import { QuoteAnswer } from "./quote-answer.tsx";
+import { VisitAnswer } from "./visit-answer.tsx";
 
-// One of the signed-in customer's own requests (D15): the quote with its answer forms (posting to ./answer), and
+// One of the signed-in customer's own requests (D15): the work's time once proposed (posting to ./visit), the
+// quote with its answer forms (posting to ./answer), and
 // the new-request screens over its work items until a quote is accepted (posting to ./edit); after that, the
 // items with their photos. Another customer's or business's id answers 404.
 // biome-ignore lint/correctness/noUnusedVariables: read by scanRoutes, which scans the source text
@@ -50,10 +52,15 @@ export default async function RequestDetail({
   searchParams,
 }: {
   params: Promise<{ slug: string; jobId: string }>;
-  searchParams: Promise<{ result?: string; error?: string; answer?: string | string[] }>;
+  searchParams: Promise<{
+    result?: string;
+    error?: string;
+    answer?: string | string[];
+    visit?: string | string[];
+  }>;
 }) {
   const { slug, jobId } = await params;
-  const { result, error, answer } = await searchParams;
+  const { result, error, answer, visit } = await searchParams;
   const space = `/b/${encodeURIComponent(slug)}`;
   const { job, own, book } = await withCustomer(
     slug,
@@ -86,6 +93,15 @@ export default async function RequestDetail({
         <p className="notice" role="status">
           {done}
         </p>
+      ) : null}
+      {job.workTime ? (
+        <VisitAnswer
+          work={job.workTime}
+          status={job.status}
+          businessName={page.name}
+          action={`${space}/requests/${job.id}/visit`}
+          said={typeof visit === "string" ? visit : undefined}
+        />
       ) : null}
       {job.quote ? (
         <QuoteAnswer

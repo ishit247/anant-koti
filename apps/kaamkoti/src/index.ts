@@ -110,17 +110,25 @@ export {
   editRequest,
 } from "./request-edit.ts";
 export {
+  answerVisit,
   assignableMembers,
+  confirmVisitFor,
+  type HeldStatus,
   moveVisit,
   type Planner,
   plannedVisits,
   planVisit,
   VISIT_KINDS,
   type Visit,
+  type VisitAnswer,
+  type VisitAnswerError,
+  type VisitAnswerResult,
   type VisitError,
   type VisitInput,
   type VisitKind,
   type VisitResult,
+  type WorkTime,
+  workTime,
 } from "./schedule.ts";
 export {
   latestTradeTemplate,

@@ -7,6 +7,7 @@ import { createOutbox } from "@bodhchakra/outbox";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   answerQuote,
+  answerVisit,
   createNotices,
   logPhoneEnquiry,
   migrations,
@@ -16,6 +17,7 @@ import {
   RUNTIME_ROLE,
   seed,
   sendQuote,
+  type VisitAnswer,
 } from "../src/index.ts";
 
 const SHARMA = "10000000-0000-4000-8000-000000000001";
@@ -235,35 +237,68 @@ describe("notices", () => {
     });
   });
 
-  it("tells the customer when the work visit is planned", async () => {
+  it("asks the customer to confirm the work's time, and tells the owner and the customer the answer", async () => {
     const { jobId, quoteId } = await quotedRequest();
-    const appointmentId = await sharma(async (c) => {
+    const propose = (start: string) =>
+      sharma(async (c) => {
+        const proposed = await planVisit(c, audit, sharmaOwner, {
+          jobId,
+          kind: "work",
+          technicianId: SHARMA_OWNER,
+          start,
+          minutes: 60,
+        });
+        if (!proposed.ok) throw new Error(proposed.error);
+        await notices.visitProposed(c, proposed.appointmentId);
+        return proposed.appointmentId;
+      });
+    const answer = (appointmentId: string, given: VisitAnswer) =>
+      sharma(async (c) => {
+        const { rows } = await c.query<{ customer_id: string }>(
+          "select customer_id from kk.job where id = $1",
+          [jobId],
+        );
+        const customer = { id: rows[0]?.customer_id as string, businessId: SHARMA };
+        const answered = await answerVisit(c, audit, customer, jobId, appointmentId, given);
+        if (!answered.ok) throw new Error(answered.error);
+        await notices.visitAnswered(c, appointmentId);
+        if (given.kind === "confirm") await notices.visitPlanned(c, appointmentId);
+      });
+
+    await sharma(async (c) => {
       const answered = await answerQuote(c, audit, jobId, quoteId, { kind: "accept" });
       if (!answered.ok) throw new Error(answered.error);
       await notices.quoteAnswered(c, quoteId);
-      const planned = await planVisit(c, audit, sharmaOwner, {
-        jobId,
-        kind: "work",
-        technicianId: SHARMA_OWNER,
-        start: "2026-12-05T10:30",
-        minutes: 60,
-      });
-      if (!planned.ok) throw new Error(planned.error);
-      await notices.visitPlanned(c, planned.appointmentId);
-      return planned.appointmentId;
     });
+    const first = await propose("2026-12-05T10:30");
+    await answer(first, { kind: "decline", note: "Afternoons suit me" });
+    const second = await propose("2026-12-05T15:00");
+    await answer(second, { kind: "confirm" });
 
     expect((await queued(`notify:quote.response:${quoteId}`))[0]?.payload.vars).toMatchObject({
       answer: "accepted",
     });
-    const [message] = (await ofTemplate("appointment.confirmed")).filter((payload) =>
+    expect((await queued(`notify:appointment.proposed:${first}`))[0]?.payload).toMatchObject({
+      to: { phone: "+919000001099" },
+      vars: {
+        when: "5 Dec, 10:30 am",
+        link: `${PUBLIC_ORIGIN}/b/sharma-cooling/requests/${jobId}`,
+      },
+    });
+    expect((await queued(`notify:appointment.response:${first}`))[0]?.payload).toMatchObject({
+      to: { identityId: ownerIdentity },
+      vars: { answer: "declined", note: "Afternoons suit me", link: `${APP_ORIGIN}/jobs/${jobId}` },
+    });
+    expect((await queued(`notify:appointment.response:${second}`))[0]?.payload.vars).toMatchObject({
+      answer: "confirmed",
+      when: "5 Dec, 3:00 pm",
+    });
+    const confirmed = (await ofTemplate("appointment.confirmed")).filter((payload) =>
       String((payload.vars as Record<string, string>).link).endsWith(jobId),
     );
-    expect(message).toMatchObject({
-      to: { phone: "+919000001099" },
-      vars: { visit: "work visit", when: "5 Dec, 10:30 am" },
-    });
-    expect(appointmentId).toBeTruthy();
+    expect(confirmed).toMatchObject([
+      { to: { phone: "+919000001099" }, vars: { visit: "work visit", when: "5 Dec, 3:00 pm" } },
+    ]);
   });
 
   it("queues the owner's expiry notice at the quote's validity", async () => {

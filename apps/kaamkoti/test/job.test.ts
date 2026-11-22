@@ -33,6 +33,7 @@ const SECTION_6 = [
   ["quoted", "edit", "requested", "customer"],
   ["quoted", "close_lost", "lost", "owner"],
   ["accepted", "schedule", "scheduled", "owner"],
+  ["accepted", "schedule", "scheduled", "customer"],
   ["scheduled", "check_in", "in_progress", "technician"],
   ["scheduled", "check_in", "in_progress", "owner"],
   ["in_progress", "complete", "completed", "technician"],

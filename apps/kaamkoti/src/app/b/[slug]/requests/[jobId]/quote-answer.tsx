@@ -6,7 +6,7 @@ import { QuoteSummary } from "../../../../quote-summary.tsx";
 
 /** What ./answer reports back, by `?answer=`; success is a status, anything else an alert. */
 const ANSWERED: Record<string, (business: string) => string> = {
-  accept: (b) => `Thank you. ${b} has your acceptance and will be in touch to schedule the work.`,
+  accept: (b) => `Thank you. ${b} has your acceptance and will propose a time for the work here.`,
   reject: (b) => `You turned down the quote. ${b} may send you a new one.`,
   counter: (b) => `Your price is sent. ${b} will reply with a new quote or a call.`,
 };

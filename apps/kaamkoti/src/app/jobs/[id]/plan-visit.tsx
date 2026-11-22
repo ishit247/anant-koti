@@ -1,6 +1,11 @@
 "use client";
 import { useActionState } from "react";
-import { type PlanVisitState, planVisitAction } from "./actions.ts";
+import {
+  type ConfirmVisitState,
+  confirmVisitAction,
+  type PlanVisitState,
+  planVisitAction,
+} from "./actions.ts";
 
 const LENGTHS = [
   [30, "30 minutes"],
@@ -56,8 +61,41 @@ export function PlanVisit({
           ))}
         </select>
       </label>
+      {workable ? (
+        <p className="muted small">
+          The work's time goes to the customer to confirm; a site visit is planned at once.
+        </p>
+      ) : null}
       <button type="submit" disabled={pending}>
         {pending ? "Planning…" : "Plan it"}
+      </button>
+      {state.error ? (
+        <p className="error" role="alert">
+          {state.error}
+        </p>
+      ) : null}
+    </form>
+  );
+}
+
+/** For a customer who agreed to the proposed time by phone: the owner confirms it for them. */
+export function ConfirmForCustomer({
+  jobId,
+  appointmentId,
+}: {
+  jobId: string;
+  appointmentId: string;
+}) {
+  const [state, action, pending] = useActionState<ConfirmVisitState, FormData>(
+    confirmVisitAction,
+    {},
+  );
+  return (
+    <form action={action}>
+      <input type="hidden" name="jobId" value={jobId} />
+      <input type="hidden" name="appointmentId" value={appointmentId} />
+      <button type="submit" className="quiet" disabled={pending}>
+        {pending ? "Confirming…" : "They agreed by phone: confirm"}
       </button>
       {state.error ? (
         <p className="error" role="alert">

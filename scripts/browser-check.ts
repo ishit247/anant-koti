@@ -467,6 +467,64 @@ try {
   if (await page.getByRole("button", { name: "Revise the quote" }).count())
     problems.push("an accepted quote still offers a revision");
   await shoot(page, "13i-job-accepted");
+
+  // Agreeing the time (3.1b): the owner proposes the work's time; the job stays accepted until she confirms.
+  // She asks for another, with a note the owner sees; the owner proposes again and she confirms.
+  const proposeAt = async (start: string) => {
+    await page.goto(jobUrl);
+    await page.fill("input[name=start]", start);
+    await page.getByRole("button", { name: "Plan it" }).click();
+    await page.getByText("Waiting for the customer to confirm").waitFor();
+  };
+  await proposeAt("2031-04-01T10:00");
+  await shoot(page, "13j-job-time-proposed");
+  await expectMail(customerEmail, /proposes .* for your work$/, "the customer's proposed time");
+  await form.goto(requestPage);
+  if (!(await form.getByRole("button", { name: "Confirm this time" }).count()))
+    problems.push("the customer is not asked to confirm the proposed time");
+  const visitTo = (s: string, id: string) => `${PUBLIC}/b/${s}/requests/${id}/visit`;
+  const proposal = await form.locator("input[name=appointment]").first().inputValue();
+  const crossSiteVisit = await customer.request.post(visitTo(slug, jobId), {
+    headers: { "sec-fetch-site": "cross-site", origin: PUBLIC },
+    form: { appointment: proposal, answer: "confirm" },
+    maxRedirects: 0,
+  });
+  if (crossSiteVisit.status() !== 403)
+    problems.push(`a cross-site answer to a time answered ${crossSiteVisit.status()}`);
+  for (const [whose, s, id] of [
+    ["another business's", "sharma-cooling", jobId],
+    ["another customer's", "sharma-cooling", SHARMA_2],
+  ] as const) {
+    const answered = await customer.request.post(visitTo(s, id), {
+      headers: { "sec-fetch-site": "same-origin" },
+      form: { appointment: proposal, answer: "confirm" },
+      maxRedirects: 0,
+    });
+    if (answered.status() !== 404)
+      problems.push(`an answer to ${whose} time answered ${answered.status()}`);
+  }
+  await shoot(form, "13k-customer-time-proposed");
+  await form.getByText("Ask for another time").first().click();
+  await form.fill("textarea[name=note]", "Afternoons, please");
+  await form.getByRole("button", { name: "Ask for another time" }).click();
+  await form.getByRole("status").filter({ hasText: "will propose another time" }).waitFor();
+  await expectMail(email, /asks for another time/, "the owner's notice of a declined time");
+  await page.goto(jobUrl);
+  if (!(await page.getByText('"Afternoons, please"').count()))
+    problems.push("the owner does not see the customer's note on the time");
+  await proposeAt("2031-04-01T15:00");
+  await form.goto(requestPage);
+  await form.getByRole("button", { name: "Confirm this time" }).click();
+  await form.getByRole("status").filter({ hasText: "The time is confirmed" }).waitFor();
+  await expectMail(email, /confirmed .*\(#/, "the owner's notice of a confirmed time");
+  await expectMail(customerEmail, /your work visit on /, "the customer's confirmed visit");
+  await shoot(form, "13l-customer-time-confirmed");
+  await page.goto(jobUrl);
+  if (await page.getByText("Waiting for the customer to confirm").count())
+    problems.push("a confirmed time still waits for the customer");
+  if (!(await page.getByText("Scheduled").count()))
+    problems.push("the job is not scheduled once the customer confirmed");
+  await shoot(page, "13m-job-scheduled");
   await customer.close();
 
   // A signed-in customer (D15): seeded Anita opens "My requests" on the bare domain, signs in there, and sees
