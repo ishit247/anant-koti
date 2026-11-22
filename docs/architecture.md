@@ -441,19 +441,19 @@ receiver code handles provider webhooks, with the provider's signature in place 
   `failed` marks it `failed`, audited, with Meta's numeric code logged. Each change is guarded by the status it
   comes from, so a replay changes nothing. The message stores Meta's id (`provider_id`) to be found by it.
 
-| Template                                                                 | To                                              | When                                           |
-| ------------------------------------------------------------------------ | ----------------------------------------------- | ---------------------------------------------- |
-| `request.received`, `request.acknowledged`                               | owner; customer (linking to their request page) | a customer sends a request (not a phone entry) |
-| `request.edited`                                                         | owner                                           | the customer saves a change to the request     |
-| `quote.sent`                                                             | customer                                        | quote sent or revised                          |
-| `quote.response`                                                         | owner                                           | accepted, rejected, countered                  |
-| `quote.expired`                                                          | owner                                           | a sent quote is still unanswered at its expiry |
-| `appointment.proposed`                                                   | customer                                        | the owner proposes the work's time (3.1b)      |
-| `appointment.response`                                                   | owner                                           | the customer confirms it or asks for another   |
-| `appointment.confirmed`, `appointment.reminder`, `appointment.on_the_way` | customer                                       | planned; 24 h before (3.3b); tapped by the owner |
-| `change_order.proposed`                                                  | customer                                        | technician or owner proposes                   |
-| `invoice.issued`, `payment.received`                                     | customer; owner                                 | complete; payment recorded                     |
-| `review.request`, `review.held`                                          | customer; owner                                 | invoice paid; low rating                       |
+| Template                                                                  | To                                              | When                                             |
+| ------------------------------------------------------------------------- | ----------------------------------------------- | ------------------------------------------------ |
+| `request.received`, `request.acknowledged`                                | owner; customer (linking to their request page) | a customer sends a request (not a phone entry)   |
+| `request.edited`                                                          | owner                                           | the customer saves a change to the request       |
+| `quote.sent`                                                              | customer                                        | quote sent or revised                            |
+| `quote.response`                                                          | owner                                           | accepted, rejected, countered                    |
+| `quote.expired`                                                           | owner                                           | a sent quote is still unanswered at its expiry   |
+| `appointment.proposed`                                                    | customer                                        | the owner proposes the work's time (3.1b)        |
+| `appointment.response`                                                    | owner                                           | the customer confirms it or asks for another     |
+| `appointment.confirmed`, `appointment.reminder`, `appointment.on_the_way` | customer                                        | planned; 24 h before (3.3b); tapped by the owner |
+| `change_order.proposed`                                                   | customer                                        | technician or owner proposes                     |
+| `invoice.issued`, `payment.received`                                      | customer; owner                                 | complete; payment recorded                       |
+| `review.request`, `review.held`                                           | customer; owner                                 | invoice paid; low rating                         |
 
 Sign-in OTPs go straight from identity to its own channel, inside platform, not through the outbox. Technician
 invites in 0.7 are shared by the owner: copy the link, or a `wa.me` share. Sending them by notify waits for 3.2.

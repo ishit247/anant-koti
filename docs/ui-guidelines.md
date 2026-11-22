@@ -156,12 +156,12 @@ Before a UI step is done (see CLAUDE.md, "How much verification"):
 
 ## Reference screens
 
-| Screen                                  | Look                                                           |
-| --------------------------------------- | -------------------------------------------------------------- |
-| Request form `/b/[slug]/request`        | Reference: hero, panels, tiles, sheet editor, photo drop, dock |
-| Customer home `/b/[slug]/requests`      | Hero, `nav.seg`, cards with status chips, dock "New request"   |
-| Customer profile `/b/[slug]/profile`    | Hero, panel of `dl.facts`, quiet "Sign out"                    |
-| Owner pages, customer request page      | Panels, tiles with an edit sheet, docked main action           |
+| Screen                               | Look                                                           |
+| ------------------------------------ | -------------------------------------------------------------- |
+| Request form `/b/[slug]/request`     | Reference: hero, panels, tiles, sheet editor, photo drop, dock |
+| Customer home `/b/[slug]/requests`   | Hero, `nav.seg`, cards with status chips, dock "New request"   |
+| Customer profile `/b/[slug]/profile` | Hero, panel of `dl.facts`, quiet "Sign out"                    |
+| Owner pages, customer request page   | Panels, tiles with an edit sheet, docked main action           |
 
 The owner screens (price list, quote editor, phone enquiry, job page) and the customer request page moved to the
 new layout in step 3.2d.
