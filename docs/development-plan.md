@@ -4,8 +4,8 @@ What we are building: [product-brief.md](product-brief.md). Shared modules:
 [platform-modules.md](platform-modules.md). The design is in [architecture.md](architecture.md);
 its first table says which sections each step reads.
 
-**Current position:** Step 2.5 done (2026-11-22); phase 2 closing (`validate full`, tag `phase-2-done`). Next:
-step 3.1 (STANDARD: scheduling), best in a fresh session. Negotiation: the job state machine in `src/job.ts`
+**Current position:** Step 2.5 done (2026-11-22); phase 2 done (`validate full` green, tag `phase-2-done`).
+Next: step 3.1 (STANDARD: scheduling), best in a fresh session. Negotiation: the job state machine in `src/job.ts`
 (`jobTransition` is section 6's table; `transitionJob` locks the job, moves it and audits `job.<event>`, naming
 the customer when they act by link; `sendQuote` now moves the job through it, `quote_sent` or `revise`, so the
 old `quote.sent` audit is `job.quote_sent`). `answerQuote` in `src/quote.ts`: the customer answers the version
