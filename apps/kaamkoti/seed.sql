@@ -55,24 +55,12 @@ insert into kk.customer_address (id, business_id, customer_id, label, contact_na
    '88 4th Cross, Jayanagar, Bengaluru', null, null, now() - interval '2 days');
 
 -- Both businesses are onboarded. Sharma started from the ac_repair template (as startFromTemplate would copy it);
--- Kaveri built its own list and asks no questions, so the form's no-questions path has a business too. Prices are
--- in paise, tax in basis points.
-insert into kk.business_profile (business_id, trade_key, about, service_area, intake, checklist, terms) values
+-- Kaveri built its own list. Prices are in paise, tax in basis points.
+insert into kk.business_profile (business_id, trade_key, about, service_area, checklist, terms) values
   ('10000000-0000-4000-8000-000000000001', 'ac_repair', 'AC and appliance repair across Pune since 2012.',
-   'Pune, Pimpri-Chinchwad', '[
-     {"key":"appliance","label":"Which appliance?","type":"choice","required":true,
-      "options":["Split AC","Window AC","Refrigerator","Washing machine"]},
-     {"key":"brand","label":"Brand and model, if you know it","type":"text","required":false},
-     {"key":"age_years","label":"Approximate age in years","type":"number","required":false},
-     {"key":"symptom","label":"What is happening?","type":"choice","required":true,
-      "options":["Not cooling","Not turning on","Water leaking","Strange noise","Error code showing",
-                 "Needs installation or removal","Routine service"]},
-     {"key":"problem","label":"Anything else we should know?","type":"text","required":false},
-     {"key":"floor","label":"Floor number (for access)","type":"number","required":false},
-     {"key":"photo","label":"Photo of the appliance or error code","type":"photo","required":false}
-   ]', '[{"key":"power_off","label":"Power isolated before opening"}]',
+   'Pune, Pimpri-Chinchwad', '[{"key":"power_off","label":"Power isolated before opening"}]',
    'Quote is valid for 7 days. Parts replaced carry a 30-day warranty. Payment is due on completion.'),
-  ('20000000-0000-4000-8000-000000000002', 'electrician', '', 'Bengaluru south', '[]', '[]',
+  ('20000000-0000-4000-8000-000000000002', 'electrician', '', 'Bengaluru south', '[]',
    'Payment is due on completion.');
 
 insert into kk.catalogue_item (id, business_id, name, unit, unit_price_minor, tax_rate_bp, position) values

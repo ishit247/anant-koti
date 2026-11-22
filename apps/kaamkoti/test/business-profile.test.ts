@@ -76,7 +76,7 @@ describe("business profile and catalogue on the seeded database", () => {
 
     const profile = await app.withTenant(fresh, businessProfile);
     expect(profile?.tradeKey).toBe("ac_repair");
-    expect(profile?.intake.length).toBeGreaterThan(0);
+    expect(profile?.checklist.length).toBeGreaterThan(0);
     const items = await app.withTenant(fresh, listCatalogue);
     expect(items.map((i) => i.name)).toContain("AC gas refill");
     await expect(

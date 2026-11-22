@@ -3,13 +3,12 @@
 import type { DbClient } from "@bodhchakra/db";
 import { parseDecimal } from "@bodhchakra/money";
 import { z } from "zod";
-import { checklistItem, intakeQuestion, latestTradeTemplate, UNITS } from "./trade-template.ts";
+import { checklistItem, latestTradeTemplate, UNITS } from "./trade-template.ts";
 
 const profileRow = z.strictObject({
   trade_key: z.string(),
   about: z.string(),
   service_area: z.string(),
-  intake: z.array(intakeQuestion),
   checklist: z.array(checklistItem),
   terms: z.string(),
 });
@@ -18,7 +17,6 @@ export interface BusinessProfile {
   readonly tradeKey: string;
   readonly about: string;
   readonly serviceArea: string;
-  readonly intake: z.infer<typeof profileRow>["intake"];
   readonly checklist: z.infer<typeof profileRow>["checklist"];
   readonly terms: string;
 }
@@ -26,7 +24,7 @@ export interface BusinessProfile {
 /** The current business's profile, or null before onboarding. Stored JSON is parsed again on read. */
 export async function businessProfile(client: DbClient): Promise<BusinessProfile | null> {
   const { rows } = await client.query(
-    "select trade_key, about, service_area, intake, checklist, terms from kk.business_profile",
+    "select trade_key, about, service_area, checklist, terms from kk.business_profile",
   );
   if (!rows[0]) return null;
   const row = profileRow.parse(rows[0]);
@@ -34,7 +32,6 @@ export async function businessProfile(client: DbClient): Promise<BusinessProfile
     tradeKey: row.trade_key,
     about: row.about,
     serviceArea: row.service_area,
-    intake: row.intake,
     checklist: row.checklist,
     terms: row.terms,
   };
@@ -50,15 +47,9 @@ export async function startFromTemplate(
   if (!template) throw new Error(`No trade template "${templateKey}"`);
   const { body } = template;
   await client.query(
-    `insert into kk.business_profile (business_id, trade_key, intake, checklist, terms)
-     values ($1, $2, $3, $4, $5)`,
-    [
-      businessId,
-      template.key,
-      JSON.stringify(body.intake),
-      JSON.stringify(body.checklist),
-      body.terms,
-    ],
+    `insert into kk.business_profile (business_id, trade_key, checklist, terms)
+     values ($1, $2, $3, $4)`,
+    [businessId, template.key, JSON.stringify(body.checklist), body.terms],
   );
   for (const [position, item] of body.catalogue.entries()) {
     await client.query(

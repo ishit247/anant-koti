@@ -1,4 +1,4 @@
-// A trade template: the starting catalogue, intake questions, visit checklist and terms a business copies at
+// A trade template: the starting catalogue, visit checklist and terms a business copies at
 // onboarding (docs/architecture.md 5.3). Global and read-only for the app; written only by seeds, always through
 // saveTradeTemplate so invalid JSON never reaches the table.
 import type { DbClient } from "@bodhchakra/db";
@@ -18,19 +18,6 @@ const catalogueItem = z.strictObject({
   taxRateBp: z.int().min(0).max(10_000),
 });
 
-export const intakeQuestion = z.discriminatedUnion("type", [
-  z.strictObject({ key, label: text(200), type: z.literal("text"), required: z.boolean() }),
-  z.strictObject({ key, label: text(200), type: z.literal("number"), required: z.boolean() }),
-  z.strictObject({
-    key,
-    label: text(200),
-    type: z.literal("choice"),
-    required: z.boolean(),
-    options: z.array(text(80)).min(2).max(12),
-  }),
-  z.strictObject({ key, label: text(200), type: z.literal("photo"), required: z.boolean() }),
-]);
-
 export const checklistItem = z.strictObject({ key, label: text(200) });
 
 /** Keys are unique within each list: answers and results are stored under them. */
@@ -40,7 +27,6 @@ const unique = (items: readonly { key: string }[]) =>
 export const tradeTemplateBody = z.strictObject({
   title: text(80),
   catalogue: z.array(catalogueItem).min(1).max(100).refine(unique, "catalogue keys must be unique"),
-  intake: z.array(intakeQuestion).max(20).refine(unique, "intake keys must be unique"),
   checklist: z.array(checklistItem).max(30).refine(unique, "checklist keys must be unique"),
   terms: text(4000),
 });

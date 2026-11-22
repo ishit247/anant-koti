@@ -49,10 +49,10 @@ describe("trade templates", () => {
     dupKeys.body.checklist = [dupKeys.body.checklist[0]!, dupKeys.body.checklist[0]!];
     const extraField = { ...valid(), key: "extra" } as any;
     extraField.body.surprise = true;
-    const oneOption = { ...valid(), key: "one_option" } as any;
-    oneOption.body.intake[0].options = ["Only"];
+    const oldIntake = { ...valid(), key: "old_intake" } as any;
+    oldIntake.body.intake = [];
 
-    for (const input of [noPrice, badUnit, dupKeys, extraField, oneOption]) {
+    for (const input of [noPrice, badUnit, dupKeys, extraField, oldIntake]) {
       await expect(owner.tx((c) => saveTradeTemplate(c, input))).rejects.toThrow();
     }
     expect(await count()).toBe(before);

@@ -6,7 +6,6 @@ create table kk.business_profile (
   trade_key text not null check (trade_key ~ '^[a-z][a-z0-9_]{1,39}$'),
   about text not null default '' check (length(about) <= 2000),
   service_area text not null default '' check (length(service_area) <= 500),
-  intake jsonb not null check (jsonb_typeof(intake) = 'array'),
   checklist jsonb not null check (jsonb_typeof(checklist) = 'array'),
   terms text not null check (length(terms) <= 4000),
   created_at timestamptz not null default now()
