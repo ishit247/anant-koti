@@ -266,6 +266,7 @@ requested ──send quote──▶ quoted ──customer accepts──▶ accep
 | `quoted`                | reject or counter   | `quoted`      | customer                              | quote → `rejected` or `countered`; notify owner                                                    |
 | `quoted`                | revise              | `quoted`      | owner                                 | new version `sent`, previous → `superseded`                                                        |
 | `quoted`                | close as lost       | `lost`        | owner                                 | —                                                                                                  |
+| `quoted`                | edit work items     | `requested`   | customer                              | open quote → `superseded` (an unchanged save does nothing); notify owner                           |
 | `accepted`              | appointment planned | `scheduled`   | owner                                 | notify customer; reminder jobs                                                                     |
 | `scheduled`             | check in            | `in_progress` | assigned technician or owner          | `job_visit.checked_in_at`                                                                          |
 | `in_progress`           | complete            | `completed`   | assigned technician or owner          | invoice issued with pay link; notify customer                                                      |

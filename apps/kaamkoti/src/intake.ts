@@ -33,6 +33,8 @@ export const MAX_ITEM_DETAILS = 1000;
 
 /** One work item as it arrived. */
 export interface WorkItemInput {
+  /** Only when editing a request: the task this item already is; absent or empty for a new item. */
+  readonly id?: string;
   readonly title: string;
   readonly details: string;
   readonly photos: readonly Uint8Array[];
@@ -65,7 +67,7 @@ export type IntakeResult =
   | { readonly ok: true; readonly jobId: string; readonly number: number; readonly secret: string }
   | { readonly ok: false; readonly error: IntakeError };
 
-const ITEM_FIELD = /^item\.(\d{1,2})\.(title|details|photo)$/;
+const ITEM_FIELD = /^item\.(\d{1,2})\.(id|title|details|photo)$/;
 
 /**
  * The form's fields as the page names them: `addressId`, the place fields (readPlaceForm), `saveAddress` (a
@@ -78,7 +80,10 @@ export async function readIntakeForm(form: FormData): Promise<IntakeInput> {
     const value = form.get(name);
     return typeof value === "string" ? value : "";
   };
-  const items = new Map<number, { title: string; details: string; photos: Uint8Array[] }>();
+  const items = new Map<
+    number,
+    { id?: string; title: string; details: string; photos: Uint8Array[] }
+  >();
   for (const [name, value] of form) {
     const field = ITEM_FIELD.exec(name);
     if (!field) continue;
@@ -88,7 +93,7 @@ export async function readIntakeForm(form: FormData): Promise<IntakeInput> {
     if (field[2] === "photo") {
       if (typeof value !== "string" && value.size > 0)
         item.photos.push(new Uint8Array(await value.arrayBuffer()));
-    } else if (typeof value === "string") item[field[2] === "title" ? "title" : "details"] = value;
+    } else if (typeof value === "string") item[field[2] as "id" | "title" | "details"] = value;
   }
   return {
     ...readPlaceForm(form),
@@ -98,7 +103,9 @@ export async function readIntakeForm(form: FormData): Promise<IntakeInput> {
     items: [...items]
       .sort(([a], [b]) => a - b)
       .map(([, item]) => item)
-      .filter((item) => item.title.trim() || item.details.trim() || item.photos.length > 0),
+      .filter(
+        (item) => item.id || item.title.trim() || item.details.trim() || item.photos.length > 0,
+      ),
   };
 }
 
@@ -123,8 +130,41 @@ const workItems = z
   .min(1)
   .max(MAX_REQUEST_ITEMS);
 
+/**
+ * The photos of every item decoded and checked, before a connection is taken: decoding is the slow part. At most
+ * `MAX_REQUEST_PHOTOS` in all (an edit counts the photos already kept as well).
+ */
+export async function checkItemPhotos(
+  items: readonly WorkItemInput[],
+  alreadyKept = 0,
+): Promise<
+  | { readonly ok: true; readonly photos: CheckedImage[][] }
+  | {
+      readonly ok: false;
+      readonly error: "too_many_photos" | "photo_too_large" | "photo_not_an_image";
+    }
+> {
+  if (alreadyKept + items.flatMap((item) => item.photos).length > MAX_REQUEST_PHOTOS)
+    return { ok: false, error: "too_many_photos" };
+  const photos: CheckedImage[][] = [];
+  for (const item of items) {
+    const checkedItem: CheckedImage[] = [];
+    for (const bytes of item.photos) {
+      const checked = await checkImage(bytes);
+      if (!checked.ok)
+        return {
+          ok: false,
+          error: checked.reason === "too_large" ? "photo_too_large" : "photo_not_an_image",
+        };
+      checkedItem.push(checked.image);
+    }
+    photos.push(checkedItem);
+  }
+  return { ok: true, photos };
+}
+
 /** The same name, whatever the case and spacing the customer typed it with. */
-const sameName = (name: string) => name.trim().replace(/\s+/g, " ").toLowerCase();
+export const sameName = (name: string) => name.trim().replace(/\s+/g, " ").toLowerCase();
 
 /** Creates a request from the signed-in customer to the business with this slug. */
 export async function submitRequest(
@@ -151,24 +191,10 @@ export async function submitRequest(
   }
   const items = workItems.safeParse(input.items);
   if (!items.success) return { ok: false, error: "items" };
-  if (input.items.flatMap((item) => item.photos).length > MAX_REQUEST_PHOTOS)
-    return { ok: false, error: "too_many_photos" };
 
-  // Decoding is the slow part; it runs before a connection is taken.
-  const photos: CheckedImage[][] = [];
-  for (const item of input.items) {
-    const checkedItem: CheckedImage[] = [];
-    for (const bytes of item.photos) {
-      const checked = await checkImage(bytes);
-      if (!checked.ok)
-        return {
-          ok: false,
-          error: checked.reason === "too_large" ? "photo_too_large" : "photo_not_an_image",
-        };
-      checkedItem.push(checked.image);
-    }
-    photos.push(checkedItem);
-  }
+  const checked = await checkItemPhotos(input.items);
+  if (!checked.ok) return checked;
+  const photos = checked.photos;
 
   const businessId = await db.tx((client) => resolveSlug(client, slug));
   if (!businessId) return { ok: false, error: "not_found" };
@@ -219,7 +245,7 @@ export async function submitRequest(
 }
 
 /** The business's active catalogue items by name; the first in display order wins a shared name. */
-async function activeItemsByName(client: DbClient) {
+export async function activeItemsByName(client: DbClient) {
   const { rows } = await client.query<{ id: string; name: string }>(
     "select id, name from kk.catalogue_item where active order by position desc",
   );

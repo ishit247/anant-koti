@@ -55,6 +55,7 @@ export {
   reissueJobLink,
 } from "./inbox.ts";
 export {
+  checkItemPhotos,
   type IntakeError,
   type IntakeInput,
   type IntakeResult,
@@ -110,6 +111,13 @@ export {
   sendQuote,
 } from "./quote.ts";
 export { type AnswerForm, type QuoteForm, readAnswerForm, readQuoteForm } from "./quote-form.ts";
+export {
+  type CustomerRequest,
+  customerRequest,
+  type EditResult,
+  editRequest,
+  type RequestTask,
+} from "./request-edit.ts";
 export {
   assignableMembers,
   moveVisit,

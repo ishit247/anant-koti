@@ -68,7 +68,7 @@ export default async function CustomerHome({
         <ul className="cards">
           {jobs.map((job) => (
             <li key={job.id}>
-              <JobCard job={job} />
+              <JobCard job={job} href={`${space}/requests/${job.id}`} />
             </li>
           ))}
         </ul>
@@ -83,10 +83,10 @@ export default async function CustomerHome({
   );
 }
 
-function JobCard({ job }: { job: CustomerJobRow }) {
+function JobCard({ job, href }: { job: CustomerJobRow; href: string }) {
   const [first, ...rest] = job.tasks;
   return (
-    <div className="card">
+    <a className="card" href={href}>
       <div className="row">
         <strong>
           {first ?? `Request #${job.number}`}
@@ -99,6 +99,6 @@ function JobCard({ job }: { job: CustomerJobRow }) {
       <p className="muted small">
         #{job.number} · {formatWhen(job.createdAt)}
       </p>
-    </div>
+    </a>
   );
 }

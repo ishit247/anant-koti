@@ -4,7 +4,11 @@ What we are building: [product-brief.md](product-brief.md). Shared modules:
 [platform-modules.md](platform-modules.md). The design is in [architecture.md](architecture.md);
 its first table says which sections each step reads.
 
-**Current position:** Step 3.2g done (2026-11-22): address book and per-job contact. `kk.customer` lost
+**Current position:** Customer request page done (2026-11-22, part of 3.2f's second half): the work list's cards open
+`/b/<slug>/requests/<jobId>`, the new-request screens over the request's items (`request-edit.ts`, `…/edit`). Editable
+while `requested` or `quoted`; a save with no change keeps the quote, a change supersedes it and the job returns to
+`requested` (new customer event `edit`, architecture 6). Not yet: owner notice of the edit (3.2b), editing contact or
+address, removing photos; the rest of 3.2f's second half (quote answer, `/j/` removal) is still open. Before it, step 3.2g done (2026-11-22): address book and per-job contact. `kk.customer` lost
 `address`; `kk.customer_address` (in `0001`, at most 10, locked count) holds label, person, mobile, address and
 point; `kk.job` carries `contact_name`/`contact_phone_e164`, copied at send. `src/address-book.ts` owns places
 (`readPlace`, `chooseAddress`, `addAddress`, `updateAddress`, `deleteAddress`); `src/phone.ts` holds `toE164`.

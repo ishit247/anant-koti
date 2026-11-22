@@ -32,8 +32,29 @@ export interface RequestLimits {
   readonly addresses: number;
 }
 
+/** An item of a request being edited: the task it is, and the photos it already has. */
+export interface EditItem {
+  readonly id: string;
+  readonly title: string;
+  readonly details: string;
+  readonly photos: number;
+}
+
+/** Present when the form edits a sent request: the same screens, over its items, with the place read-only. */
+export interface EditRequest {
+  readonly items: readonly EditItem[];
+  readonly contact: string;
+  readonly address: string;
+  /** A quote is out: changing an item withdraws it, saving without a change keeps it. */
+  readonly quoted: boolean;
+}
+
 interface Item {
   readonly key: number;
+  /** The task this item already is, when editing; "" for a new one. */
+  readonly id: string;
+  /** Photos already sent with it, which an edit keeps. */
+  readonly kept: number;
   readonly title: string;
   readonly details: string;
   /** Object URLs of the chosen photos, for the previews. Not revoked: a page holds at most a few. */
@@ -53,6 +74,7 @@ export function RequestForm({
   limits,
   errors,
   refused,
+  edit,
 }: {
   /** The customer's own name and mobile here; null before their first request. */
   own: { name: string; phone: string } | null;
@@ -68,8 +90,11 @@ export function RequestForm({
   errors: Readonly<Record<string, string>>;
   /** The server's reason for refusing the last plain (no JavaScript) post, in words. */
   refused: string | null;
+  edit?: EditRequest;
 }) {
-  const [items, setItems] = useState<Item[]>([]);
+  const [items, setItems] = useState<Item[]>(() =>
+    (edit?.items ?? []).map((item, key) => ({ ...item, key, kept: item.photos, previews: [] })),
+  );
   const [editing, setEditing] = useState<number | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [itemProblem, setItemProblem] = useState<string | null>(null);
@@ -78,7 +103,7 @@ export function RequestForm({
   const roomInBook = book.length < limits.addresses;
   const [saveAddress, setSaveAddress] = useState(roomInBook);
   const [sending, setSending] = useState(false);
-  const nextKey = useRef(0);
+  const nextKey = useRef(edit?.items.length ?? 0);
   const files = useRef(new Map<number, HTMLInputElement>());
   const titles = useRef(new Map<number, HTMLInputElement>());
   /** The item as it was when the editor opened, so Back can undo; null for a new item. */
@@ -92,8 +117,9 @@ export function RequestForm({
 
   const prices = new Map(services.map((s) => [sameName(s.name), s.price]));
   const priceOf = (title: string) => prices.get(sameName(title)) ?? null;
-  const photosIn = (list: readonly Item[]) => list.reduce((n, item) => n + item.previews.length, 0);
-  const change = (key: number, update: Partial<Omit<Item, "key">>) =>
+  const photosIn = (list: readonly Item[]) =>
+    list.reduce((n, item) => n + item.kept + item.previews.length, 0);
+  const change = (key: number, update: Partial<Omit<Item, "key" | "id" | "kept">>) =>
     setItems((list) => list.map((item) => (item.key === key ? { ...item, ...update } : item)));
   const drop = (key: number) => setItems((list) => list.filter((item) => item.key !== key));
 
@@ -103,7 +129,7 @@ export function RequestForm({
       return;
     }
     const key = nextKey.current++;
-    setItems((list) => [...list, { key, title: "", details: "", previews: [] }]);
+    setItems((list) => [...list, { key, id: "", kept: 0, title: "", details: "", previews: [] }]);
     before.current = null;
     setItemProblem(null);
     setEditing(key);
@@ -153,7 +179,7 @@ export function RequestForm({
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (items.length === 0) {
-      setProblem("Add at least one work item.");
+      setProblem(edit ? "Keep at least one work item." : "Add at least one work item.");
       return;
     }
     setSending(true);
@@ -193,86 +219,96 @@ export function RequestForm({
           </p>
         ) : null}
 
-        <section className="panel" aria-labelledby="where-title">
-          <h2 id="where-title">Where and who</h2>
-          {book.length > 0 ? (
-            <div className="choices" role="radiogroup" aria-labelledby="where-title">
-              {book.map((entry) => (
-                <label key={entry.id} className="choice place">
+        {edit ? (
+          <section className="panel" aria-labelledby="where-title">
+            <h2 id="where-title">Where and who</h2>
+            <p>
+              <strong>{edit.contact}</strong>
+            </p>
+            <p className="muted">{edit.address}</p>
+          </section>
+        ) : (
+          <section className="panel" aria-labelledby="where-title">
+            <h2 id="where-title">Where and who</h2>
+            {book.length > 0 ? (
+              <div className="choices" role="radiogroup" aria-labelledby="where-title">
+                {book.map((entry) => (
+                  <label key={entry.id} className="choice place">
+                    <input
+                      type="radio"
+                      name="addressId"
+                      value={entry.id}
+                      checked={where === entry.id}
+                      onChange={() => setWhere(entry.id)}
+                    />
+                    <span className="text">
+                      <strong>
+                        {entry.label} · {entry.contactName} · {entry.contactPhone}
+                      </strong>
+                      <span className="muted small">{entry.address}</span>
+                    </span>
+                  </label>
+                ))}
+                <label className="choice place">
                   <input
                     type="radio"
                     name="addressId"
-                    value={entry.id}
-                    checked={where === entry.id}
-                    onChange={() => setWhere(entry.id)}
+                    value=""
+                    checked={where === ""}
+                    onChange={() => setWhere("")}
                   />
                   <span className="text">
-                    <strong>
-                      {entry.label} · {entry.contactName} · {entry.contactPhone}
-                    </strong>
-                    <span className="muted small">{entry.address}</span>
+                    <strong>Somewhere else</strong>
+                    <span className="muted small">Another place, or someone else to meet</span>
                   </span>
                 </label>
-              ))}
-              <label className="choice place">
-                <input
-                  type="radio"
-                  name="addressId"
-                  value=""
-                  checked={where === ""}
-                  onChange={() => setWhere("")}
+              </div>
+            ) : null}
+            {where === "" ? (
+              <>
+                <PlaceFields
+                  // A first place is most likely the customer's own home, so their details start it.
+                  defaults={
+                    book.length === 0 ? { contactName: own?.name, contactPhone: own?.phone } : {}
+                  }
+                  placeAction={placeAction}
+                  maxAddress={limits.address}
+                  self={own === null}
                 />
-                <span className="text">
-                  <strong>Somewhere else</strong>
-                  <span className="muted small">Another place, or someone else to meet</span>
-                </span>
-              </label>
-            </div>
-          ) : null}
-          {where === "" ? (
-            <>
-              <PlaceFields
-                // A first place is most likely the customer's own home, so their details start it.
-                defaults={
-                  book.length === 0 ? { contactName: own?.name, contactPhone: own?.phone } : {}
-                }
-                placeAction={placeAction}
-                maxAddress={limits.address}
-                self={own === null}
-              />
-              {roomInBook ? (
-                <>
-                  <label className="choice">
-                    <input
-                      type="checkbox"
-                      name="saveAddress"
-                      checked={saveAddress}
-                      onChange={(e) => setSaveAddress(e.target.checked)}
-                    />
-                    Save for next time
-                  </label>
-                  {saveAddress ? (
-                    <label>
-                      Save as
+                {roomInBook ? (
+                  <>
+                    <label className="choice">
                       <input
-                        name="label"
-                        required
-                        maxLength={limits.label}
-                        placeholder="Home, Parents, Shop"
-                        defaultValue={book.length === 0 ? "Home" : undefined}
+                        type="checkbox"
+                        name="saveAddress"
+                        checked={saveAddress}
+                        onChange={(e) => setSaveAddress(e.target.checked)}
                       />
+                      Save for next time
                     </label>
-                  ) : null}
-                </>
-              ) : (
-                <p className="hint">
-                  Your address book is full ({limits.addresses}). Delete one on your profile to save
-                  another.
-                </p>
-              )}
-            </>
-          ) : null}
-        </section>
+                    {saveAddress ? (
+                      <label>
+                        Save as
+                        <input
+                          name="label"
+                          required
+                          maxLength={limits.label}
+                          placeholder="Home, Parents, Shop"
+                          defaultValue={book.length === 0 ? "Home" : undefined}
+                        />
+                      </label>
+                    ) : null}
+                  </>
+                ) : (
+                  <p className="hint">
+                    Your address book is full ({limits.addresses}). Delete one on your profile to
+                    save another.
+                  </p>
+                )}
+              </>
+            ) : null}
+          </section>
+        )}
 
         <section className="panel" aria-labelledby="work-title">
           <h2 id="work-title">
@@ -296,8 +332,8 @@ export function RequestForm({
                   <strong>{item.title}</strong>
                   <span className="muted small">
                     {item.details ||
-                      (item.previews.length > 0
-                        ? `${item.previews.length} photo${item.previews.length === 1 ? "" : "s"}`
+                      (item.kept + item.previews.length > 0
+                        ? `${item.kept + item.previews.length} photo${item.kept + item.previews.length === 1 ? "" : "s"}`
                         : "Tap to add details")}
                   </span>
                 </span>
@@ -314,9 +350,16 @@ export function RequestForm({
 
         <div className="dock">
           <button type="submit" disabled={sending}>
-            {sending ? "Sending…" : "Send request"}
+            {sending ? (edit ? "Saving…" : "Sending…") : edit ? "Save changes" : "Send request"}
           </button>
-          <p className="muted small">Free to ask. You get a quote before any work starts.</p>
+          {edit?.quoted ? (
+            <p className="muted small">
+              Changing a work item withdraws the quote, and the business quotes again. Saving
+              without a change keeps it.
+            </p>
+          ) : edit ? null : (
+            <p className="muted small">Free to ask. You get a quote before any work starts.</p>
+          )}
         </div>
       </div>
 
@@ -325,6 +368,7 @@ export function RequestForm({
         return (
           <fieldset key={item.key} className="sheet" hidden={editing !== item.key}>
             <legend className="visually-hidden">Work item</legend>
+            {item.id ? <input type="hidden" name={`item.${i}.id`} value={item.id} /> : null}
             <div className="sheet-head">
               <button type="button" className="icon" aria-label="Back" onClick={back}>
                 <Icon name="back" size={22} />

@@ -30,6 +30,7 @@ const SECTION_6 = [
   ["quoted", "reject", "quoted", "customer"],
   ["quoted", "counter", "quoted", "customer"],
   ["quoted", "revise", "quoted", "owner"],
+  ["quoted", "edit", "requested", "customer"],
   ["quoted", "close_lost", "lost", "owner"],
   ["accepted", "schedule", "scheduled", "owner"],
   ["scheduled", "check_in", "in_progress", "technician"],
@@ -56,7 +57,7 @@ describe("the job state machine", () => {
     expect(new Set(allowed.map((t) => t.join(" ")))).toEqual(
       new Set(SECTION_6.map((t) => t.join(" "))),
     );
-    // Every combination was asked: 9 states × 11 events × 3 roles, of which the table allows these.
+    // Every combination was asked: 9 states × 12 events × 3 roles, of which the table allows these.
     expect(allowed).toHaveLength(SECTION_6.length);
   });
 
