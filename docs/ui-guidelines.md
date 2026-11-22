@@ -19,7 +19,7 @@ action), starting with the request form. Change a rule here and in the CSS in th
 4. **Say what happened.** Every form answers in words (`role="alert"` for errors, `role="status"` for
    success). Empty lists explain what to do next. Never a blank or broken page.
 5. **Customers and owners see the same style.** Customer pages (`/b/<slug>/…`, the customer space since
-   D15) use the same cards and buttons but no tab bar; they carry only the customer's own sign-in cookie. A customer page opens with `header.hero`, so the customer sees
+   D15) use the same cards and buttons but no tab bar; they carry only the customer's own sign-in cookie. A customer page opens with `BusinessHeader` (a sticky app bar), so the customer sees
    whose page it is before what it asks.
 6. **Finished, not a form dump.** Hierarchy does the work: a few `section.panel`s per screen, each a step
    with a sentence-case title; lists of things are `button.tile` rows that open an edit screen (`.sheet`),
@@ -54,39 +54,41 @@ input gets a brand edge and ring. Do not put an input without a visible label on
 
 ## Building blocks
 
-| Need                         | Use                                                                                   |
-| ---------------------------- | ------------------------------------------------------------------------------------- |
-| Page title with an action    | `<header className="bar"><h1>…</h1><a className="button">…</a></header>`              |
-| Section heading              | `<h2>` (small caps label style); inside `.panel` or `.sheet-head` it is sentence case |
-| A thing, or a group of facts | `.card`; a clickable one is `<a className="card">`                                    |
-| A list of things             | `<ul className="cards"><li><a className="card">…</a></li></ul>`; row inside: `.row`   |
-| Label and value pairs        | `<dl className="facts card">` with `dt` and `dd`                                      |
-| Status                       | `.chip` plus `new`, `go` or `wait` (`statusTone()`, `quoteTone()`, job-labels.ts)     |
-| Headline number / entry card | `.card.stat` (brand colour, count on the right)                                       |
-| Two or three buttons         | `.actions` (equal-width grid that wraps)                                              |
-| Photos                       | `.photos` (square thumbnails, `loading="lazy"`)                                       |
-| Priced lines and totals      | `QuoteSummary`: `ul.lines` of `.row`s, `.row.total`, figures in `.amount`             |
-| Nothing here yet             | `<p className="empty">` with the next step in words                                   |
-| A rare or second action      | `<details className="card">` with a `summary` verb, the form inside (no JavaScript)   |
-| One form, two views          | Main view a `.stack`, the other a `fieldset.sheet`, toggled with `hidden`             |
-| Customer page header         | `header.hero`: `.who` (`.avatar` initial + business name), `h1`, one muted line       |
-| A step of a form             | `section.panel` with an `h2` (sentence case; `.count` badge for a list)               |
-| A row to tap open            | `button.tile`: `.thumb`, `.text` (two lines), `.price`, `Icon name="chevron"`         |
-| Add another                  | `button.add` (dashed, with `Icon name="plus"`) closing a list of tiles                |
-| The screen's main action     | `.dock` at the end of the view: sticky at the bottom, full-width primary button       |
-| A screen inside a page       | `.sheet` with `.sheet-head` (`button.icon` back arrow + `h2`)                         |
-| Small inline action / state  | `button.link` (with an icon); `.pill` for a done state with a remove `×`              |
-| Photo picker                 | `label.drop` around a `.visually-hidden` file input; `.thumbs` previews below         |
-| Icons                        | `Icon` in `app/icons.tsx` (inline SVG, always beside words, `aria-hidden`)            |
-| Link to pass on              | `ShareLink` (copy and WhatsApp), never a hand-built share row                         |
-| Member navigation            | `OwnerNav` at the end of every owner page, with `current` set                         |
+| Need                         | Use                                                                                         |
+| ---------------------------- | ------------------------------------------------------------------------------------------- |
+| Page title with an action    | `<header className="bar"><h1>…</h1><a className="button">…</a></header>`                    |
+| Section heading              | `<h2>` (small caps label style); inside `.panel` or `.sheet-head` it is sentence case       |
+| A thing, or a group of facts | `.card`; a clickable one is `<a className="card">`                                          |
+| A list of things             | `<ul className="cards"><li><a className="card">…</a></li></ul>`; row inside: `.row`         |
+| Label and value pairs        | `<dl className="facts card">` with `dt` and `dd`                                            |
+| Status                       | `.chip` plus `new`, `go` or `wait` (`statusTone()`, `quoteTone()`, job-labels.ts)           |
+| Headline number / entry card | `.card.stat` (brand colour, count on the right)                                             |
+| Two or three buttons         | `.actions` (equal-width grid that wraps)                                                    |
+| Photos                       | `.photos` (square thumbnails, `loading="lazy"`)                                             |
+| Priced lines and totals      | `QuoteSummary`: `ul.lines` of `.row`s, `.row.total`, figures in `.amount`                   |
+| Nothing here yet             | `<p className="empty">` with the next step in words                                         |
+| A rare or second action      | `<details className="card">` with a `summary` verb, the form inside (no JavaScript)         |
+| One form, two views          | Main view a `.stack`, the other a `fieldset.sheet`, toggled with `hidden`                   |
+| Customer page header         | `BusinessHeader` (`app/business-header.tsx`): sticky `header.appbar` with back arrow, `.avatar`, name and place; the page's `h1` and one muted line as children, in `.hero` below |
+| A step of a form             | `section.panel` with an `h2` (sentence case; `.count` badge for a list)                     |
+| A row to tap open            | `button.tile`: `.thumb`, `.text` (two lines), `.price`, `Icon name="chevron"`               |
+| Add another                  | `button.add` (dashed, with `Icon name="plus"`) closing a list of tiles                      |
+| The screen's main action     | `.dock` at the end of the view: sticky at the bottom, full-width primary button             |
+| A screen inside a page       | `.sheet` with `.sheet-head` (`button.icon` back arrow + `h2`)                               |
+| Small inline action / state  | `button.link` (with an icon); `.pill` for a done state with a remove `×`                    |
+| Photo picker                 | `label.drop` around a `.visually-hidden` file input; `.thumbs` previews below               |
+| Icons                        | `Icon` in `app/icons.tsx` (inline SVG, always beside words, `aria-hidden`)                  |
+| One list seen several ways   | `nav.seg` of links with `aria-current="page"` (the customer's Active, Completed, Cancelled) |
+| Who is signed in             | `form.signed-in`: `.who-email` and a `button.link` "Sign out" posting the form              |
+| Link to pass on              | `ShareLink` (copy and WhatsApp), never a hand-built share row                               |
+| Member navigation            | `OwnerNav` at the end of every owner page, with `current` set                               |
 
 Buttons: primary is the default `button`/`.button` (3 rem tall, 0.8 rem radius); `quiet` is white with a
 soft edge; `link` is text-weight with an icon; `icon` is a round 44 px target (back arrow); `danger` is red
 text for removing. Every tap target is at least 44 px; labels never wrap. One primary button per screen,
 in the `.dock` when there is one.
 
-Layout of a form screen, top to bottom: `header.hero` (customer pages) or `header.bar` (owner pages), the
+Layout of a form screen, top to bottom: `BusinessHeader` (customer pages) or `header.bar` (owner pages), the
 refusal message if any, one `section.panel` per step, then the `.dock` with the main action and one muted
 line under it saying what happens next.
 
@@ -153,6 +155,7 @@ Before a UI step is done (see CLAUDE.md, "How much verification"):
 | Screen                                  | Look                                                           |
 | --------------------------------------- | -------------------------------------------------------------- |
 | Request form `/b/[slug]/request`        | Reference: hero, panels, tiles, sheet editor, photo drop, dock |
+| Customer home `/b/[slug]/requests`      | Hero, `nav.seg`, cards with status chips, dock "New request"   |
 | Customer job `/j/[secret]`, owner pages | New tokens (filled inputs, card depth), old layout             |
 
 The owner screens (price list, quote editor, phone enquiry, job page) and the customer job page move to the

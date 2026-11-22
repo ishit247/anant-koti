@@ -43,6 +43,23 @@ Customers (fictional +91 90000 numbers): Sharma has Anita Deshpande, Rahul Joshi
 Suresh Gowda, Lakshmi Rao and an Anita Deshpande with the same phone as Sharma's, to show one person can be a
 customer of two businesses.
 
+## Customers (signed in)
+
+Customers sign in on the bare domain, which in development is **localhost** (members use 127.0.0.1), so the
+two cookies never meet. Open a business page, tap **Work list** (or **New work**, the request form), and sign
+in with an email code as above. The form is filled in from the customer's own record; a mobile that is on
+another customer's record (Rahul's +91 90000 01002 at Sharma, say) is refused.
+
+| Email              | Business | Customer row                    | What they see                                                       |
+| ------------------ | -------- | ------------------------------- | ------------------------------------------------------------------- |
+| anita@example.com  | Sharma   | linked (signed-in customer)     | Sharma #1 only, at http://localhost:45450/b/sharma-cooling/requests |
+| anita@example.com  | Kaveri   | owner-entered, claimed by email | Kaveri #2 after her first visit to kaveri-electricals               |
+| suresh@example.com | Kaveri   | linked (signed-in customer)     | Kaveri #1 only                                                      |
+| meera@example.com  | Sharma   | owner-entered, claimed by email | An empty list (Meera has no request yet)                            |
+
+Any other email signs in too, and sees an empty list: they have not asked that business for anything. Their
+first request creates their customer row, with a mobile not already on another customer's record.
+
 ## Customer links (no account)
 
 Customers act through scoped links. The seed gives each business a link to its request #1, valid 30 days from

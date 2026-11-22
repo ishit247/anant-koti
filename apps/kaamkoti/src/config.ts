@@ -13,6 +13,11 @@ export const webConfig = z.object({
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
   /** Where browsers reach this app; the sign-in callback and sign-out return are built from it. */
   APP_ORIGIN: origin(/^https?$/),
+  /**
+   * The bare domain: public pages and the customer space (D15), with the customer sign-in callback. Another host
+   * than APP_ORIGIN, so each host's session cookie stays on it (architecture 1).
+   */
+  PUBLIC_ORIGIN: origin(/^https?$/),
   /** Platform's public sign-in host: where browsers go, and the ID token's `iss`. */
   IDENTITY_ORIGIN: origin(/^https?$/),
   /** Platform as this app reaches it on the internal network. */

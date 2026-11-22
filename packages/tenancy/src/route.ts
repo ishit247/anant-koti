@@ -7,10 +7,10 @@ import type { Role } from "./member.ts";
 
 export const SCOPES = [
   "member",
+  "customer",
   "customer-token",
   "invite-token",
   "public-slug",
-  "public-intake",
   "service",
   "provider-webhook",
   "none",

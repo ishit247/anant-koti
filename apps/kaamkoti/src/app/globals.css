@@ -344,17 +344,64 @@ dl.facts dd {
   border-radius: var(--radius);
 }
 
-/* A customer page's header: who they are dealing with, then what the page is for. */
-.hero {
-  display: grid;
-  gap: 0.35rem;
-  margin: 0.5rem 0 1.25rem;
-}
-.hero .who {
+/* A customer page opens with an app bar (back, avatar, business, place), then a title block. */
+.appbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  font-weight: 600;
+  min-height: 3.5rem;
+  margin: -1rem -1rem 1rem;
+  padding: 0.4rem 1rem;
+  background: var(--card);
+  box-shadow: 0 1px 0 var(--line);
+}
+.appbar .back {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 2.75rem;
+  height: 2.75rem;
+  margin-left: -0.75rem;
+  border-radius: 50%;
+  color: inherit;
+}
+.appbar .back:hover {
+  background: var(--brand-tint);
+}
+.appbar .title {
+  display: grid;
+  min-width: 0;
+  line-height: 1.25;
+}
+.appbar .name {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+.appbar .where {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 0.8rem;
+}
+.hero {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0 0 1.25rem;
+}
+.hero h1 {
+  font-size: 1.5rem;
+  letter-spacing: -0.01em;
+  margin: 0;
 }
 .avatar {
   display: grid;
@@ -367,10 +414,8 @@ dl.facts dd {
   color: #fff;
   font-weight: 700;
 }
-.hero h1 {
-  font-size: 1.75rem;
-  letter-spacing: -0.01em;
-  margin: 0.4rem 0 0;
+.actions + .actions {
+  margin-top: 0.5rem;
 }
 
 /* A titled group of fields or rows: one card per step of a form. */
@@ -382,6 +427,9 @@ dl.facts dd {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
+}
+.actions + .panel {
+  margin-top: 1rem;
 }
 .panel > h2 {
   display: flex;
@@ -605,6 +653,45 @@ button.danger:hover {
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+/* One list seen three ways (the customer's Active, Completed, Cancelled): equal segments, current one raised. */
+nav.seg {
+  display: grid;
+  grid-auto-columns: 1fr;
+  grid-auto-flow: column;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  margin: 0 0 1rem;
+  border-radius: 0.8rem;
+  background: var(--fill);
+}
+nav.seg a {
+  display: grid;
+  place-items: center;
+  min-height: 2.75rem;
+  border-radius: 0.6rem;
+  color: var(--muted);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+nav.seg a[aria-current="page"] {
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+/* Who is signed in, with the way out, on one line under a customer page's title. */
+.signed-in {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  min-width: 0;
+}
+.signed-in .who-email {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* The member tab bar: thumb reach on a phone, a plain bar on a desktop. */

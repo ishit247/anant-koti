@@ -4,6 +4,9 @@ create schema kk;
 create table kk.customer (
   id uuid primary key default gen_random_uuid(),
   business_id uuid not null references tenancy.business (id),
+  -- The platform identity that signs in as this customer (D15). Null for a customer the owner entered, until
+  -- someone signs in with the email (or, from 3.3, the phone) on the row and claims it.
+  identity_id uuid,
   name text not null check (length(name) between 1 and 120),
   phone_e164 text not null check (phone_e164 ~ '^\+[1-9][0-9]{6,14}$'),
   email text check (email ~ '^[^@\s]+@[^@\s]+$'),
@@ -13,8 +16,12 @@ create table kk.customer (
   unique (business_id, phone_e164),
   -- Target of composite foreign keys, so a row can only name a customer of its own business: foreign key
   -- checks do not see RLS.
-  unique (business_id, id)
+  unique (business_id, id),
+  -- One customer row per person per business; also the index the customer space resolves a session by.
+  unique (business_id, identity_id)
 );
+-- The claim looks for an unclaimed row by email, case ignored.
+create index customer_unclaimed_email on kk.customer (business_id, lower(email)) where identity_id is null;
 
 alter table kk.customer enable row level security;
 create policy tenant on kk.customer

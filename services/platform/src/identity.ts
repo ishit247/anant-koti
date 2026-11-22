@@ -232,29 +232,45 @@ export function createIdentity(deps: IdentityDeps, log: Logger): Identity {
   };
 }
 
-// The sign-in page: email, then the code. It posts to better-auth's routes with the signed authorize query, and
-// better-auth answers with the client's redirect once the session exists. No framework: this is the one page.
+// The sign-in page, for members and customers alike (asked 2026-11-22, from a sketch): the email and "Get code",
+// then the code and "Sign in" below the same email. It posts to better-auth's routes with the signed authorize
+// query, and better-auth answers with the client's redirect once the session exists. No framework: this is the
+// one page. The field becomes "Email or mobile" when phone sign-in arrives (3.3).
 const SIGN_IN_SCRIPT = `
 const q = location.search.slice(1);
 const form = document.querySelector("form");
-const email = form.elements.email, code = form.elements.code, note = document.querySelector("output");
+const email = form.elements.email, code = form.elements.code, go = form.querySelector("button[type=submit]");
+const step = document.getElementById("code-step"), change = document.getElementById("change");
+const note = document.querySelector("output");
 const post = (path, body) => fetch("${BASE_PATH}" + path, {
   method: "POST", headers: { "content-type": "application/json" }, credentials: "same-origin",
   body: JSON.stringify(body),
 });
+const busy = (label) => { go.disabled = label !== null; go.textContent = label ?? (step.hidden ? "Get code" : "Sign in"); };
+change.addEventListener("click", () => {
+  step.hidden = true; code.required = false; code.value = ""; email.readOnly = false;
+  note.textContent = ""; busy(null); email.focus();
+});
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   note.textContent = "";
-  if (code.hidden) {
-    const sent = await post("/email-otp/send-verification-otp", { email: email.value, type: "sign-in" });
-    if (!sent.ok) { note.textContent = sent.status === 429 ? "Too many codes. Try again later." : "Could not send a code."; return; }
-    code.hidden = false; code.required = true; code.focus();
+  if (step.hidden) {
+    busy("Sending…");
+    const sent = await post("/email-otp/send-verification-otp", { email: email.value, type: "sign-in" }).catch(() => null);
+    if (!sent?.ok) {
+      busy(null);
+      note.textContent = sent?.status === 429 ? "Too many codes. Try again later." : "Could not send a code. Try again.";
+      return;
+    }
+    step.hidden = false; code.required = true; email.readOnly = true; busy(null); code.focus();
     note.textContent = "We sent a 6-digit code to " + email.value + ".";
     return;
   }
-  const signedIn = await post("/sign-in/email-otp", { email: email.value, otp: code.value, oauth_query: q });
-  const body = await signedIn.json().catch(() => ({}));
-  if (signedIn.ok && body.url) { location.assign(body.url); return; }
+  busy("Signing in…");
+  const signedIn = await post("/sign-in/email-otp", { email: email.value, otp: code.value, oauth_query: q }).catch(() => null);
+  const body = await signedIn?.json().catch(() => ({}));
+  if (signedIn?.ok && body?.url) { location.assign(body.url); return; }
+  busy(null);
   note.textContent = "That code did not work. Check it, or ask for a new one.";
 });
 `;
@@ -263,12 +279,33 @@ const SIGN_IN_SCRIPT_HASH = createHash("sha256").update(SIGN_IN_SCRIPT).digest("
 const SIGN_IN_HTML = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sign in</title>
-<style>body{font:16px/1.5 system-ui,sans-serif;max-width:24rem;margin:3rem auto;padding:0 1rem}
-label,input,button{display:block;width:100%;box-sizing:border-box}input,button{font:inherit;padding:.6rem;margin:.25rem 0 1rem}</style>
-</head><body><h1>Sign in</h1>
-<form><label>Email<input name="email" type="email" autocomplete="email" required></label>
-<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" placeholder="6-digit code" hidden>
-<button>Continue</button><output role="status"></output></form>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#1c1b1a;background:#f6f3ee}
+main{max-width:24rem;margin:0 auto;padding:12vh 1rem 2rem}
+h1{font-size:1.75rem;line-height:1.25;letter-spacing:-.01em;margin:0 0 .25rem}
+p{margin:0}.muted{color:#5c5750}
+form{display:grid;gap:.9rem;margin-top:1.5rem;padding:1.1rem;background:#fff;border:1px solid #ebe5dc;border-radius:1rem;
+box-shadow:0 1px 2px rgb(28 27 26/.05),0 6px 20px rgb(28 27 26/.06)}
+[hidden]{display:none!important}
+label{display:grid;gap:.3rem;font-weight:600;font-size:.9rem}
+input{width:100%;min-height:3rem;padding:.6rem .8rem;font:inherit;font-weight:400;color:inherit;background:#f4f0ea;
+border:1px solid #ddd5ca;border-radius:.8rem}
+input:focus{outline:none;background:#fff;border-color:#b4411c;box-shadow:0 0 0 3px #fbe9e2}
+input[readonly]{color:#5c5750}
+input[name=code]{font-size:1.25rem;letter-spacing:.3em}
+button{min-height:3rem;width:100%;font:inherit;font-weight:600;color:#fff;background:#b4411c;border:0;border-radius:.8rem;cursor:pointer}
+button:hover{background:#8f3213}button:disabled{opacity:.6;cursor:progress}
+button.link{min-height:2.75rem;width:auto;justify-self:start;padding:0 .25rem;color:#8f3213;background:none}
+button.link:hover{text-decoration:underline}
+:focus-visible{outline:2px solid #b4411c;outline-offset:2px}
+output{color:#5c5750;font-size:.9rem}output:empty{display:none}
+</style>
+</head><body><main><h1>Sign in</h1><p class="muted">We send a code, no password needed.</p>
+<form><label>Email<input name="email" type="email" autocomplete="email" inputmode="email" required></label>
+<div id="code-step" hidden><label>Code<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="6 digits"></label>
+<button type="button" class="link" id="change">Use another email</button></div>
+<button type="submit">Get code</button><output role="status"></output></form></main>
 <script>${SIGN_IN_SCRIPT}</script></body></html>`;
 
 function signInPage(): Response {

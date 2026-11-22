@@ -6,21 +6,21 @@ Step 0.1, written 2026-11-21. Product: [product-brief.md](product-brief.md). Mod
 
 Read only what your step needs. Each step's sections:
 
-| Step     | Read                                  |
-| -------- | ------------------------------------- |
-| 0.2      | 1, 12                                 |
-| 0.3      | 1, 2, 4.1, 5                          |
-| 0.4      | 4, 5.2, 11                            |
-| 0.5      | 1, 9, 12 (`tokens`, `outbox`, `jobs`) |
-| 0.6, 0.7 | 3, 4.3                                |
-| 1.x      | 5.3, 6                                |
-| 2.1–2.3  | 5.3, 7, 10                            |
-| 2.4, 2.5 | 5.3, 6, 8                             |
-| 3.2e, 3.2f | 1, 3, 4.3, 5.3, 6, 7, 10            |
-| 3.x      | 5.3, 6, 9                             |
-| 4.x      | 5.3, 6, 8, 12 (`payments`)            |
-| 5.x      | 4, 13                                 |
-| 6.x      | 5.3, 9, 13                            |
+| Step       | Read                                  |
+| ---------- | ------------------------------------- |
+| 0.2        | 1, 12                                 |
+| 0.3        | 1, 2, 4.1, 5                          |
+| 0.4        | 4, 5.2, 11                            |
+| 0.5        | 1, 9, 12 (`tokens`, `outbox`, `jobs`) |
+| 0.6, 0.7   | 3, 4.3                                |
+| 1.x        | 5.3, 6                                |
+| 2.1–2.3    | 5.3, 7, 10                            |
+| 2.4, 2.5   | 5.3, 6, 8                             |
+| 3.2e, 3.2f | 1, 3, 4.3, 5.3, 6, 7, 10              |
+| 3.x        | 5.3, 6, 9                             |
+| 4.x        | 5.3, 6, 8, 12 (`payments`)            |
+| 5.x        | 4, 13                                 |
+| 6.x        | 5.3, 9, 13                            |
 
 ## 1. Containers, hosts and cookies
 
@@ -103,12 +103,19 @@ There is one identity per person, and it lives in `platform`. Each app keeps its
   `id_token_hint`, so the session row keeps the ID token until it is deleted. Global sign-out (an event
   telling every app to drop that identity's sessions) is out of MVP.
 - **Customers sign in the same way (D15, 3.2e).** The same Kaam Koti client has a second redirect URI on the
-  bare domain: `/b/<slug>/login` and `/b/<slug>/auth/callback` run steps 1–3 there, with `__Host-kk_login` and
-  `__Host-kk_customer` set on that host. `auth.session` gains `kind` (`member`, `customer`); each host accepts
-  only its own kind. Step 4 differs: a customer session belongs to an identity, not to a business. The
-  customer space resolves the slug's business, then the `customer` row for (business, identity); none yet means
-  the customer has not asked this business for anything, and their list is empty. Sign-out works as for members.
-  The sign-in page offers email now; phone joins in 3.3 like the members' sign-in.
+  bare domain, `/customer/callback`, one for every business: redirect URIs are registered exactly, so the slug
+  cannot be in it and travels in the return path instead. `/b/<slug>/login` starts steps 1–3 (returning to a
+  path under `/b/<slug>/`, by default the home), with `__Host-kk_login` and `__Host-kk_customer` set on that
+  host; started on another host, it moves to the bare domain first (and `/login` to `app.`). `auth.session` and
+  `auth.login_attempt` carry `kind` (`member`, `customer`); each `createAuth` serves one kind, so a host accepts
+  only its own sessions and finishes only its own attempts. Step 4 differs: a customer session belongs to an
+  identity, not to a business. The customer space resolves the slug's business, then the `customer` row for
+  (business, identity); with none, an owner-entered row with the session's verified email is claimed (audit
+  `customer.claimed`); still none means the customer has not asked this business for anything, and their list
+  is empty. Sign-out is a post to `/b/<slug>/signout` (from the app's own pages only: `fromOwnPages`, section 7), through platform's
+  end-session, back to `/customer/signed-out?state=<slug>`, which goes to `/b/<slug>`. One sign-in page serves
+  members and customers: the email and "Get code", then the code and "Sign in"; the field becomes "Email or
+  mobile" in 3.3.
 - Identity holds name, email and phone. A member row holds only `identity_id` and a display name copied at
   sign-in, so personal data has one home. (The ID token kept for sign-out also carries email and name; it
   lives no longer than the session.)
@@ -162,15 +169,15 @@ A permission answers _what_ the role may do. Scope answers _whose_ row it is. Bo
 - **Every route declares its scope** in an exported constant. A test (0.4) enumerates every route file, server
   action and webhook handler, and fails on any without a declaration.
 
-| Scope              | Credential                               | Resolves to                                          |
-| ------------------ | ---------------------------------------- | ---------------------------------------------------- |
-| `member`           | session cookie (`app.` only)             | business, member, role; then `withTenant`            |
+| Scope              | Credential                               | Resolves to                                                                                                 |
+| ------------------ | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `member`           | session cookie (`app.` only)             | business, member, role; then `withTenant`                                                                   |
 | `customer`         | customer session cookie (bare domain)    | business by slug, then the customer row for this identity; then `withTenant`, and only that customer's jobs |
-| `invite-token`     | token in the path (section 7)            | business and role; then `withTenant` to accept       |
-| `public-slug`      | none                                     | business by slug; read-only public columns           |
-| `service`          | signed request from platform (section 9) | the business in the payload; then `withTenant`       |
-| `provider-webhook` | provider signature                       | the business in the URL, verified against its secret |
-| `none`             | none                                     | health checks and static pages only                  |
+| `invite-token`     | token in the path (section 7)            | business and role; then `withTenant` to accept                                                              |
+| `public-slug`      | none                                     | business by slug; read-only public columns                                                                  |
+| `service`          | signed request from platform (section 9) | the business in the payload; then `withTenant`                                                              |
+| `provider-webhook` | provider signature                       | the business in the URL, verified against its secret                                                        |
+| `none`             | none                                     | health checks and static pages only                                                                         |
 
 ## 5. Data model
 
@@ -190,24 +197,24 @@ Each module's own section in 12 lists its tables. Section 4.1 covers tenancy.
 
 ### 5.3 App tables (schema `kk`)
 
-| Table               | Purpose and key columns                                                                                                                                                                                                                                                                                           |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `trade_template`    | Global, read-only, from seeds: `key`, `version`, `body` (catalogue, intake questions, checklist, terms)                                                                                                                                                                                                           |
-| `business_profile`  | 1:1 with business: `trade_key`, `about`, `service_area`, `logo_object_id`, `intake` (questions), `checklist`, `terms`; copied from the template at onboarding, then the business's own                                                                                                                            |
-| `catalogue_item`    | `name`, `unit` (`job`, `hour`, `unit`, `sq_ft`, …), `unit_price_minor`, `tax_rate_bp`, `active`                                                                                                                                                                                                                   |
-| `customer`          | The business's record of one customer: `identity_id` (nullable: a customer the owner entered by phone has none until they sign in), `name`, `phone_e164`, `email`, `address`; unique (`business_id`, `identity_id`). Created on the signed-in customer's first request, with name and email from the identity. An owner-entered row with no `identity_id` is claimed when a customer signs in with that verified email (3.2e) or verified phone (3.3) |
-| `job`               | The request and everything after: `customer_id`, `number` (per business), `source` (`public_form`, `whatsapp_link`, `qr`, `phone`), `address`, `latitude`/`longitude` (both or neither: the customer's picked location), `status` (section 6), `accepted_quote_id`, `cancel_reason`                               |
-| `job_task`          | One piece of work in a request (a "work item" on the form): `job_id`, `catalogue_item_id` (nullable: custom task), `title`, `details`, `status` (`requested`, `quoted`, `approved`, `done`, `dropped`), `added_by` (`customer`, `business`), `added_at`. A request has one or more                                |
-| `quote`             | `job_id`, `version` (unique per job), `status` (`draft`, `sent`, `accepted`, `rejected`, `countered`, `superseded`), `valid_until`, `sent_at`, totals (`net_minor`, `tax_minor`, `total_minor`), `deposit_minor` (2.4); `counter_note`, `counter_total_minor`, `decided_at` (2.5)                                 |
-| `quote_line`        | `job_id`, `quote_id`, `position`, `job_task_id` (nullable: null = request-level charge), `catalogue_item_id` (nullable), `description`, `unit`, `quantity_milli`, `unit_price_minor`, `tax_rate_bp`, `net_minor`, `tax_minor`. Composite keys carry `job_id`, so a line prices only a task of its own quote's job |
-| `appointment`       | `job_id`, `kind` (`site_visit`, `work`), `technician_member_id`, `starts_at`, `ends_at`, `status` (`planned`, `done`, `cancelled`), `on_the_way_at`                                                                                                                                                               |
-| `job_visit`         | `appointment_id`, `checked_in_at`, `checklist` (results), `completed_at`, `note`                                                                                                                                                                                                                                  |
-| `change_order`      | `job_id`, `number`, `status` (`proposed`, `approved`, `rejected`), totals, `decided_at`                                                                                                                                                                                                                           |
-| `change_order_line` | Same shape as `quote_line`                                                                                                                                                                                                                                                                                        |
-| `invoice`           | `job_id` (unique while not void), `number` (per business, gap-free sequence row), `status` (`issued`, `paid`, `void`), totals, `issued_at`, `paid_at`                                                                                                                                                             |
-| `invoice_line`      | Snapshot of the accepted quote's lines plus approved change-order lines                                                                                                                                                                                                                                           |
-| `job_photo`         | `job_id`, `object_id` → `storage.object`, `kind` (`request`, `before`, `after`), `job_task_id` (the work item it shows; required for `request`)                                                                                                                                                                   |
-| `review`            | `job_id` (unique), `rating` 1–5, `text`, `status` (`held`, `published`), `owner_response`, `publish_after`                                                                                                                                                                                                        |
+| Table               | Purpose and key columns                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `trade_template`    | Global, read-only, from seeds: `key`, `version`, `body` (catalogue, intake questions, checklist, terms)                                                                                                                                                                                                                                                                                                                                               |
+| `business_profile`  | 1:1 with business: `trade_key`, `about`, `service_area`, `logo_object_id`, `intake` (questions), `checklist`, `terms`; copied from the template at onboarding, then the business's own                                                                                                                                                                                                                                                                |
+| `catalogue_item`    | `name`, `unit` (`job`, `hour`, `unit`, `sq_ft`, …), `unit_price_minor`, `tax_rate_bp`, `active`                                                                                                                                                                                                                                                                                                                                                       |
+| `customer`          | The business's record of one customer: `identity_id` (nullable: a customer the owner entered by phone has none until they sign in), `name`, `phone_e164`, `email`, `address`; unique (`business_id`, `identity_id`) and (`business_id`, `phone_e164`). Created on the signed-in customer's first request, with the email from the session and the name, mobile and address they typed; each later request keeps their own row current with what they typed (the session carries no name). A mobile already on another customer's row is refused (`phone_taken`), never filed under that row nor moved: phones are unverified until 3.3. An owner-entered row with no `identity_id` is claimed when a customer signs in with that verified email (3.2e) or verified phone (3.3) |
+| `job`               | The request and everything after: `customer_id`, `number` (per business), `source` (`public_form`, `whatsapp_link`, `qr`, `phone`), `address`, `latitude`/`longitude` (both or neither: the customer's picked location), `status` (section 6), `accepted_quote_id`, `cancel_reason`                                                                                                                                                                   |
+| `job_task`          | One piece of work in a request (a "work item" on the form): `job_id`, `catalogue_item_id` (nullable: custom task), `title`, `details`, `status` (`requested`, `quoted`, `approved`, `done`, `dropped`), `added_by` (`customer`, `business`), `added_at`. A request has one or more                                                                                                                                                                    |
+| `quote`             | `job_id`, `version` (unique per job), `status` (`draft`, `sent`, `accepted`, `rejected`, `countered`, `superseded`), `valid_until`, `sent_at`, totals (`net_minor`, `tax_minor`, `total_minor`), `deposit_minor` (2.4); `counter_note`, `counter_total_minor`, `decided_at` (2.5)                                                                                                                                                                     |
+| `quote_line`        | `job_id`, `quote_id`, `position`, `job_task_id` (nullable: null = request-level charge), `catalogue_item_id` (nullable), `description`, `unit`, `quantity_milli`, `unit_price_minor`, `tax_rate_bp`, `net_minor`, `tax_minor`. Composite keys carry `job_id`, so a line prices only a task of its own quote's job                                                                                                                                     |
+| `appointment`       | `job_id`, `kind` (`site_visit`, `work`), `technician_member_id`, `starts_at`, `ends_at`, `status` (`planned`, `done`, `cancelled`), `on_the_way_at`                                                                                                                                                                                                                                                                                                   |
+| `job_visit`         | `appointment_id`, `checked_in_at`, `checklist` (results), `completed_at`, `note`                                                                                                                                                                                                                                                                                                                                                                      |
+| `change_order`      | `job_id`, `number`, `status` (`proposed`, `approved`, `rejected`), totals, `decided_at`                                                                                                                                                                                                                                                                                                                                                               |
+| `change_order_line` | Same shape as `quote_line`                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `invoice`           | `job_id` (unique while not void), `number` (per business, gap-free sequence row), `status` (`issued`, `paid`, `void`), totals, `issued_at`, `paid_at`                                                                                                                                                                                                                                                                                                 |
+| `invoice_line`      | Snapshot of the accepted quote's lines plus approved change-order lines                                                                                                                                                                                                                                                                                                                                                                               |
+| `job_photo`         | `job_id`, `object_id` → `storage.object`, `kind` (`request`, `before`, `after`), `job_task_id` (the work item it shows; required for `request`)                                                                                                                                                                                                                                                                                                       |
+| `review`            | `job_id` (unique), `rating` 1–5, `text`, `status` (`held`, `published`), `owner_response`, `publish_after`                                                                                                                                                                                                                                                                                                                                            |
 
 Rules the database enforces, not just the code:
 
@@ -249,19 +256,19 @@ requested ──send quote──▶ quoted ──customer accepts──▶ accep
                                                                              completed
 ```
 
-| From                    | Event               | To            | Who                                         | Side effects                                                                                       |
-| ----------------------- | ------------------- | ------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| —                       | request created     | `requested`   | customer (signed in) or owner (phone)       | customer found or created; notify owner and customer                                               |
-| `requested`             | quote sent          | `quoted`      | owner                                       | quote `draft → sent`; expiry job at `valid_until`; notify customer                                 |
-| `requested`             | decline             | `declined`    | owner                                       | notify customer                                                                                    |
-| `quoted`                | accept              | `accepted`    | customer                                    | quote → `accepted`, `job.accepted_quote_id` set; deposit link if `deposit_minor > 0`; notify owner |
-| `quoted`                | reject or counter   | `quoted`      | customer                                    | quote → `rejected` or `countered`; notify owner                                                    |
-| `quoted`                | revise              | `quoted`      | owner                                       | new version `sent`, previous → `superseded`                                                        |
-| `quoted`                | close as lost       | `lost`        | owner                                       | —                                                                                                  |
-| `accepted`              | appointment planned | `scheduled`   | owner                                       | notify customer; reminder jobs                                                                     |
-| `scheduled`             | check in            | `in_progress` | assigned technician or owner                | `job_visit.checked_in_at`                                                                          |
-| `in_progress`           | complete            | `completed`   | assigned technician or owner                | invoice issued with pay link; notify customer                                                      |
-| `requested`…`scheduled` | cancel              | `cancelled`   | owner, or the customer                      | appointments cancelled; open payment links cancelled                                               |
+| From                    | Event               | To            | Who                                   | Side effects                                                                                       |
+| ----------------------- | ------------------- | ------------- | ------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| —                       | request created     | `requested`   | customer (signed in) or owner (phone) | customer found or created; notify owner and customer                                               |
+| `requested`             | quote sent          | `quoted`      | owner                                 | quote `draft → sent`; expiry job at `valid_until`; notify customer                                 |
+| `requested`             | decline             | `declined`    | owner                                 | notify customer                                                                                    |
+| `quoted`                | accept              | `accepted`    | customer                              | quote → `accepted`, `job.accepted_quote_id` set; deposit link if `deposit_minor > 0`; notify owner |
+| `quoted`                | reject or counter   | `quoted`      | customer                              | quote → `rejected` or `countered`; notify owner                                                    |
+| `quoted`                | revise              | `quoted`      | owner                                 | new version `sent`, previous → `superseded`                                                        |
+| `quoted`                | close as lost       | `lost`        | owner                                 | —                                                                                                  |
+| `accepted`              | appointment planned | `scheduled`   | owner                                 | notify customer; reminder jobs                                                                     |
+| `scheduled`             | check in            | `in_progress` | assigned technician or owner          | `job_visit.checked_in_at`                                                                          |
+| `in_progress`           | complete            | `completed`   | assigned technician or owner          | invoice issued with pay link; notify customer                                                      |
+| `requested`…`scheduled` | cancel              | `cancelled`   | owner, or the customer                | appointments cancelled; open payment links cancelled                                               |
 
 - **Quote expiry is computed at request time.** A `sent` quote with `valid_until < now()` is treated as
   expired: accepting it is refused and the customer sees "ask for a new quote". The pg-boss job at
@@ -300,8 +307,10 @@ Customers have their own account (section 3), but always use it inside one busin
 businesses. (Until 3.2f customers opened a job by a token link, `/j/<token>`, with no account; that path and
 the `job` token purpose are removed in 3.2f.)
 
-- **The tradesperson shares the link** `/b/<slug>` (the public page, scope `public-slug`). Its main action leads
-  to the customer's home; a customer who is not signed in is sent to sign in first and comes back.
+- **The tradesperson shares the link** `/b/<slug>` (the public page, scope `public-slug`). It opens with the
+  app bar (`BusinessHeader`: avatar, business, place; every customer page has it, with a back arrow), then two
+  actions above Call and WhatsApp: "New work" (the request form) and "Work list" (the customer's home). Both
+  need the customer's sign-in; a customer who is not signed in is sent to sign in first and comes back.
 - **Routes** (scope `customer`): `/b/<slug>/requests` is the home, a list of the customer's jobs filtered
   Active, Completed or Cancelled (`?status=`, Active by default; section 6), with "New request";
   `/b/<slug>/request` is the request form (section 10); `/b/<slug>/requests/<jobId>` is the job page. What
@@ -313,8 +322,12 @@ the `job` token purpose are removed in 3.2f.)
 - **Messages link to the job page** in the space, never to a secret. A wrong number or a forwarded message
   therefore grants nothing: opening the link still needs that customer's sign-in.
 - **Forms post with the customer cookie**, so they need CSRF protection: the cookie is `SameSite=Lax`, and
-  every customer route handler also refuses a post whose `Origin` is not the bare domain. Answers are a 303 back
-  to the page with `?answer=<outcome>`, as before.
+  every customer route handler also refuses (403) a post that `fromOwnPages` (guard.ts) does not accept:
+  `Sec-Fetch-Site` must be `same-origin`, and only a browser that sends no `Sec-Fetch-Site` is judged by
+  `Origin` (the bare domain). `Origin` alone cannot do it: under the app's `Referrer-Policy: no-referrer` a
+  browser sends `Origin: null` even on a same-origin form post. A post without a session gets a 303 to
+  sign-in (never a 307, which would re-post the form there). Answers are a 303 back to the page with
+  `?answer=<outcome>`, as before. The browser check proves the refusals for send and sign-out, with mutants.
 - **Lapsed business** (section 13): the space still opens after sign-in, but shows a contact card and allows no
   actions.
 - **`tokens` keeps one purpose, `invite`.** The token is 32 random bytes in base64url; only its SHA-256 is
@@ -381,15 +394,15 @@ receiver code handles provider webhooks, with the provider's signature in place 
   If there is no email, the owner is told.
 - Delivery-status webhooks from providers reach `hooks.` and are signature-verified (3.3).
 
-| Template                                                                 | To                                                      | When                                           |
-| ------------------------------------------------------------------------ | ------------------------------------------------------- | ---------------------------------------------- |
+| Template                                                                 | To                                                         | When                                           |
+| ------------------------------------------------------------------------ | ---------------------------------------------------------- | ---------------------------------------------- |
 | `request.received`                                                       | owner; customer gets an acknowledgement linking to the job | job created                                    |
-| `quote.sent`                                                             | customer                                                | quote sent or revised                          |
-| `quote.response`                                                         | owner                                                   | accepted, rejected, countered                  |
-| `appointment.confirmed`, `appointment.reminder`, `technician.on_the_way` | customer                                                | planned; 24 h before; tapped by the technician |
-| `change_order.proposed`                                                  | customer                                                | technician or owner proposes                   |
-| `invoice.issued`, `payment.received`                                     | customer; owner                                         | complete; payment recorded                     |
-| `review.request`, `review.held`                                          | customer; owner                                         | invoice paid; low rating                       |
+| `quote.sent`                                                             | customer                                                   | quote sent or revised                          |
+| `quote.response`                                                         | owner                                                      | accepted, rejected, countered                  |
+| `appointment.confirmed`, `appointment.reminder`, `technician.on_the_way` | customer                                                   | planned; 24 h before; tapped by the technician |
+| `change_order.proposed`                                                  | customer                                                   | technician or owner proposes                   |
+| `invoice.issued`, `payment.received`                                     | customer; owner                                            | complete; payment recorded                     |
+| `review.request`, `review.held`                                          | customer; owner                                            | invoice paid; low rating                       |
 
 Sign-in OTPs go straight from identity to its own channel, inside platform, not through the outbox. Technician
 invites in 0.7 are shared by the owner: copy the link, or a `wa.me` share. Sending them by notify waits for 3.2.
@@ -409,14 +422,16 @@ invites in 0.7 are shared by the owner: copy the link, or a `wa.me` share. Sendi
   `/b/[slug]/request/send` (scope `customer` since 3.2f; `public-intake` before), not a server action like the app's other forms. It has to
   answer 429 and 413 and take six photos, and a server action can do neither. The proxy cannot limit it, because
   it buffers bodies only to 10 MB. Limits: 10 per IP per hour, then 200 per business per day, counted in that
-  order. Since 3.2a the form is the same for every trade: name, mobile, address (since 3.2f name and email
-  come from the account, and the mobile, still unverified until 3.3, is prefilled from the customer's last
-  request; so is the address) (with an optional "Use my
+  order. Since 3.2a the form is the same for every trade: name, mobile, address (since 3.2f the form needs the
+  customer's sign-in; the email comes from the session, and name, mobile and address are prefilled from the
+  customer's own row in that business, empty on a first request; the row is created or kept current on send,
+  and a mobile on another customer's row is refused, see `customer` in 5.3) (with an optional "Use my
   location", the browser's own geolocation; nothing is sent to a map service), and one or more work items
   (fields `item.<n>.title`, `item.<n>.details`, `item.<n>.photo`). Up to 20 items and 6 photos in all; each
   photo belongs to its item. A client component switches between the request and one item's editor; every
-  item's fields stay in the one multipart post. On success the customer is sent to the new job's page
-  (`/b/<slug>/requests/<jobId>` since 3.2f; a fresh `/j/<secret>` before), which shows the work items with their details and photos (by `signedUrl`). The owner's job
+  item's fields stay in the one multipart post. On success the customer is sent to their work list
+  `/b/<slug>/requests` (since the first half of 3.2f; the job page `/b/<slug>/requests/<jobId>` follows in its
+  second half, and a fresh `/j/<secret>` before 3.2f; intake still issues that link until then). The job page shows the work items with their details and photos (by `signedUrl`). The owner's job
   page opens a picked location in Maps by a plain link. The trade template's intake questions are no longer
   asked (3.2c decides their fate); the preferred time is agreed after acceptance (3.1b).
 
@@ -442,7 +457,7 @@ them in its README.
 | `db`               | `createPool(cfg)`, `tx(fn)`, `withTenant(id, fn)`, `migrate([...folders])`, `testDb()` (fresh database per test file)                                    | `db.migration`                                                                    | 0.3  |
 | `tenancy`          | `createBusiness`, `addMember`, `createInvite`, `acceptInvite`, `memberFor(identityId)`, `requireRole`, `defineRoute({ scope, … })`, route-scope test kit | `tenancy.*`                                                                       | 0.4  |
 | `audit`            | `record(tx, event)`, `recordStrict(tx, event)`                                                                                                           | `audit.event`                                                                     | 0.4  |
-| `tokens`           | `signRequest`, `verifyRequest` (0.5); `issue`, `resolve`, `revoke`, `revokeFor` for invite links (0.7; job links 2.1–3.2f)                                     | `tokens.token`                                                                    | 0.5  |
+| `tokens`           | `signRequest`, `verifyRequest` (0.5); `issue`, `resolve`, `revoke`, `revokeFor` for invite links (0.7; job links 2.1–3.2f)                               | `tokens.token`                                                                    | 0.5  |
 | `jobs`             | `createJobs(pool)`, `defineJob(name, zodPayload, handler)`, `send(tx, …)`, `sendAt`                                                                      | `pgboss.*`                                                                        | 0.5  |
 | `outbox`           | `enqueue(tx, topic, payload, key)`, `startDelivery`, `receive(source, key, tx, fn)`                                                                      | `outbox.message`, `outbox.inbox`                                                  | 0.5  |
 | `auth` (app side)  | `createAuth(options)` → `startLogin`, `handleCallback`, `getSession`, `signOut`; `SignInRefused`, `SignInUnavailable`                                    | `auth.login_attempt`, `auth.session`                                              | 0.6  |

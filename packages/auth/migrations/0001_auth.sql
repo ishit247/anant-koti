@@ -6,6 +6,9 @@ create schema auth;
 -- it, so a replayed callback finds nothing. Expired rows are purged whenever a sign-in starts.
 create table auth.login_attempt (
   state text primary key check (length(state) between 32 and 64),
+  -- Who is signing in: a member (on app.) or a customer (on the bare domain, D15). A callback finishes only an
+  -- attempt of its own kind.
+  kind text not null check (kind in ('member', 'customer')),
   nonce text not null,
   code_verifier text not null,
   return_to text not null check (return_to like '/%'),
@@ -19,6 +22,8 @@ create index login_attempt_expires on auth.login_attempt (expires_at);
 -- with the row, on sign-out or expiry. Expired rows are purged whenever someone signs in.
 create table auth.session (
   token_hash bytea primary key check (length(token_hash) = 32),
+  -- Each host reads only its own kind, so a member session is never accepted as a customer one, or the reverse.
+  kind text not null check (kind in ('member', 'customer')),
   identity_id uuid not null,
   id_token text not null,
   expires_at timestamptz not null,

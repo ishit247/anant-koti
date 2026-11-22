@@ -15,6 +15,13 @@ export const STATUS_LABEL: Record<JobStatus, string> = {
   cancelled: "Cancelled",
 };
 
+/** The same states as a customer reads them in their space: their side of the conversation. */
+export const CUSTOMER_STATUS_LABEL: Record<JobStatus, string> = {
+  ...STATUS_LABEL,
+  requested: "Sent",
+  quoted: "Quote ready",
+};
+
 /** The chip colour: new work stands out, work moving on is green, waiting on the customer is amber. */
 export function statusTone(status: JobStatus): "new" | "go" | "wait" | "" {
   if (status === "requested") return "new";

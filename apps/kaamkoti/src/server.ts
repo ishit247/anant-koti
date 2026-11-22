@@ -15,7 +15,10 @@ import { PRIVATE_BUCKET, webConfig } from "./config.ts";
 
 export interface Server {
   readonly db: Db;
-  readonly auth: Auth;
+  /** Members' sign-in, on the app host. */
+  readonly auth: Auth<"member">;
+  /** Customers' sign-in, on the bare domain (D15). */
+  readonly customerAuth: Auth<"customer">;
   readonly log: Logger;
   readonly storage: Storage;
   readonly limiter: Limiter;
@@ -24,6 +27,8 @@ export interface Server {
   readonly notify: Notify;
   /** Where browsers reach this app: the base of every link sent to a customer. */
   readonly origin: string;
+  /** The bare domain: public pages and the customer space. */
+  readonly publicOrigin: string;
 }
 
 const holder = globalThis as { __kaamkotiServer?: Server };
@@ -37,16 +42,28 @@ function build(): Server {
   const config = defineConfig(webConfig);
   const log = createLogger({ service: "kaamkoti-web" });
   const db = createPool({ url: config.DATABASE_URL, log });
-  const auth = createAuth({
+  const client = {
     db,
     log,
     issuer: config.IDENTITY_ORIGIN,
     internalUrl: config.PLATFORM_INTERNAL_URL,
     clientId: "kaamkoti",
     clientSecret: config.SIGN_IN_CLIENT_SECRET,
+    cookiePrefix: "kk",
+  };
+  const auth = createAuth({
+    ...client,
+    kind: "member",
     redirectUri: `${config.APP_ORIGIN}/auth/callback`,
     postLogoutRedirectUri: `${config.APP_ORIGIN}/`,
-    cookiePrefix: "kk",
+  });
+  // One client, a second redirect URI: a callback cannot name the business (redirect URIs are registered
+  // exactly), so the slug travels in the return path and in the sign-out `state`.
+  const customerAuth = createAuth({
+    ...client,
+    kind: "customer",
+    redirectUri: `${config.PUBLIC_ORIGIN}/customer/callback`,
+    postLogoutRedirectUri: `${config.PUBLIC_ORIGIN}/customer/signed-out`,
   });
   const storage = createStorage({
     endpoint: config.S3_ENDPOINT,
@@ -64,11 +81,13 @@ function build(): Server {
   return {
     db,
     auth,
+    customerAuth,
     log,
     storage,
     limiter: redisLimiter(config.REDIS_URL, log),
     audit: createAudit(log),
     notify: createNotify(outbox),
     origin: config.APP_ORIGIN,
+    publicOrigin: config.PUBLIC_ORIGIN,
   };
 }

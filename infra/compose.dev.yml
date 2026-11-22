@@ -39,11 +39,12 @@ services:
       SERVICE_CLIENTS: '{"kaamkoti":"dev-only-kaamkoti-service-secret-public-in-repo"}'
       IDENTITY_ORIGIN: http://127.0.0.1:45443
       IDENTITY_SECRET: dev-only-identity-secret-public-in-repo-0123456789
-      # Kaam Koti's callback and sign-out pages arrive with 0.6b; these are their dev addresses.
+      # Kaam Koti's callbacks and sign-out returns: members on the app host (127.0.0.1), customers on the bare
+      # domain (localhost here, D15).
       SIGN_IN_CLIENTS: >-
         {"kaamkoti":{"secret":"dev-only-kaamkoti-sign-in-secret-public-in-repo",
-        "redirectUris":["http://127.0.0.1:45450/auth/callback"],
-        "postLogoutRedirectUris":["http://127.0.0.1:45450/"]}}
+        "redirectUris":["http://127.0.0.1:45450/auth/callback","http://localhost:45450/customer/callback"],
+        "postLogoutRedirectUris":["http://127.0.0.1:45450/","http://localhost:45450/customer/signed-out"]}}
       REDIS_URL: redis://redis:6379
       SMTP_URL: smtp://mailpit:1025
       EMAIL_FROM: Bodhchakra <sign-in@localhost>

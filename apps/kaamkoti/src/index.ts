@@ -22,6 +22,15 @@ export {
 } from "./business-profile.ts";
 export { PRIVATE_BUCKET } from "./config.ts";
 export {
+  type CustomerJobRow,
+  customerFor,
+  customerJobs,
+  JOB_GROUPS,
+  type JobGroup,
+  jobGroup,
+  type SpaceCustomer,
+} from "./customer-space.ts";
+export {
   countNewRequests,
   type InboxRow,
   type JobSource,

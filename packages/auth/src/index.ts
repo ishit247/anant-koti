@@ -4,9 +4,12 @@ import type { MigrationFolder } from "@bodhchakra/db";
 export {
   type Auth,
   type AuthOptions,
+  type CustomerSession,
   createAuth,
   type Redirect,
   type Session,
+  type SessionKind,
+  type SessionOf,
   type SignedIn,
   SignInRefused,
   SignInUnavailable,

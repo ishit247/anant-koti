@@ -1,8 +1,10 @@
+import { formatMoney } from "@bodhchakra/money";
 import { defineRoute } from "@bodhchakra/tenancy";
 import { notFound } from "next/navigation";
-import { formatPrice } from "../../../price.ts";
 import { publicPage } from "../../../public-page.ts";
 import { server } from "../../../server.ts";
+import { BusinessHeader } from "../../business-header.tsx";
+import { Icon } from "../../icons.tsx";
 
 // No credential: the slug in the path opens one business, and only its public columns are read.
 // biome-ignore lint/correctness/noUnusedVariables: read by scanRoutes, which scans the source text
@@ -13,35 +15,44 @@ export default async function BusinessPage({ params }: { params: Promise<{ slug:
   const page = await publicPage(server().db, slug);
   if (!page) notFound();
   const digits = page.phone.replace(/\D/g, "");
+  const space = `/b/${encodeURIComponent(slug)}`;
   return (
     <>
-      <h1>{page.name}</h1>
-      <p className="muted">
-        {page.city}
-        {page.serviceArea ? ` · ${page.serviceArea}` : ""}
-      </p>
-      {page.about ? <p>{page.about}</p> : null}
-      <p>
-        <a className="button" href={`/b/${encodeURIComponent(slug)}/request`}>
-          Request a visit
+      <BusinessHeader business={page} home="here">
+        {page.about ? <p>{page.about}</p> : null}
+      </BusinessHeader>
+      <div className="actions">
+        <a className="button" href={`${space}/request`}>
+          <Icon name="plus" size={18} />
+          New work
         </a>
-      </p>
-      <p>
-        <a className="button" href={`tel:${page.phone}`}>
+        <a className="button quiet" href={`${space}/requests`}>
+          Work list
+        </a>
+      </div>
+      <div className="actions">
+        <a className="button quiet" href={`tel:${page.phone}`}>
+          <Icon name="phone" size={18} />
           Call
-        </a>{" "}
-        <a className="button" href={`https://wa.me/${digits}`}>
+        </a>
+        <a className="button quiet" href={`https://wa.me/${digits}`}>
+          <Icon name="chat" size={18} />
           WhatsApp
         </a>
-      </p>
-      <h2>Services and prices</h2>
-      <ul>
-        {page.services.map((s) => (
-          <li key={s.id}>
-            {s.name} — {formatPrice(s.price, s.unit)}
-          </li>
-        ))}
-      </ul>
+      </div>
+      {page.services.length > 0 ? (
+        <section className="panel">
+          <h2>Services and prices</h2>
+          <ul className="lines">
+            {page.services.map((s) => (
+              <li key={s.id} className="row">
+                <span>{s.name}</span>
+                <span className="amount muted">{formatMoney(s.price)}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </>
   );
 }

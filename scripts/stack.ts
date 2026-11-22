@@ -92,7 +92,7 @@ switch (command) {
     await kaamkoti.seed(KAAMKOTI_OWNER_URL, log);
     log.info("seeded", { database: "kaamkoti", businesses: 2, members: 4, customers: 6, jobs: 5 });
     await platform.seed(PLATFORM_OWNER_URL, log);
-    log.info("seeded", { database: "platform", identities: 4 });
+    log.info("seeded", { database: "platform", identities: 6 });
     // Last, on the migrated and seeded database: it registers the apps' sign-in clients when it starts.
     compose("--profile", "platform", "up", "-d", "--build", "--wait", "platform");
     log.info("platform ready", {

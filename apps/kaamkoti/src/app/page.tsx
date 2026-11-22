@@ -42,7 +42,7 @@ export default async function Home() {
     }),
   );
   if (me.role === "owner" && !profile) redirect("/onboarding");
-  const publicLink = `${server().origin}/b/${encodeURIComponent(business.slug)}`;
+  const publicLink = `${server().publicOrigin}/b/${encodeURIComponent(business.slug)}`;
   return (
     <>
       <header className="bar">

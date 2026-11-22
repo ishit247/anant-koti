@@ -1,4 +1,8 @@
-// The public request form against the seeded database and the development Garage (infra/compose.dev.yml).
+// The request form (a signed-in customer, D15) against the seeded database and the development Garage
+// (infra/compose.dev.yml).
+import { randomUUID } from "node:crypto";
+import { createAudit } from "@bodhchakra/audit";
+import type { CustomerSession } from "@bodhchakra/auth";
 import { type Db, type TestDb, testDb } from "@bodhchakra/db";
 import { createLogger } from "@bodhchakra/log";
 import { createStorage } from "@bodhchakra/storage";
@@ -20,8 +24,23 @@ import {
 const SHARMA = "10000000-0000-4000-8000-000000000001";
 const GAS_REFILL = "10000000-0000-4000-8000-0000000b0002";
 const GENERAL_SERVICE = "10000000-0000-4000-8000-0000000b0003";
-/** Seeded Sharma customer. */
-const ANITA_PHONE = "+919000001001";
+/** Seeded Sharma customers: Anita signs in (services/platform/seed.sql); Rahul and Meera were entered by the owner. */
+const ANITA: CustomerSession = {
+  identityId: "00000000-0000-4000-8000-00000000d005",
+  email: "anita@example.com",
+};
+const ANITA_AT_SHARMA = "10000000-0000-4000-8000-0000000c0001";
+const RAHUL_AT_SHARMA = "10000000-0000-4000-8000-0000000c0002";
+const RAHUL_PHONE = "+919000001002";
+const MEERA_AT_SHARMA = "10000000-0000-4000-8000-0000000c0003";
+
+/** Someone signing in for the first time: an identity no customer row names yet. */
+const newcomer = (email = `${randomUUID()}@example.test`): CustomerSession => ({
+  identityId: randomUUID(),
+  email,
+});
+/** The person most tests send as. */
+const VIKRAM = newcomer("vikram@example.test");
 
 const storage = createStorage({
   endpoint: "http://127.0.0.1:45447",
@@ -56,24 +75,42 @@ const request = (change: Partial<IntakeInput> = {}): IntakeInput => ({
   ...change,
 });
 
-describe("the public request form", () => {
+describe("the request form", () => {
   let database: TestDb;
   let app: Db;
   let owner: Db;
+  const log = createLogger({ service: "test", write: () => undefined });
+  const audit = createAudit(log);
   beforeAll(async () => {
     database = await testDb({
       owner: "kaamkoti_owner",
       runtimeRole: RUNTIME_ROLE,
       folders: migrations,
     });
-    await seed(database.url("kaamkoti_owner"), createLogger({ service: "test" }));
+    await seed(database.url("kaamkoti_owner"), log);
     app = database.connect("kaamkoti_app");
     owner = database.connect("kaamkoti_owner");
   });
   afterAll(() => database.drop());
 
-  const submit = (input: IntakeInput, slug = "sharma-cooling") =>
-    submitRequest(app, storage, slug, input);
+  const submit = (input: IntakeInput, slug = "sharma-cooling", session = VIKRAM) =>
+    submitRequest(app, storage, audit, slug, session, input);
+  /** A customer row as the owner sees it. */
+  const customerRow = async (id: string) =>
+    (
+      await owner.tx((c) =>
+        c.query(
+          "select identity_id, name, phone_e164, email, address from kk.customer where id = $1",
+          [id],
+        ),
+      )
+    ).rows[0];
+  const customerOf = async (jobId: string) =>
+    (
+      await owner.tx((c) =>
+        c.query<{ customer_id: string }>("select customer_id from kk.job where id = $1", [jobId]),
+      )
+    ).rows[0]?.customer_id;
   const sharmaJobs = async () =>
     Number(
       (
@@ -83,13 +120,14 @@ describe("the public request form", () => {
       ).rows[0].count,
     );
 
-  it("creates the customer, the job with its address and a link that opens it", async () => {
+  it("creates the signed-in person's customer row, the job with its address and a link that opens it", async () => {
     const result = await submit(request({ latitude: "18.5590", longitude: "73.8070" }));
     if (!result.ok) throw new Error(result.error);
     expect(result.number).toBe(3);
     const { rows } = await owner.tx((c) =>
       c.query(
-        `select j.source, j.status, j.address, j.latitude, j.longitude, c.name, c.phone_e164
+        `select j.source, j.status, j.address, j.latitude, j.longitude, c.identity_id, c.name, c.phone_e164,
+                c.email
          from kk.job j join kk.customer c on c.id = j.customer_id where j.id = $1`,
         [result.jobId],
       ),
@@ -100,8 +138,10 @@ describe("the public request form", () => {
       address: "7 Hill Road, Aundh, Pune",
       latitude: 18.559,
       longitude: 73.807,
+      identity_id: VIKRAM.identityId,
       name: "Vikram Patil",
       phone_e164: "+919876543210",
+      email: "vikram@example.test",
     });
     expect(await openJobLink(app, result.secret)).toMatchObject({
       businessName: "Sharma Cooling Services",
@@ -201,18 +241,59 @@ describe("the public request form", () => {
     ).rejects.toThrow(/check constraint/);
   });
 
-  it("files a request from a known phone under that customer, without renaming them", async () => {
-    const result = await submit(request({ name: "Someone Else", phone: ANITA_PHONE }));
+  it("files a returning customer's request under their own row, kept current with what they typed", async () => {
+    const result = await submit(
+      request({ name: "Anita D.", phone: "90000 09999", address: "New flat, Baner" }),
+      "sharma-cooling",
+      ANITA,
+    );
     if (!result.ok) throw new Error(result.error);
-    expect(await openJobLink(app, result.secret)).toMatchObject({
-      customerName: "Anita Deshpande",
+    expect(await customerOf(result.jobId)).toBe(ANITA_AT_SHARMA);
+    expect(await customerRow(ANITA_AT_SHARMA)).toMatchObject({
+      name: "Anita D.",
+      phone_e164: "+919000009999",
+      address: "New flat, Baner",
     });
   });
 
-  it("gives concurrent requests to one business different numbers", async () => {
-    const results = await Promise.all([1, 2, 3].map(() => submit(request())));
+  it("refuses a mobile on another customer's row, and neither files under it nor changes it", async () => {
+    const rahul = await customerRow(RAHUL_AT_SHARMA);
+    const before = await sharmaJobs();
+    // A newcomer typing Rahul's number, and a known customer changing hers to it.
+    for (const session of [newcomer(), ANITA])
+      expect(
+        await submit(
+          request({ name: "Someone Else", phone: RAHUL_PHONE }),
+          "sharma-cooling",
+          session,
+        ),
+      ).toEqual({ ok: false, error: "phone_taken" });
+    expect(await sharmaJobs()).toBe(before);
+    expect(await customerRow(RAHUL_AT_SHARMA)).toEqual(rahul);
+    expect((await customerRow(ANITA_AT_SHARMA))?.phone_e164).not.toBe(RAHUL_PHONE);
+  });
+
+  it("claims the owner-entered row with the session's verified email instead of making a second", async () => {
+    const meera = newcomer("Meera@Example.com");
+    const result = await submit(
+      request({ name: "Meera K", phone: "90000 08888" }),
+      "sharma-cooling",
+      meera,
+    );
+    if (!result.ok) throw new Error(result.error);
+    expect(await customerOf(result.jobId)).toBe(MEERA_AT_SHARMA);
+    expect((await customerRow(MEERA_AT_SHARMA))?.identity_id).toBe(meera.identityId);
+  });
+
+  it("keeps one customer row per person when their first requests arrive together, numbered apart", async () => {
+    const first = newcomer();
+    const results = await Promise.all(
+      [1, 2, 3].map(() => submit(request({ phone: "90000 07777" }), "sharma-cooling", first)),
+    );
     const numbers = results.map((r) => (r.ok ? r.number : r.error));
     expect(new Set(numbers).size).toBe(3);
+    const ids = await Promise.all(results.map((r) => (r.ok ? customerOf(r.jobId) : r.error)));
+    expect(new Set(ids).size).toBe(1);
   });
 
   it.each([

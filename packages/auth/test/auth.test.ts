@@ -23,6 +23,8 @@ const CLIENT = "kaamkoti";
 const SECRET = "kaamkoti-auth-test-secret-".padEnd(48, "x");
 const REDIRECT_URI = "https://app.kaamkoti.test/auth/callback";
 const AFTER_SIGN_OUT = "https://app.kaamkoti.test/";
+const CUSTOMER_REDIRECT_URI = "https://kaamkoti.test/customer/callback";
+const CUSTOMER_SIGNED_OUT = "https://kaamkoti.test/customer/signed-out";
 const ISSUER = "https://id.platform.test";
 const KID = "platform-key";
 const PRAKASH = "00000000-0000-4000-8000-00000000d001";
@@ -95,6 +97,7 @@ describe("auth", () => {
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     internalUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     auth = createAuth({
+      kind: "member",
       db: app,
       log,
       issuer: ISSUER,
@@ -345,6 +348,7 @@ describe("auth", () => {
     const port = (closed.address() as AddressInfo).port;
     await new Promise((resolve) => closed.close(resolve));
     const offline = createAuth({
+      kind: "member",
       db: app,
       log,
       issuer: ISSUER,
@@ -422,6 +426,85 @@ describe("auth", () => {
       // Signing out again, or with no session, just comes home.
       expect((await auth.signOut(sessionCookie)).location).toBe(AFTER_SIGN_OUT);
       expect((await auth.signOut(null)).location).toBe(AFTER_SIGN_OUT);
+    });
+  });
+
+  describe("customers (D15)", () => {
+    let customers: Auth<"customer">;
+    const asCookie = (name: string, cookie: string) => `${name}=${cookie.split("=")[1] ?? ""}`;
+
+    beforeAll(() => {
+      customers = createAuth({
+        kind: "customer",
+        db: app,
+        log,
+        issuer: ISSUER,
+        internalUrl,
+        clientId: CLIENT,
+        clientSecret: SECRET,
+        redirectUri: CUSTOMER_REDIRECT_URI,
+        postLogoutRedirectUri: CUSTOMER_SIGNED_OUT,
+        cookiePrefix: "kk",
+      });
+    });
+
+    async function customerSignIn() {
+      const { location, setCookie } = await customers.startLogin("/b/sharma-cooling/requests");
+      const authorize = new URL(location);
+      const state = authorize.searchParams.get("state") ?? "";
+      expect(authorize.searchParams.get("redirect_uri")).toBe(CUSTOMER_REDIRECT_URI);
+      issue(await idToken(authorize.searchParams.get("nonce") ?? "", { sub: NEWCOMER }));
+      return customers.handleCallback(
+        new URLSearchParams({ code: `code-${state}`, state }),
+        setCookie.split(";")[0] ?? "",
+      );
+    }
+
+    it("sign in with their own cookie, and their session carries the verified email", async () => {
+      const signedIn = await customerSignIn();
+      expect(signedIn.session).toEqual({ identityId: NEWCOMER, email: "prakash@example.com" });
+      expect(signedIn.returnTo).toBe("/b/sharma-cooling/requests");
+      expect(signedIn.setCookies[0]).toMatch(/^__Host-kk_customer=[\w-]{43}; Path=\/;/);
+      const cookie = signedIn.setCookies[0]?.split(";")[0] ?? "";
+      expect(await customers.getSession(cookie)).toEqual(signedIn.session);
+    });
+
+    it("are refused as members, and members as customers, even under the other cookie's name", async () => {
+      const customer = (await customerSignIn()).setCookies[0]?.split(";")[0] ?? "";
+      const { sessionCookie: member } = await signIn();
+
+      expect(await auth.getSession(asCookie("__Host-kk_session", customer))).toBeNull();
+      expect(await customers.getSession(asCookie("__Host-kk_customer", member))).toBeNull();
+      // Nor can one kind's sign-out end the other's session.
+      await customers.signOut(asCookie("__Host-kk_customer", member));
+      expect(await auth.getSession(member)).not.toBeNull();
+    });
+
+    it("cannot finish a member's sign-in attempt, nor a member a customer's", async () => {
+      const browser = await begin();
+      issue(await idToken(browser.nonce));
+      await expect(customers.handleCallback(browser.query, browser.cookie)).rejects.toBeInstanceOf(
+        SignInRefused,
+      );
+
+      const { location, setCookie } = await customers.startLogin("/b/x/requests");
+      const state = new URL(location).searchParams.get("state") ?? "";
+      await expect(
+        auth.handleCallback(
+          new URLSearchParams({ code: `code-${state}`, state }),
+          setCookie.split(";")[0] ?? "",
+        ),
+      ).rejects.toBeInstanceOf(SignInRefused);
+    });
+
+    it("sign out back to the business they came from, by state", async () => {
+      const cookie = (await customerSignIn()).setCookies[0]?.split(";")[0] ?? "";
+      const out = new URL((await customers.signOut(cookie, "sharma-cooling")).location);
+      expect(out.searchParams.get("post_logout_redirect_uri")).toBe(CUSTOMER_SIGNED_OUT);
+      expect(out.searchParams.get("state")).toBe("sharma-cooling");
+      expect((await customers.signOut(null, "sharma-cooling")).location).toBe(
+        `${CUSTOMER_SIGNED_OUT}?state=sharma-cooling`,
+      );
     });
   });
 

@@ -31,12 +31,15 @@ interface Item {
 const sameName = (name: string) => name.trim().replace(/\s+/g, " ").toLowerCase();
 
 export function RequestForm({
+  contact,
   action,
   services,
   imageTypes,
   limits,
   refused,
 }: {
+  /** The customer's own record here, to fill the details in; null before their first request. */
+  contact: { name: string; phone: string; address: string } | null;
   action: string;
   services: readonly Service[];
   imageTypes: string;
@@ -164,16 +167,30 @@ export function RequestForm({
           <h2 id="details-title">Your details</h2>
           <label>
             Your name
-            <input name="name" autoComplete="name" required maxLength={120} />
+            <input
+              name="name"
+              autoComplete="name"
+              required
+              maxLength={120}
+              defaultValue={contact?.name}
+            />
           </label>
           <label>
             Mobile number
-            <input name="phone" type="tel" autoComplete="tel" inputMode="tel" required />
+            <input
+              name="phone"
+              type="tel"
+              autoComplete="tel"
+              inputMode="tel"
+              required
+              defaultValue={contact?.phone}
+            />
           </label>
           <label>
             Address
             <textarea
               name="address"
+              defaultValue={contact?.address}
               autoComplete="street-address"
               required
               maxLength={500}

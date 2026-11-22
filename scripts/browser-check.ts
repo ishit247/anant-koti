@@ -2,8 +2,10 @@
 // the platform container, `pnpm --filter kaamkoti dev`). Chromium lives on D: (set
 // PLAYWRIGHT_BROWSERS_PATH=D:\playwright-browsers; install with `pnpm exec playwright install chromium-headless-shell`). A new owner signs in with an email code read from
 // Mailpit, creates a business, picks a trade, edits a price, and the public page and a customer's job link are
-// opened without cookies. A customer sends a request with a photo through the public form and lands on their
-// job link, where the photo loads by signed URL; intake and /j/ answer 429 past their per-IP limits.
+// opened without cookies. A new customer signs in on the bare domain to send a request with a photo, lands on
+// their work list, and finds the form filled in next time; the send route refuses another origin and sends a
+// post without a session to sign-in. A seeded customer signs in on the bare domain and sees only her own
+// request; intake and /j/ answer 429 past their per-IP limits.
 // Each page is screenshotted at phone and desktop width into .validation/browser/; the run fails on a console
 // error, a page wider than the viewport, or a cookie on the public page.
 import { mkdirSync } from "node:fs";
@@ -11,6 +13,8 @@ import { fileURLToPath } from "node:url";
 import { type BrowserContext, chromium, type Page } from "playwright";
 
 const APP = "http://127.0.0.1:45450";
+/** The same dev server as the bare domain (PUBLIC_ORIGIN): customers' host. */
+const PUBLIC = "http://localhost:45450";
 const MAILPIT = "http://127.0.0.1:45446";
 const OUT = fileURLToPath(new URL("../.validation/browser/", import.meta.url));
 const WIDTHS = {
@@ -27,18 +31,33 @@ const problems: string[] = [];
 const ONE_PIXEL_PNG =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
-async function signInCode(): Promise<string> {
+/** The newest sign-in code sent to `to`, from Mailpit. */
+async function signInCode(to = email): Promise<string> {
   for (let tries = 0; tries < 50; tries++) {
-    const found = await fetch(
-      `${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:"${email}"`)}`,
-    );
+    const found = await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:"${to}"`)}`);
     if (!found.ok) throw new Error(`mailpit search failed: ${found.status}`);
     const { messages } = (await found.json()) as { messages: { Subject: string }[] };
     const code = messages[0]?.Subject.match(/^(\d{6}) /)?.[1];
     if (code) return code;
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
-  throw new Error(`no sign-in code arrived for ${email}`);
+  throw new Error(`no sign-in code arrived for ${to}`);
+}
+
+/** The platform sign-in page: the email and "Get code", then the code and "Sign in". */
+async function signInAs(page: Page, address: string, shotName?: string) {
+  await page.waitForURL(/\/sign-in/);
+  if (shotName) await shoot(page, shotName);
+  // Codes are searched newest first, so one left from an earlier run must not be read as this one.
+  await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:"${address}"`)}`, {
+    method: "DELETE",
+  });
+  await page.fill("input[name=email]", address);
+  await page.getByRole("button", { name: "Get code" }).click();
+  await page.locator("input[name=code]").waitFor({ state: "visible" });
+  if (shotName) await shoot(page, `${shotName}-code`);
+  await page.fill("input[name=code]", await signInCode(address));
+  await page.getByRole("button", { name: "Sign in" }).click();
 }
 
 /** Screenshots the current page at both widths and records horizontal overflow. */
@@ -72,13 +91,7 @@ try {
   await page.goto(`${APP}/`);
   await shoot(page, "1-home-signed-out");
   await page.getByRole("link", { name: "Start free" }).click();
-  await page.waitForURL(/\/sign-in/);
-  await shoot(page, "2-sign-in");
-  await page.fill("input[name=email]", email);
-  await page.getByRole("button", { name: "Continue" }).click();
-  await page.locator("input[name=code]").waitFor({ state: "visible" });
-  await page.fill("input[name=code]", await signInCode());
-  await page.getByRole("button", { name: "Continue" }).click();
+  await signInAs(page, email, "2-sign-in");
 
   await page.waitForURL(`${APP}/signup`);
   await shoot(page, "3-signup");
@@ -239,7 +252,9 @@ try {
   if ((await visitor.cookies()).length > 0) problems.push("visitor context holds cookies");
   await visitor.close();
 
-  // A customer's request through the public form, cookieless. Its own address, so runs never share counters.
+  // A new customer's request (D15): "New work" asks them to sign in on the bare domain first, by email code,
+  // and comes back to the form. Its own address, so runs never share counters; its own mobile, because a
+  // number on another customer's record is refused.
   const customer = await browser.newContext({
     viewport: WIDTHS.phone,
     extraHTTPHeaders: { "x-client-ip": `browser-${run}` },
@@ -247,11 +262,14 @@ try {
   const form = await customer.newPage();
   watchConsole(form, "request form");
   await form.goto(`${APP}/b/sharma-cooling`);
-  await form.getByRole("link", { name: "Request a visit" }).click();
-  await form.waitForURL(`${APP}/b/sharma-cooling/request`);
+  await form.getByRole("link", { name: "New work" }).click();
+  await signInAs(form, `customer-${run}@example.test`);
+  await form.waitForURL(`${PUBLIC}/b/sharma-cooling/request`);
   await shoot(form, "11-request-form");
+  if (await form.inputValue("input[name=name]"))
+    problems.push("a first-time customer's form is filled in from someone else's record");
   await form.fill("input[name=name]", "Browser Check");
-  await form.fill("input[name=phone]", "98765 00000");
+  await form.fill("input[name=phone]", `9${String(Date.now()).slice(-9)}`);
   await form.fill("textarea[name=address]", "1 Check Road, Pune");
   // No work item yet: the form says so without posting.
   await form.getByRole("button", { name: "Send request" }).click();
@@ -289,39 +307,104 @@ try {
     problems.push("Back on a new work item does not discard it");
   await shoot(form, "12b-request-with-items");
   await form.getByRole("button", { name: "Send request" }).click();
-  await form.waitForURL(/\/j\/[A-Za-z0-9_-]{43}$/);
-  if (
-    !(await form.getByText("AC gas refill").count()) ||
-    !(await form.getByText("Broken wire").count())
-  )
-    problems.push("the new request's link does not list its work items");
-  if (!(await form.getByText("Bedroom split AC, not cooling.").count()))
-    problems.push("the new request's link does not show a work item's details");
-  const photo = form.getByRole("img", { name: "Sent with your request" });
-  await photo.waitFor();
-  if (!(await photo.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)))
-    problems.push("the request photo does not load by its signed URL");
+  // The request lands in their work list. Its details and photo are checked on the customer's job page once
+  // that exists (3.2f, second half); intake.test.ts checks the photo by signed URL meanwhile.
+  await form.waitForURL(`${PUBLIC}/b/sharma-cooling/requests`);
+  const sent = await form.locator(".cards > li").allTextContents();
+  if (sent.length !== 1 || !sent[0]?.includes("AC gas refill"))
+    problems.push(`the new customer's work list shows ${JSON.stringify(sent)}`);
   await shoot(form, "13-request-sent");
-  if ((await customer.cookies()).length > 0) problems.push("customer context holds cookies");
+  // Asked again, the form is filled in from their record.
+  await form.goto(`${PUBLIC}/b/sharma-cooling/request`);
+  if ((await form.inputValue("input[name=name]")) !== "Browser Check")
+    problems.push("a returning customer's form is not filled in from their record");
+
+  // The send and sign-out routes' own guards, with and without the session. fetch and the context's request
+  // API send neither a browser Origin nor Sec-Fetch-Site, so each sets what it tests: a browser's cross-site
+  // post (Sec-Fetch-Site wins even over a right Origin), and an old browser's foreign Origin.
+  const sendTo = (s: string) => `${PUBLIC}/b/${s}/request/send`;
+  for (const [what, headers] of [
+    ["cross-site", { "sec-fetch-site": "cross-site", origin: PUBLIC }],
+    ["foreign-origin", { origin: "https://evil.example" }],
+  ] as const)
+    for (const url of [sendTo("sharma-cooling"), `${PUBLIC}/b/sharma-cooling/signout`]) {
+      const status = (
+        await customer.request.post(url, { headers, multipart: {}, maxRedirects: 0 })
+      ).status();
+      if (status !== 403) problems.push(`a ${what} post to ${url} answered ${status}`);
+    }
+  const anonymous = await fetch(sendTo("sharma-cooling"), {
+    method: "POST",
+    redirect: "manual",
+    headers: { origin: PUBLIC },
+    body: new FormData(),
+  });
+  if (
+    anonymous.status !== 303 ||
+    !anonymous.headers.get("location")?.startsWith("/b/sharma-cooling/login?")
+  )
+    problems.push(`a request post without a session answered ${anonymous.status}, not sign-in`);
+  // Past the limit, signed in. Intake counts before it looks at the slug, so an unknown one keeps real
+  // counters clean.
+  let intake = 0;
+  for (let i = 0; i < 11; i++)
+    intake = (
+      await customer.request.post(sendTo(`limit-check-${run}`), {
+        headers: { origin: PUBLIC, "x-client-ip": `limit-${run}` },
+        multipart: {},
+        maxRedirects: 0,
+      })
+    ).status();
+  if (intake !== 429) problems.push(`intake past its limit answered ${intake}`);
   await customer.close();
 
-  // Past the limits. Intake counts before it looks at the slug, so an unknown one keeps real counters clean.
-  const hammer = async (url: string, method: string, times: number) => {
-    let last = 0;
-    for (let i = 0; i < times; i++)
-      last = (
-        await fetch(url, {
-          method,
-          redirect: "manual",
-          headers: { "x-client-ip": `limit-${run}` },
-          ...(method === "POST" ? { body: new FormData() } : {}),
-        })
-      ).status;
-    return last;
-  };
-  const intake = await hammer(`${APP}/b/limit-check-${run}/request/send`, "POST", 11);
-  if (intake !== 429) problems.push(`intake past its limit answered ${intake}`);
-  const lookups = await hammer(`${APP}/j/${"y".repeat(43)}`, "GET", 61);
+  // A signed-in customer (D15): seeded Anita opens "My requests" on the bare domain, signs in there, and sees
+  // only her request with Sharma. Her cookie is the customer one, on the bare domain only, and the app host
+  // does not take her as a member.
+  const anita = await browser.newContext({ viewport: WIDTHS.phone });
+  const space = await anita.newPage();
+  watchConsole(space, "customer space");
+  await space.goto(`${APP}/b/sharma-cooling`);
+  await space.getByRole("link", { name: "Work list" }).click();
+  await signInAs(space, "anita@example.com", "14-customer-sign-in");
+  await space.waitForURL(`${PUBLIC}/b/sharma-cooling/requests`);
+  await shoot(space, "15-customer-home");
+  const jobs = await space.locator(".cards > li").allTextContents();
+  if (jobs.length !== 1 || !jobs[0]?.includes("#1"))
+    problems.push(`the customer home lists ${JSON.stringify(jobs)}, not Anita's request #1 only`);
+  await space.getByRole("link", { name: "Cancelled" }).click();
+  await space.waitForURL(`${PUBLIC}/b/sharma-cooling/requests?status=cancelled`);
+  await shoot(space, "16-customer-home-empty");
+  const cookies = await anita.cookies();
+  const wrong = cookies.filter(
+    (c) => c.name === "__Host-kk_session" || new URL(PUBLIC).hostname !== c.domain,
+  );
+  if (!cookies.some((c) => c.name === "__Host-kk_customer"))
+    problems.push("no customer cookie after the customer signed in");
+  // Platform's own session cookie lives on its host; only Kaam Koti's are checked here.
+  if (wrong.some((c) => c.name.startsWith("__Host-kk_")))
+    problems.push(`customer cookies outside the bare domain: ${wrong.map((c) => c.name)}`);
+  // On the app host her customer session counts for nothing: she signs in afresh (platform remembers her, so
+  // this can be instant) as an identity with no business, which goes to signup, never to the jobs.
+  await space.goto(`${APP}/jobs`);
+  if (new URL(space.url()).pathname === "/jobs")
+    problems.push(`a customer opened the members' app at ${space.url()}`);
+  await space.goto(`${PUBLIC}/b/sharma-cooling/requests`);
+  await space.getByRole("button", { name: "Sign out" }).click();
+  await space.waitForURL(`${PUBLIC}/b/sharma-cooling`);
+  if ((await anita.cookies()).some((c) => c.name === "__Host-kk_customer"))
+    problems.push("the customer cookie survived sign-out");
+  await anita.close();
+
+  // Past the /j/ lookup limit.
+  let lookups = 0;
+  for (let i = 0; i < 61; i++)
+    lookups = (
+      await fetch(`${APP}/j/${"y".repeat(43)}`, {
+        redirect: "manual",
+        headers: { "x-client-ip": `limit-${run}` },
+      })
+    ).status;
   if (lookups !== 429) problems.push(`job link lookups past their limit answered ${lookups}`);
 } finally {
   await owner?.close();

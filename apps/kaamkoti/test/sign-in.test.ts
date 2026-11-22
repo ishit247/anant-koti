@@ -83,6 +83,7 @@ describe("signing in to Kaam Koti through platform", () => {
     });
 
     auth = createAuth({
+      kind: "member",
       db: kaamkoti.connect(RUNTIME_ROLE),
       log,
       issuer: origin,

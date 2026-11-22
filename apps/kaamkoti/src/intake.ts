@@ -1,14 +1,18 @@
-// The public request form (docs/architecture.md 4.3, scope `public-intake`): a slug opens one business, and the
-// form may only create a request in it. Everything the customer sent is checked here, before any write: the
-// contact details and address, the picked location, the work items and their photos (checkImage). Then one
-// transaction writes the customer, the job, a task per work item with its photos, and the link the customer is
-// sent to. A work item whose title is the name of one of the business's active catalogue items is that item, at
-// its price; any other title is the customer's own words, for the business to price in the quote.
+// The request form (docs/architecture.md 4.3, 7; scope `customer` since D15): a signed-in customer asks one
+// business, the slug's, for work. Everything they sent is checked here, before any write: the contact details
+// and address, the picked location, the work items and their photos (checkImage). Then one transaction keeps the
+// customer's own record current, writes the job, a task per work item with its photos, and a job link (until
+// step 3.2f's second half replaces links with the customer's job page). A work item whose title is the name of
+// one of the business's active catalogue items is that item, at its price; any other title is the customer's
+// own words, for the business to price in the quote.
+import type { Audit } from "@bodhchakra/audit";
+import type { CustomerSession } from "@bodhchakra/auth";
 import type { Db, DbClient } from "@bodhchakra/db";
 import { type CheckedImage, checkImage, type Storage } from "@bodhchakra/storage";
 import { resolveSlug } from "@bodhchakra/tenancy";
 import { z } from "zod";
 import { businessProfile } from "./business-profile.ts";
+import { customerFor } from "./customer-space.ts";
 import { issueJobLink } from "./job-link.ts";
 
 /** Up to this many photos per request, across its work items (docs/architecture.md 10). */
@@ -38,6 +42,7 @@ export interface IntakeInput {
 export type IntakeError =
   | "not_found"
   | "contact"
+  | "phone_taken"
   | "location"
   | "items"
   | "too_many_photos"
@@ -132,11 +137,13 @@ const workItems = z
 /** The same name, whatever the case and spacing the customer typed it with. */
 const sameName = (name: string) => name.trim().replace(/\s+/g, " ").toLowerCase();
 
-/** Creates a request from the public form of the business with this slug. */
+/** Creates a request from the signed-in customer to the business with this slug. */
 export async function submitRequest(
   db: Db,
   storage: Storage,
+  audit: Audit,
   slug: string,
+  session: CustomerSession,
   input: IntakeInput,
 ): Promise<IntakeResult> {
   const person = contact.safeParse(input);
@@ -170,7 +177,8 @@ export async function submitRequest(
     if (!(await businessProfile(client))) return { ok: false, error: "not_found" };
     const catalogue = await activeItemsByName(client);
 
-    const customerId = await findOrCreateCustomer(client, businessId, person.data);
+    const customerId = await requestingCustomer(client, audit, session, businessId, person.data);
+    if (!customerId) return { ok: false, error: "phone_taken" };
     const job = await createJob(client, businessId, customerId, person.data, place.data);
     for (const [i, item] of items.data.entries()) {
       const known = catalogue.get(sameName(item.title));
@@ -217,8 +225,51 @@ export async function activeItems(client: DbClient, ids: readonly string[]) {
 export type Contact = z.infer<typeof contact>;
 
 /**
- * The business's customer with this phone, or a new one. An existing customer's details are left alone: a form
- * anyone can fill in must not rename someone else's customer record. This request's address goes on the job.
+ * The signed-in person's customer row in this business, kept current with the details they just typed, or a new
+ * row linked to their identity. Null when the mobile is on another customer's row: a phone is not verified yet
+ * (3.3), so typing someone's number must neither file the request under their record nor take the number over.
+ */
+async function requestingCustomer(
+  client: DbClient,
+  audit: Audit,
+  session: CustomerSession,
+  businessId: string,
+  person: Contact,
+): Promise<string | null> {
+  const own = await customerFor(client, audit, session);
+  if (own) return updateOwnContact(client, own.id, person);
+  const created = await client.query<{ id: string }>(
+    `insert into kk.customer (business_id, identity_id, name, phone_e164, email, address)
+     values ($1, $2, $3, $4, $5, $6)
+     on conflict do nothing
+     returning id`,
+    [businessId, session.identityId, person.name, person.phone, session.email, person.address],
+  );
+  if (created.rows[0]) return created.rows[0].id;
+  // Either the same person's other request created their row a moment ago, or the phone is someone else's.
+  const raced = await customerFor(client, audit, session);
+  return raced ? updateOwnContact(client, raced.id, person) : null;
+}
+
+/** The customer's own name, phone and address, unless the phone is another customer's. RLS keeps it in the business. */
+async function updateOwnContact(
+  client: DbClient,
+  customerId: string,
+  person: Contact,
+): Promise<string | null> {
+  const { rows } = await client.query<{ id: string }>(
+    `update kk.customer set name = $2, phone_e164 = $3, address = $4
+     where id = $1
+       and not exists (select 1 from kk.customer where phone_e164 = $3 and id <> $1)
+     returning id`,
+    [customerId, person.name, person.phone, person.address],
+  );
+  return rows[0]?.id ?? null;
+}
+
+/**
+ * The business's customer with this phone, or a new one (the owner's phone enquiry). An existing customer's
+ * details are left alone. This request's address goes on the job.
  */
 export async function findOrCreateCustomer(
   client: DbClient,
