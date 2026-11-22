@@ -10,7 +10,10 @@ create table kk.job (
   status text not null default 'requested' check (status in (
     'requested', 'quoted', 'accepted', 'scheduled', 'in_progress', 'completed', 'declined', 'lost', 'cancelled'
   )),
-  -- Where the work is; this request's, so a customer's later request elsewhere does not rewrite it.
+  -- Whom to meet and where: copied at send from what the customer chose or typed, so editing or deleting a
+  -- saved address, or a later request elsewhere, never rewrites this job. The mobile is anyone's.
+  contact_name text not null check (length(contact_name) between 1 and 120),
+  contact_phone_e164 text not null check (contact_phone_e164 ~ '^\+[1-9][0-9]{6,14}$'),
   address text check (length(address) between 1 and 500),
   -- The spot the customer picked with their phone's location, if they did; the owner opens it in a map.
   latitude double precision check (latitude between -90 and 90),

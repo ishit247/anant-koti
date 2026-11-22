@@ -12,6 +12,15 @@ import { seedTemplates } from "./seed-templates.ts";
 import { saveTradeTemplate } from "./trade-template.ts";
 
 export {
+  addAddress,
+  addressBook,
+  deleteAddress,
+  MAX_ADDRESSES,
+  type Place,
+  type SavedAddress,
+  updateAddress,
+} from "./address-book.ts";
+export {
   type BusinessProfile,
   businessProfile,
   type CatalogueItem,
@@ -29,6 +38,7 @@ export {
   type JobGroup,
   jobGroup,
   type SpaceCustomer,
+  updateOwnDetails,
 } from "./customer-space.ts";
 export { type Geocoder, nominatim, type Point, point } from "./geocode.ts";
 export {
@@ -51,7 +61,6 @@ export {
   MAX_REQUEST_PHOTOS,
   readIntakeForm,
   submitRequest,
-  toE164,
   type WorkItemInput,
 } from "./intake.ts";
 export {
@@ -79,6 +88,7 @@ export {
 } from "./job-link.ts";
 export { CLIENT_IP_HEADER, clientIp, LIMITS, overLimit } from "./limits.ts";
 export { noticeQuoteSent } from "./notices.ts";
+export { toE164 } from "./phone.ts";
 export { type PublicPage, publicPage } from "./public-page.ts";
 export {
   type AnswerError,

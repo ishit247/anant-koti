@@ -58,6 +58,33 @@ export async function withCustomer<T>(
   );
 }
 
+const seeOther = (location: string) => new Response(null, { status: 303, headers: { location } });
+
+/**
+ * A customer route handler's form post (architecture 7): refused (403) unless it came from the app's own pages;
+ * without a session, a 303 to sign in that returns to `returnTo` (never a 307, which would re-post the form);
+ * 404 for an unknown slug. Then `fn` runs inside that business with this identity's customer row, and its
+ * answer is a 303 to the location it returns, or the Response it builds.
+ */
+export async function customerPost(
+  request: Request,
+  slug: string,
+  returnTo: string,
+  fn: (client: DbClient, customer: SpaceCustomer | null) => Promise<string | Response>,
+): Promise<Response> {
+  if (!fromOwnPages(request)) return new Response(null, { status: 403 });
+  const { customerAuth, db, audit } = server();
+  const session = await customerAuth.getSession(request.headers.get("cookie"));
+  if (!session)
+    return seeOther(`/b/${encodeURIComponent(slug)}/login?return=${encodeURIComponent(returnTo)}`);
+  const businessId = await db.tx((client) => resolveSlug(client, slug));
+  if (!businessId) return new Response("No such business.\n", { status: 404 });
+  const answer = await db.withTenant(businessId, async (client) =>
+    fn(client, await customerFor(client, audit, session)),
+  );
+  return typeof answer === "string" ? seeOther(answer) : answer;
+}
+
 /**
  * The signed-in member for a route declared `scope: "member"`. A person with no business yet goes to
  * signup; a role the route does not allow gets a 404, so a technician learns nothing about owner pages.

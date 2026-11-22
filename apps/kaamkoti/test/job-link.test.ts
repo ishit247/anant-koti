@@ -111,8 +111,8 @@ describe("customer job links on the seeded database", () => {
     await expect(
       app.withTenant(SHARMA, (client) =>
         client.query(
-          `insert into kk.job (business_id, customer_id, number, source)
-           values ($1, '20000000-0000-4000-8000-0000000c0001', 99, 'phone')`,
+          `insert into kk.job (business_id, customer_id, number, source, contact_name, contact_phone_e164)
+           values ($1, '20000000-0000-4000-8000-0000000c0001', 99, 'phone', 'X', '+919000009999')`,
           [SHARMA],
         ),
       ),

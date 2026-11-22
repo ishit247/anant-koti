@@ -1,26 +1,35 @@
 // The request form (docs/architecture.md 4.3, 7; scope `customer` since D15): a signed-in customer asks one
-// business, the slug's, for work. Everything they sent is checked here, before any write: the contact details
-// and address, the picked location, the work items and their photos (checkImage). Then one transaction keeps the
-// customer's own record current, writes the job, a task per work item with its photos, and a job link (until
-// step 3.2f's second half replaces links with the customer's job page). A work item whose title is the name of
-// one of the business's active catalogue items is that item, at its price; any other title is the customer's
-// own words, for the business to price in the quote.
+// business, the slug's, for work. Everything they sent is checked here, before any write: where and whom (one of
+// their saved addresses, or a place typed with its contact and picked location), the work items and their photos
+// (checkImage). Then one transaction writes the job with its own copy of the contact and address, a task per work
+// item with its photos, and a job link (until step 3.2f's second half replaces links with the customer's job
+// page). A work item whose title is the name of one of the business's active catalogue items is that item, at
+// its price; any other title is the customer's own words, for the business to price in the quote.
 import type { Audit } from "@bodhchakra/audit";
 import type { CustomerSession } from "@bodhchakra/auth";
 import type { Db, DbClient } from "@bodhchakra/db";
 import { type CheckedImage, checkImage, type Storage } from "@bodhchakra/storage";
 import { resolveSlug } from "@bodhchakra/tenancy";
 import { z } from "zod";
+import {
+  addAddress,
+  chooseAddress,
+  label,
+  type Place,
+  type PlaceInput,
+  readPlace,
+  readPlaceForm,
+} from "./address-book.ts";
 import { businessProfile } from "./business-profile.ts";
-import { customerFor } from "./customer-space.ts";
+import { customerFor, type SpaceCustomer } from "./customer-space.ts";
 import { issueJobLink } from "./job-link.ts";
+import { phone } from "./phone.ts";
 
 /** Up to this many photos per request, across its work items (docs/architecture.md 10). */
 export const MAX_REQUEST_PHOTOS = 6;
 export const MAX_REQUEST_ITEMS = 20;
 export const MAX_ITEM_TITLE = 120;
 export const MAX_ITEM_DETAILS = 1000;
-export const MAX_ADDRESS = 500;
 
 /** One work item as it arrived. */
 export interface WorkItemInput {
@@ -29,14 +38,14 @@ export interface WorkItemInput {
   readonly photos: readonly Uint8Array[];
 }
 
-/** The form as it arrived; nothing in it is trusted yet. */
-export interface IntakeInput {
-  readonly name: string;
-  readonly phone: string;
-  readonly address: string;
-  /** Both empty unless the customer picked their location. */
-  readonly latitude: string;
-  readonly longitude: string;
+/**
+ * The form as it arrived; nothing in it is trusted yet. With `addressId` set, the job goes to that saved address
+ * and the typed place is ignored; empty, the typed place is used, and saved under `label` if `saveAddress`.
+ */
+export interface IntakeInput extends PlaceInput {
+  readonly addressId: string;
+  readonly saveAddress: boolean;
+  readonly label: string;
   readonly items: readonly WorkItemInput[];
 }
 
@@ -45,6 +54,8 @@ export type IntakeError =
   | "contact"
   | "phone_taken"
   | "location"
+  | "address"
+  | "addresses_full"
   | "items"
   | "too_many_photos"
   | "photo_too_large"
@@ -57,9 +68,10 @@ export type IntakeResult =
 const ITEM_FIELD = /^item\.(\d{1,2})\.(title|details|photo)$/;
 
 /**
- * The form's fields as the page names them: `name`, `phone`, `address`, `latitude`, `longitude`, and per work
- * item `item.<n>.title`, `item.<n>.details` and `item.<n>.photo` (files). Items keep the order of `<n>`. An
- * empty file input arrives as a file of 0 bytes and is skipped, and so is an item left wholly blank.
+ * The form's fields as the page names them: `addressId`, the place fields (readPlaceForm), `saveAddress` (a
+ * checkbox) and `label`, and per work item `item.<n>.title`, `item.<n>.details` and `item.<n>.photo` (files).
+ * Items keep the order of `<n>`. An empty file input arrives as a file of 0 bytes and is skipped, and so is an
+ * item left wholly blank.
  */
 export async function readIntakeForm(form: FormData): Promise<IntakeInput> {
   const text = (name: string) => {
@@ -79,11 +91,10 @@ export async function readIntakeForm(form: FormData): Promise<IntakeInput> {
     } else if (typeof value === "string") item[field[2] === "title" ? "title" : "details"] = value;
   }
   return {
-    name: text("name"),
-    phone: text("phone"),
-    address: text("address"),
-    latitude: text("latitude"),
-    longitude: text("longitude"),
+    ...readPlaceForm(form),
+    addressId: text("addressId"),
+    saveAddress: text("saveAddress") === "on",
+    label: text("label"),
     items: [...items]
       .sort(([a], [b]) => a - b)
       .map(([, item]) => item)
@@ -91,35 +102,12 @@ export async function readIntakeForm(form: FormData): Promise<IntakeInput> {
   };
 }
 
-const E164 = /^\+[1-9][0-9]{6,14}$/;
-
-/**
- * A phone number as people type it in India, in E.164: a 10-digit mobile, with or without 0 or 91 in front,
- * or a full +<country> number. Anything else is returned as typed, and the E.164 check refuses it.
- */
-export function toE164(typed: string): string {
-  const compact = typed.replace(/[\s().-]/g, "");
-  const indian = /^(?:\+?91|0)?([6-9][0-9]{9})$/.exec(compact);
-  if (indian) return `+91${indian[1]}`;
-  return compact;
-}
-
+/** The owner's phone enquiry: the customer's name and mobile, and the address of this request. */
 export const contact = z.object({
   name: z.string().trim().min(1).max(120),
-  phone: z.string().transform(toE164).pipe(z.string().regex(E164)),
-  address: z.string().trim().min(1).max(MAX_ADDRESS),
+  phone,
+  address: z.string().trim().min(1).max(500),
 });
-
-/** A number typed as text; an empty string is refused, not read as 0. */
-const coordinate = (limit: number) =>
-  z.string().trim().min(1).pipe(z.coerce.number<string>().min(-limit).max(limit));
-
-/** Null when no location was picked; anything else must be a real coordinate pair. */
-const location = z.union([
-  z.object({ latitude: z.literal(""), longitude: z.literal("") }).transform(() => null),
-  z.object({ latitude: coordinate(90), longitude: coordinate(180) }),
-]);
-export type Location = { readonly latitude: number; readonly longitude: number };
 
 const workItems = z
   .array(
@@ -147,10 +135,20 @@ export async function submitRequest(
   session: CustomerSession,
   input: IntakeInput,
 ): Promise<IntakeResult> {
-  const person = contact.safeParse(input);
-  if (!person.success) return { ok: false, error: "contact" };
-  const place = location.safeParse(input);
-  if (!place.success) return { ok: false, error: "location" };
+  // A saved address is looked up in the customer's own book inside the transaction; a typed place is checked
+  // now, and so is the label it is to be saved under.
+  let typed: Place | null = null;
+  let saveAs: string | null = null;
+  if (!input.addressId) {
+    const read = readPlace(input);
+    if (!read.ok) return read;
+    typed = read.place;
+    if (input.saveAddress) {
+      const name = label.safeParse(input.label);
+      if (!name.success) return { ok: false, error: "contact" };
+      saveAs = name.data;
+    }
+  }
   const items = workItems.safeParse(input.items);
   if (!items.success) return { ok: false, error: "items" };
   if (input.items.flatMap((item) => item.photos).length > MAX_REQUEST_PHOTOS)
@@ -178,9 +176,24 @@ export async function submitRequest(
     if (!(await businessProfile(client))) return { ok: false, error: "not_found" };
     const catalogue = await activeItemsByName(client);
 
-    const customerId = await requestingCustomer(client, audit, session, businessId, person.data);
-    if (!customerId) return { ok: false, error: "phone_taken" };
-    const job = await createJob(client, businessId, customerId, person.data, place.data);
+    // A first request: the customer's own name and mobile are the ones they typed for the place. Someone with
+    // no row yet has no saved addresses, so a saved address id from them is refused like any other.
+    const customer =
+      (await customerFor(client, audit, session)) ??
+      (typed ? await newCustomer(client, audit, session, businessId, typed) : null);
+    if (!customer) return { ok: false, error: typed ? "phone_taken" : "address" };
+    let where: Place;
+    if (typed) {
+      if (saveAs && (await addAddress(client, customer, saveAs, typed)) === "full")
+        return { ok: false, error: "addresses_full" };
+      where = typed;
+    } else {
+      // Only the customer's own book is searched, so another customer's id is not found.
+      const saved = await chooseAddress(client, customer, input.addressId);
+      if (!saved) return { ok: false, error: "address" };
+      where = saved;
+    }
+    const job = await createJob(client, businessId, customer.id, where);
     for (const [i, item] of items.data.entries()) {
       const known = catalogue.get(sameName(item.title));
       const { rows } = await client.query<{ id: string }>(
@@ -226,51 +239,32 @@ export async function activeItems(client: DbClient, ids: readonly string[]) {
 export type Contact = z.infer<typeof contact>;
 
 /**
- * The signed-in person's customer row in this business, kept current with the details they just typed, or a new
- * row linked to their identity. Null when the mobile is on another customer's row: a phone is not verified yet
- * (3.3), so typing someone's number must neither file the request under their record nor take the number over.
+ * A new customer row for the signed-in person, with the name and mobile of the place they typed on their first
+ * request. Null when the mobile is on another customer's row: a phone is not verified yet (3.3), so typing
+ * someone's number must neither file the request under their record nor take the number over.
  */
-async function requestingCustomer(
+async function newCustomer(
   client: DbClient,
   audit: Audit,
   session: CustomerSession,
   businessId: string,
-  person: Contact,
-): Promise<string | null> {
-  const own = await customerFor(client, audit, session);
-  if (own) return updateOwnContact(client, own.id, person);
+  first: Place,
+): Promise<SpaceCustomer | null> {
   const created = await client.query<{ id: string }>(
-    `insert into kk.customer (business_id, identity_id, name, phone_e164, email, address)
-     values ($1, $2, $3, $4, $5, $6)
+    `insert into kk.customer (business_id, identity_id, name, phone_e164, email)
+     values ($1, $2, $3, $4, $5)
      on conflict do nothing
      returning id`,
-    [businessId, session.identityId, person.name, person.phone, session.email, person.address],
+    [businessId, session.identityId, first.contactName, first.contactPhone, session.email],
   );
-  if (created.rows[0]) return created.rows[0].id;
+  if (created.rows[0]) return { id: created.rows[0].id, businessId };
   // Either the same person's other request created their row a moment ago, or the phone is someone else's.
-  const raced = await customerFor(client, audit, session);
-  return raced ? updateOwnContact(client, raced.id, person) : null;
-}
-
-/** The customer's own name, phone and address, unless the phone is another customer's. RLS keeps it in the business. */
-async function updateOwnContact(
-  client: DbClient,
-  customerId: string,
-  person: Contact,
-): Promise<string | null> {
-  const { rows } = await client.query<{ id: string }>(
-    `update kk.customer set name = $2, phone_e164 = $3, address = $4
-     where id = $1
-       and not exists (select 1 from kk.customer where phone_e164 = $3 and id <> $1)
-     returning id`,
-    [customerId, person.name, person.phone, person.address],
-  );
-  return rows[0]?.id ?? null;
+  return customerFor(client, audit, session);
 }
 
 /**
  * The business's customer with this phone, or a new one (the owner's phone enquiry). An existing customer's
- * details are left alone. This request's address goes on the job.
+ * details are left alone. This request's address goes on the job and into the customer's book.
  */
 export async function findOrCreateCustomer(
   client: DbClient,
@@ -278,10 +272,10 @@ export async function findOrCreateCustomer(
   person: Contact,
 ): Promise<string> {
   const created = await client.query<{ id: string }>(
-    `insert into kk.customer (business_id, name, phone_e164, address) values ($1, $2, $3, $4)
+    `insert into kk.customer (business_id, name, phone_e164) values ($1, $2, $3)
      on conflict (business_id, phone_e164) do nothing
      returning id`,
-    [businessId, person.name, person.phone, person.address],
+    [businessId, person.name, person.phone],
   );
   if (created.rows[0]) return created.rows[0].id;
   const { rows } = await client.query<{ id: string }>(
@@ -299,24 +293,26 @@ export async function createJob(
   client: DbClient,
   businessId: string,
   customerId: string,
-  person: Contact,
-  place: Location | null,
+  place: Place,
   source: "public_form" | "phone" = "public_form",
 ): Promise<{ id: string; number: number }> {
   await client.query("select pg_advisory_xact_lock(hashtextextended('kk.job.number:' || $1, 0))", [
     businessId,
   ]);
   const { rows } = await client.query<{ id: string; number: number }>(
-    `insert into kk.job (business_id, customer_id, number, source, address, latitude, longitude)
-     select $1, $2, coalesce(max(number), 0) + 1, $3, $4, $5, $6 from kk.job
+    `insert into kk.job (business_id, customer_id, number, source, contact_name, contact_phone_e164, address,
+                         latitude, longitude)
+     select $1, $2, coalesce(max(number), 0) + 1, $3, $4, $5, $6, $7, $8 from kk.job
      returning id, number`,
     [
       businessId,
       customerId,
       source,
-      person.address,
-      place?.latitude ?? null,
-      place?.longitude ?? null,
+      place.contactName,
+      place.contactPhone,
+      place.address,
+      place.location?.latitude ?? null,
+      place.location?.longitude ?? null,
     ],
   );
   const job = rows[0];

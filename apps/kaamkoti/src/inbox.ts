@@ -4,7 +4,8 @@
 import type { Audit } from "@bodhchakra/audit";
 import type { DbClient } from "@bodhchakra/db";
 import { z } from "zod";
-import { activeItems, contact, createJob, findOrCreateCustomer, type Location } from "./intake.ts";
+import { addAddress, type Location, type Place } from "./address-book.ts";
+import { activeItems, contact, createJob, findOrCreateCustomer } from "./intake.ts";
 import { type JobStatus, type WorkItem, workItems } from "./job.ts";
 import { issueJobLink, revokeJobLinks } from "./job-link.ts";
 
@@ -64,7 +65,11 @@ export async function countNewRequests(client: DbClient): Promise<number> {
 }
 
 export interface OwnerJobView extends Omit<InboxRow, "tasks"> {
+  /** The account holder who asked; `customerName` is theirs too. */
   readonly customerPhone: string;
+  /** Whom to meet at the address: the job's own copy, perhaps someone other than the customer. */
+  readonly contactName: string;
+  readonly contactPhone: string;
   readonly address: string | null;
   /** Where the customer said they are, if they picked their location. */
   readonly location: Location | null;
@@ -80,13 +85,15 @@ export async function ownerJob(client: DbClient, jobId: string): Promise<OwnerJo
     source: JobSource;
     customer_name: string;
     phone_e164: string;
+    contact_name: string;
+    contact_phone_e164: string;
     created_at: Date;
     address: string | null;
     latitude: number | null;
     longitude: number | null;
   }>(
-    `select j.id, j.number, j.status, j.source, c.name as customer_name, c.phone_e164, j.created_at,
-            j.address, j.latitude, j.longitude
+    `select j.id, j.number, j.status, j.source, c.name as customer_name, c.phone_e164, j.contact_name,
+            j.contact_phone_e164, j.created_at, j.address, j.latitude, j.longitude
      from kk.job j
      join kk.customer c on c.business_id = j.business_id and c.id = j.customer_id
      where j.id = $1`,
@@ -102,6 +109,8 @@ export async function ownerJob(client: DbClient, jobId: string): Promise<OwnerJo
     customerName: job.customer_name,
     createdAt: job.created_at,
     customerPhone: job.phone_e164,
+    contactName: job.contact_name,
+    contactPhone: job.contact_phone_e164,
     address: job.address,
     // The table's check keeps the two together.
     location:
@@ -149,7 +158,15 @@ export async function logPhoneEnquiry(
     return { ok: false, error: "tasks" };
 
   const customerId = await findOrCreateCustomer(client, owner.businessId, person.data);
-  const job = await createJob(client, owner.businessId, customerId, person.data, null, "phone");
+  const place: Place = {
+    contactName: person.data.name,
+    contactPhone: person.data.phone,
+    address: person.data.address,
+    location: null,
+  };
+  // Into the customer's book, for their next request; a full book keeps what it has (the job has its copy).
+  await addAddress(client, { id: customerId, businessId: owner.businessId }, "Address", place);
+  const job = await createJob(client, owner.businessId, customerId, place, "phone");
   for (const item of items) {
     await client.query(
       `insert into kk.job_task (business_id, job_id, catalogue_item_id, title, added_by)

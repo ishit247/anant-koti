@@ -4,7 +4,9 @@
 import type { Audit } from "@bodhchakra/audit";
 import type { CustomerSession } from "@bodhchakra/auth";
 import type { DbClient } from "@bodhchakra/db";
+import { z } from "zod";
 import type { JobStatus } from "./job.ts";
+import { localPhone, phone } from "./phone.ts";
 
 /** The customer's list, by state (architecture 6): Active is the default. */
 export const JOB_GROUPS = {
@@ -72,29 +74,46 @@ export async function customerFor(
   return { id: claimed.id, businessId: claimed.business_id };
 }
 
-/** What the request form is filled in with: the customer's own record in this business. */
+/** The account holder's own name and mobile in this business; where work is done is in the address book. */
 export interface CustomerContact {
   readonly name: string;
-  /** As typed in India: a +91 mobile without the country code; anything else in E.164. */
+  /** As typed in India (localPhone). */
   readonly phone: string;
-  readonly address: string;
 }
 
 export async function customerContact(
   client: DbClient,
   customer: SpaceCustomer,
 ): Promise<CustomerContact> {
-  const { rows } = await client.query<{ name: string; phone_e164: string; address: string | null }>(
-    "select name, phone_e164, address from kk.customer where business_id = $1 and id = $2",
+  const { rows } = await client.query<{ name: string; phone_e164: string }>(
+    "select name, phone_e164 from kk.customer where business_id = $1 and id = $2",
     [customer.businessId, customer.id],
   );
   const row = rows[0];
   if (!row) throw new Error(`customerContact: no customer ${customer.id} in this business`);
-  return {
-    name: row.name,
-    phone: row.phone_e164.replace(/^\+91(?=[6-9]\d{9}$)/, ""),
-    address: row.address ?? "",
-  };
+  return { name: row.name, phone: localPhone(row.phone_e164) };
+}
+
+const ownDetails = z.object({ name: z.string().trim().min(1).max(120), phone });
+
+/**
+ * The customer's own name and mobile, edited on Profile. A mobile on another customer's row is refused
+ * (`phone_taken`): phones are unverified until 3.3, so typing someone's number must not take it over.
+ */
+export async function updateOwnDetails(
+  client: DbClient,
+  customer: SpaceCustomer,
+  input: { readonly name: string; readonly phone: string },
+): Promise<"saved" | "contact" | "phone_taken"> {
+  const details = ownDetails.safeParse(input);
+  if (!details.success) return "contact";
+  const { rowCount } = await client.query(
+    `update kk.customer set name = $3, phone_e164 = $4
+     where business_id = $1 and id = $2
+       and not exists (select 1 from kk.customer where phone_e164 = $4 and id <> $2)`,
+    [customer.businessId, customer.id, details.data.name, details.data.phone],
+  );
+  return (rowCount ?? 0) > 0 ? "saved" : "phone_taken";
 }
 
 export interface CustomerJobRow {

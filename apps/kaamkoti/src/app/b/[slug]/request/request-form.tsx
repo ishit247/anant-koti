@@ -1,10 +1,20 @@
 "use client";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Icon } from "../../../icons.tsx";
+import { PlaceFields } from "../../place-fields.tsx";
 
-// Two screens in one form: the request (contact, address, the list of work items) and the editor of one work
+// Two screens in one form: the request (where and who, the list of work items) and the editor of one work
 // item. Every item's fields stay in the form while hidden, so the post carries them all, photos included.
 // The route handler checks everything again; what this component refuses is only a convenience.
+
+/** One of the customer's saved addresses, as the form shows it. */
+export interface BookEntry {
+  readonly id: string;
+  readonly label: string;
+  readonly contactName: string;
+  readonly contactPhone: string;
+  readonly address: string;
+}
 
 export interface Service {
   readonly name: string;
@@ -18,6 +28,8 @@ export interface RequestLimits {
   readonly title: number;
   readonly details: number;
   readonly address: number;
+  readonly label: number;
+  readonly addresses: number;
 }
 
 interface Item {
@@ -32,7 +44,8 @@ interface Item {
 const sameName = (name: string) => name.trim().replace(/\s+/g, " ").toLowerCase();
 
 export function RequestForm({
-  contact,
+  own,
+  book,
   action,
   placeAction,
   services,
@@ -40,8 +53,10 @@ export function RequestForm({
   limits,
   refused,
 }: {
-  /** The customer's own record here, to fill the details in; null before their first request. */
-  contact: { name: string; phone: string; address: string } | null;
+  /** The customer's own name and mobile here; null before their first request. */
+  own: { name: string; phone: string } | null;
+  /** Their saved addresses, the most recently used first. */
+  book: readonly BookEntry[];
   action: string;
   /** Where a picked point is sent to get its address back (D16). */
   placeAction: string;
@@ -55,11 +70,10 @@ export function RequestForm({
   const [editing, setEditing] = useState<number | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [itemProblem, setItemProblem] = useState<string | null>(null);
-  const [place, setPlace] = useState<{ latitude: string; longitude: string } | null>(null);
-  /** "found": the address box was filled from the picked point. */
-  const [locating, setLocating] = useState<"idle" | "busy" | "found" | "failed">("idle");
-  const addressBox = useRef<HTMLTextAreaElement>(null);
-  const [canLocate, setCanLocate] = useState(false);
+  /** A saved address's id, or "" for somewhere else; the last used is preselected. */
+  const [where, setWhere] = useState(book[0]?.id ?? "");
+  const roomInBook = book.length < limits.addresses;
+  const [saveAddress, setSaveAddress] = useState(roomInBook);
   const [sending, setSending] = useState(false);
   const nextKey = useRef(0);
   const files = useRef(new Map<number, HTMLInputElement>());
@@ -67,8 +81,6 @@ export function RequestForm({
   /** The item as it was when the editor opened, so Back can undo; null for a new item. */
   const before = useRef<{ item: Item; files: FileList | null } | null>(null);
 
-  // Known only in the browser; the server render offers no location button.
-  useEffect(() => setCanLocate("geolocation" in navigator), []);
   // Each screen starts at its top; a new item's editor puts the cursor in the title.
   useEffect(() => {
     window.scrollTo({ top: 0 });
@@ -134,41 +146,6 @@ export function RequestForm({
     setEditing(null);
   };
 
-  /** The picked point's address in the Address box, for the customer to correct; null if none came back. */
-  const fillAddress = async (latitude: number, longitude: number): Promise<boolean> => {
-    try {
-      const response = await fetch(placeAction, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ latitude, longitude }),
-      });
-      if (!response.ok) return false;
-      const { address } = (await response.json()) as { address: string | null };
-      if (!address || !addressBox.current) return false;
-      addressBox.current.value = address;
-      return true;
-    } catch {
-      // Documented fallback: offline or the lookup failed; the point is kept and the customer types the address.
-      return false;
-    }
-  };
-
-  const locate = () => {
-    setLocating("busy");
-    navigator.geolocation.getCurrentPosition(
-      async ({ coords }) => {
-        setPlace({
-          latitude: coords.latitude.toFixed(6),
-          longitude: coords.longitude.toFixed(6),
-        });
-        setLocating((await fillAddress(coords.latitude, coords.longitude)) ? "found" : "idle");
-      },
-      // Refused or unavailable: the typed address is enough, and the message says so.
-      () => setLocating("failed"),
-      { enableHighAccuracy: true, timeout: 15_000 },
-    );
-  };
-
   const submit = (event: FormEvent<HTMLFormElement>) => {
     if (items.length === 0) {
       event.preventDefault();
@@ -188,70 +165,84 @@ export function RequestForm({
           </p>
         ) : null}
 
-        <section className="panel" aria-labelledby="details-title">
-          <h2 id="details-title">Your details</h2>
-          <label>
-            Your name
-            <input
-              name="name"
-              autoComplete="name"
-              required
-              maxLength={120}
-              defaultValue={contact?.name}
-            />
-          </label>
-          <label>
-            Mobile number
-            <input
-              name="phone"
-              type="tel"
-              autoComplete="tel"
-              inputMode="tel"
-              required
-              defaultValue={contact?.phone}
-            />
-          </label>
-          <label>
-            Address
-            <textarea
-              ref={addressBox}
-              name="address"
-              defaultValue={contact?.address}
-              autoComplete="street-address"
-              required
-              maxLength={limits.address}
-              rows={3}
-              placeholder="House, street, area"
-            />
-          </label>
-          <input type="hidden" name="latitude" value={place?.latitude ?? ""} />
-          <input type="hidden" name="longitude" value={place?.longitude ?? ""} />
-          {place ? (
-            <span className="pill" role="status">
-              <Icon name="pin" size={16} />
-              Location added
-              <button type="button" aria-label="Remove location" onClick={() => setPlace(null)}>
-                <Icon name="close" size={16} />
-              </button>
-            </span>
-          ) : canLocate ? (
-            <button type="button" className="link" onClick={locate} disabled={locating === "busy"}>
-              <Icon name="pin" size={18} />
-              {locating === "busy" ? "Finding you…" : "Use my current location"}
-            </button>
+        <section className="panel" aria-labelledby="where-title">
+          <h2 id="where-title">Where and who</h2>
+          {book.length > 0 ? (
+            <div className="choices" role="radiogroup" aria-labelledby="where-title">
+              {book.map((entry) => (
+                <label key={entry.id} className="choice place">
+                  <input
+                    type="radio"
+                    name="addressId"
+                    value={entry.id}
+                    checked={where === entry.id}
+                    onChange={() => setWhere(entry.id)}
+                  />
+                  <span className="text">
+                    <strong>
+                      {entry.label} · {entry.contactName} · {entry.contactPhone}
+                    </strong>
+                    <span className="muted small">{entry.address}</span>
+                  </span>
+                </label>
+              ))}
+              <label className="choice place">
+                <input
+                  type="radio"
+                  name="addressId"
+                  value=""
+                  checked={where === ""}
+                  onChange={() => setWhere("")}
+                />
+                <span className="text">
+                  <strong>Somewhere else</strong>
+                  <span className="muted small">Another place, or someone else to meet</span>
+                </span>
+              </label>
+            </div>
           ) : null}
-          {locating === "failed" && !place ? (
-            <p className="hint" role="status">
-              Could not get your location. The address is enough.
-            </p>
-          ) : place && locating === "found" ? (
-            <p className="hint" role="status">
-              Address filled in from your location. Add your house or flat number.
-            </p>
-          ) : place && locating === "idle" ? (
-            <p className="hint" role="status">
-              No address was found for your location. Please check the one above.
-            </p>
+          {where === "" ? (
+            <>
+              <PlaceFields
+                // A first place is most likely the customer's own home, so their details start it.
+                defaults={
+                  book.length === 0 ? { contactName: own?.name, contactPhone: own?.phone } : {}
+                }
+                placeAction={placeAction}
+                maxAddress={limits.address}
+                self={own === null}
+              />
+              {roomInBook ? (
+                <>
+                  <label className="choice">
+                    <input
+                      type="checkbox"
+                      name="saveAddress"
+                      checked={saveAddress}
+                      onChange={(e) => setSaveAddress(e.target.checked)}
+                    />
+                    Save for next time
+                  </label>
+                  {saveAddress ? (
+                    <label>
+                      Save as
+                      <input
+                        name="label"
+                        required
+                        maxLength={limits.label}
+                        placeholder="Home, Parents, Shop"
+                        defaultValue={book.length === 0 ? "Home" : undefined}
+                      />
+                    </label>
+                  ) : null}
+                </>
+              ) : (
+                <p className="hint">
+                  Your address book is full ({limits.addresses}). Delete one on your profile to save
+                  another.
+                </p>
+              )}
+            </>
           ) : null}
         </section>
 

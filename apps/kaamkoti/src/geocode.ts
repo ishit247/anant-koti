@@ -3,7 +3,7 @@
 // at most one request a second from the whole app (the route's global limit).
 import type { Logger } from "@bodhchakra/log";
 import { z } from "zod";
-import { MAX_ADDRESS } from "./intake.ts";
+import { MAX_ADDRESS } from "./address-book.ts";
 
 export const point = z.object({
   latitude: z.number().min(-90).max(90),

@@ -68,7 +68,9 @@ async function shoot(page: Page, name: string) {
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
     if (overflow > 0) problems.push(`${name} at ${label}: ${overflow}px wider than the viewport`);
-    await page.screenshot({ path: `${OUT}${name}-${label}.png`, fullPage: true });
+    // caret "initial": hiding the caret styles inputs, which React reports as a hydration mismatch when a
+    // screenshot lands before hydration ends.
+    await page.screenshot({ path: `${OUT}${name}-${label}.png`, fullPage: true, caret: "initial" });
   }
   await page.setViewportSize(WIDTHS.phone);
 }
@@ -268,10 +270,17 @@ try {
   await signInAs(form, `customer-${run}@example.test`);
   await form.waitForURL(`${PUBLIC}/b/sharma-cooling/request`);
   await shoot(form, "11-request-form");
-  if (await form.inputValue("input[name=name]"))
+  // A first-time customer sees only the fields (3.2g), and their entry also becomes their own name and mobile.
+  if (await form.inputValue("input[name=contactName]"))
     problems.push("a first-time customer's form is filled in from someone else's record");
-  await form.fill("input[name=name]", "Browser Check");
-  await form.fill("input[name=phone]", `9${String(Date.now()).slice(-9)}`);
+  if (await form.locator("input[name=addressId]").count())
+    problems.push("a first-time customer is offered saved addresses");
+  if (!(await form.isChecked("input[name=saveAddress]")))
+    problems.push('"Save for next time" is not on by default');
+  if ((await form.inputValue("input[name=label]")) !== "Home")
+    problems.push("a first place is not offered to be saved as Home");
+  await form.getByLabel("Your name").fill("Browser Check");
+  await form.getByLabel("Your mobile number").fill(`9${String(Date.now()).slice(-9)}`);
   await form.fill("textarea[name=address]", "1 Check Road, Pune");
   // "Use my current location" fills the address from the picked point (D16). The lookup is answered here, in
   // the browser, so the check never sends a point to OpenStreetMap; geocode.test.ts covers the server's side.
@@ -328,10 +337,13 @@ try {
   if (sent.length !== 1 || !sent[0]?.includes("AC gas refill"))
     problems.push(`the new customer's work list shows ${JSON.stringify(sent)}`);
   await shoot(form, "13-request-sent");
-  // Asked again, the form is filled in from their record.
+  // Asked again, the place they saved is offered and chosen, and no typed fields show.
   await form.goto(`${PUBLIC}/b/sharma-cooling/request`);
-  if ((await form.inputValue("input[name=name]")) !== "Browser Check")
-    problems.push("a returning customer's form is not filled in from their record");
+  const savedHome = form.locator("label.choice.place", { hasText: "Home · Browser Check" });
+  if (!(await savedHome.count()) || !(await savedHome.locator("input").isChecked()))
+    problems.push("a returning customer's saved address is not offered and preselected");
+  if (await form.locator("input[name=contactName]").count())
+    problems.push("the typed place fields show while a saved address is chosen");
 
   // The send and sign-out routes' own guards, with and without the session. fetch and the context's request
   // API send neither a browser Origin nor Sec-Fetch-Site, so each sets what it tests: a browser's cross-site
@@ -391,7 +403,12 @@ try {
   // A signed-in customer (D15): seeded Anita opens "My requests" on the bare domain, signs in there, and sees
   // only her request with Sharma. Her cookie is the customer one, on the bare domain only, and the app host
   // does not take her as a member.
-  const anita = await browser.newContext({ viewport: WIDTHS.phone });
+  const anita = await browser.newContext({
+    viewport: WIDTHS.phone,
+    extraHTTPHeaders: { "x-client-ip": `anita-${run}` },
+    geolocation: { latitude: 18.5155, longitude: 73.8563 },
+    permissions: ["geolocation"],
+  });
   const space = await anita.newPage();
   watchConsole(space, "customer space");
   await space.goto(`${APP}/b/sharma-cooling`);
@@ -419,6 +436,41 @@ try {
   await space.goto(`${APP}/jobs`);
   if (new URL(space.url()).pathname === "/jobs")
     problems.push(`a customer opened the members' app at ${space.url()}`);
+  // Where and who (3.2g): her saved addresses, Home (last used) preselected; she asks for work at her
+  // parents' house, where her father is the one to meet.
+  await space.goto(`${PUBLIC}/b/sharma-cooling/request`);
+  const places = space.locator("label.choice.place");
+  const offered = await places.allTextContents();
+  if (
+    offered.length !== 3 ||
+    !offered[0]?.includes("Home") ||
+    !offered[1]?.includes("Parents · Vasant Deshpande") ||
+    !offered[2]?.includes("Somewhere else")
+  )
+    problems.push(`the request form offers ${JSON.stringify(offered)}`);
+  if (!(await places.first().locator("input").isChecked()))
+    problems.push("the last used address is not preselected");
+  await shoot(space, "16a-request-where-and-who");
+  await places.filter({ hasText: "Parents" }).click();
+  await space.getByRole("button", { name: "Add work item" }).click();
+  await space
+    .locator(".sheet:not([hidden])")
+    .getByLabel("What needs doing?")
+    .fill("AC general service");
+  await space.getByRole("button", { name: "Save" }).click();
+  await space.getByRole("button", { name: "Send request" }).click();
+  await space.waitForURL(`${PUBLIC}/b/sharma-cooling/requests`);
+  // Another customer's saved address (Rahul's, seed.sql), posted from her own pages, is refused.
+  const RAHUL_HOME = "10000000-0000-4000-8000-000000110003";
+  const sameSite = { "sec-fetch-site": "same-origin" };
+  const forgedSend = await anita.request.post(sendTo("sharma-cooling"), {
+    headers: sameSite,
+    multipart: { addressId: RAHUL_HOME, "item.0.title": "Forged" },
+    maxRedirects: 0,
+  });
+  if (!forgedSend.headers().location?.endsWith("?error=address"))
+    problems.push(`a request to another customer's address answered ${forgedSend.status()}`);
+
   // The way out is on her profile, reached from the tab bar, which shows her own record with Sharma.
   await space.goto(`${PUBLIC}/b/sharma-cooling/requests`);
   await space.getByRole("link", { name: "Profile" }).click();
@@ -429,11 +481,94 @@ try {
     problems.push(`the customer profile shows ${JSON.stringify(profile)}, not Anita's record`);
   if ((await space.getByRole("button", { name: "Sign out" }).count()) !== 1)
     problems.push("the customer profile has no single Sign out button");
+  // Her own name and mobile change only here, in the Edit sheet.
+  const sheet = () => space.locator(".sheet:not([hidden])");
+  await space.getByRole("button", { name: "Edit" }).click();
+  await sheet().getByLabel("Your name").fill("Anita D");
+  await shoot(space, "16c-profile-details-sheet");
+  await sheet().getByRole("button", { name: "Save" }).click();
+  await space.waitForURL(/saved=details/);
+  if (!(await space.locator("dl.facts").textContent())?.includes("Anita D"))
+    problems.push("the edited name is not on the profile");
+  // An address added with "Use my current location" (answered here, as on the form), changed, then deleted.
+  await space.route("**/request/place", (route) =>
+    route.fulfill({ json: { address: "Shop 3, Laxmi Road, Pune" } }),
+  );
+  await space.getByRole("button", { name: "Add address" }).click();
+  await sheet().getByLabel("Save as").fill("Shop");
+  await sheet().getByLabel("Person to meet").fill("Ravi");
+  await sheet().getByLabel("Their mobile number").fill("90000 01099");
+  await sheet().getByRole("button", { name: "Use my current location" }).click();
+  await sheet().getByText("Location added").waitFor();
+  await shoot(space, "16d-profile-address-sheet");
+  await sheet().getByRole("button", { name: "Save" }).click();
+  await space.waitForURL(/saved=address/);
+  const shop = space.locator("button.tile", { hasText: "Shop" });
+  if (!(await shop.textContent())?.includes("Laxmi Road"))
+    problems.push("the added address is not in the book");
+  await shoot(space, "16e-profile-addresses");
+  await shop.click();
+  await sheet().getByLabel("Person to meet").fill("Ravi K");
+  await sheet().getByRole("button", { name: "Save" }).click();
+  await space.waitForURL(/saved=address/);
+  if (!(await shop.textContent())?.includes("Ravi K"))
+    problems.push("the address edit did not save");
+  await shop.click();
+  await sheet().getByRole("button", { name: "Delete this address" }).click();
+  await space.waitForURL(/saved=deleted/);
+  if ((await space.locator("button.tile").count()) !== 2)
+    problems.push("the deleted address is still in the book");
+  // Profile's posts: another customer's address is a 404 to change or delete; another site's post is refused.
+  const addressAt = `${PUBLIC}/b/sharma-cooling/profile/address`;
+  for (const intent of ["save", "delete"]) {
+    const forged = await anita.request.post(addressAt, {
+      headers: sameSite,
+      form: {
+        id: RAHUL_HOME,
+        intent,
+        label: "Mine",
+        contactName: "Anita",
+        contactPhone: "9000001001",
+        address: "Taken",
+      },
+      maxRedirects: 0,
+    });
+    if (forged.status() !== 404)
+      problems.push(`a ${intent} of another customer's address answered ${forged.status()}`);
+  }
+  for (const url of [addressAt, `${PUBLIC}/b/sharma-cooling/profile/details`]) {
+    const status = (
+      await anita.request.post(url, {
+        headers: { "sec-fetch-site": "cross-site", origin: PUBLIC },
+        form: { name: "Evil", phone: "9000009999" },
+        maxRedirects: 0,
+      })
+    ).status();
+    if (status !== 403) problems.push(`a cross-site post to ${url} answered ${status}`);
+  }
   await space.getByRole("button", { name: "Sign out" }).click();
   await space.waitForURL(`${PUBLIC}/b/sharma-cooling`);
   if ((await anita.cookies()).some((c) => c.name === "__Host-kk_customer"))
     problems.push("the customer cookie survived sign-out");
   await anita.close();
+
+  // The owner's side of that request: the contact is the person at the address, her father, with Call and
+  // WhatsApp to his mobile, and the job says who asked.
+  const sharma = await browser.newContext({ viewport: WIDTHS.phone });
+  const ownerPage = await sharma.newPage();
+  watchConsole(ownerPage, "owner job for someone else");
+  await ownerPage.goto(`${APP}/jobs`);
+  await signInAs(ownerPage, "prakash@example.com");
+  await ownerPage.waitForURL(`${APP}/jobs`);
+  await ownerPage.locator(".cards a.card").first().click();
+  await ownerPage.waitForURL(/\/jobs\/[0-9a-f-]{36}$/);
+  const contactCard = await ownerPage.locator(".card").first().textContent();
+  if (!contactCard?.includes("Vasant Deshpande") || !contactCard.includes("Requested by Anita D"))
+    problems.push(`the owner's job for someone else shows ${JSON.stringify(contactCard)}`);
+  if (!(await ownerPage.getByRole("link", { name: "Call" }).getAttribute("href"))?.endsWith("1011"))
+    problems.push("the owner's Call does not ring the person at the address");
+  await shoot(ownerPage, "16f-owner-job-for-someone-else");
+  await sharma.close();
 
   // Past the /j/ lookup limit.
   let lookups = 0;

@@ -49,7 +49,9 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const draft = quotes.find((q) => q.status === "draft");
   const [current, ...earlier] = quotes.filter((q) => q.status !== "draft");
   const quotable = job.status === "requested" || job.status === "quoted";
-  const digits = job.customerPhone.replace(/\D/g, "");
+  // Calls go to the person at the address, who may not be the customer who asked.
+  const digits = job.contactPhone.replace(/\D/g, "");
+  const forSomeoneElse = job.contactPhone !== job.customerPhone;
   return (
     <>
       <p>
@@ -64,10 +66,15 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
       </p>
 
       <div className="card">
-        <strong>{job.customerName}</strong>
-        <span className="muted">{job.customerPhone}</span>
+        <strong>{job.contactName}</strong>
+        <span className="muted">{job.contactPhone}</span>
+        {forSomeoneElse ? (
+          <span className="muted small">
+            Requested by {job.customerName} · {job.customerPhone}
+          </span>
+        ) : null}
         <div className="actions">
-          <a className="button" href={`tel:${job.customerPhone}`}>
+          <a className="button" href={`tel:${job.contactPhone}`}>
             Call
           </a>
           <a className="button quiet" href={`https://wa.me/${digits}`}>

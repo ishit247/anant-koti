@@ -54,34 +54,34 @@ input gets a brand edge and ring. Do not put an input without a visible label on
 
 ## Building blocks
 
-| Need                         | Use                                                                                         |
-| ---------------------------- | ------------------------------------------------------------------------------------------- |
-| Page title with an action    | `<header className="bar"><h1>…</h1><a className="button">…</a></header>`                    |
-| Section heading              | `<h2>` (small caps label style); inside `.panel` or `.sheet-head` it is sentence case       |
-| A thing, or a group of facts | `.card`; a clickable one is `<a className="card">`                                          |
-| A list of things             | `<ul className="cards"><li><a className="card">…</a></li></ul>`; row inside: `.row`         |
-| Label and value pairs        | `<dl className="facts card">` with `dt` and `dd`                                            |
-| Status                       | `.chip` plus `new`, `go` or `wait` (`statusTone()`, `quoteTone()`, job-labels.ts)           |
-| Headline number / entry card | `.card.stat` (brand colour, count on the right)                                             |
-| Two or three buttons         | `.actions` (equal-width grid that wraps)                                                    |
-| Photos                       | `.photos` (square thumbnails, `loading="lazy"`)                                             |
-| Priced lines and totals      | `QuoteSummary`: `ul.lines` of `.row`s, `.row.total`, figures in `.amount`                   |
-| Nothing here yet             | `<p className="empty">` with the next step in words                                         |
-| A rare or second action      | `<details className="card">` with a `summary` verb, the form inside (no JavaScript)         |
-| One form, two views          | Main view a `.stack`, the other a `fieldset.sheet`, toggled with `hidden`                   |
+| Need                         | Use                                                                                                                                                                               |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Page title with an action    | `<header className="bar"><h1>…</h1><a className="button">…</a></header>`                                                                                                          |
+| Section heading              | `<h2>` (small caps label style); inside `.panel` or `.sheet-head` it is sentence case                                                                                             |
+| A thing, or a group of facts | `.card`; a clickable one is `<a className="card">`                                                                                                                                |
+| A list of things             | `<ul className="cards"><li><a className="card">…</a></li></ul>`; row inside: `.row`                                                                                               |
+| Label and value pairs        | `<dl className="facts card">` with `dt` and `dd`                                                                                                                                  |
+| Status                       | `.chip` plus `new`, `go` or `wait` (`statusTone()`, `quoteTone()`, job-labels.ts)                                                                                                 |
+| Headline number / entry card | `.card.stat` (brand colour, count on the right)                                                                                                                                   |
+| Two or three buttons         | `.actions` (equal-width grid that wraps)                                                                                                                                          |
+| Photos                       | `.photos` (square thumbnails, `loading="lazy"`)                                                                                                                                   |
+| Priced lines and totals      | `QuoteSummary`: `ul.lines` of `.row`s, `.row.total`, figures in `.amount`                                                                                                         |
+| Nothing here yet             | `<p className="empty">` with the next step in words                                                                                                                               |
+| A rare or second action      | `<details className="card">` with a `summary` verb, the form inside (no JavaScript)                                                                                               |
+| One form, two views          | Main view a `.stack`, the other a `fieldset.sheet`, toggled with `hidden`                                                                                                         |
 | Customer page header         | `BusinessHeader` (`app/business-header.tsx`): sticky `header.appbar` with back arrow, `.avatar`, name and place; the page's `h1` and one muted line as children, in `.hero` below |
-| A step of a form             | `section.panel` with an `h2` (sentence case; `.count` badge for a list)                     |
-| A row to tap open            | `button.tile`: `.thumb`, `.text` (two lines), `.price`, `Icon name="chevron"`               |
-| Add another                  | `button.add` (dashed, with `Icon name="plus"`) closing a list of tiles                      |
-| The screen's main action     | `.dock` at the end of the view: sticky at the bottom, full-width primary button             |
-| A screen inside a page       | `.sheet` with `.sheet-head` (`button.icon` back arrow + `h2`)                               |
-| Small inline action / state  | `button.link` (with an icon); `.pill` for a done state with a remove `×`                    |
-| Photo picker                 | `label.drop` around a `.visually-hidden` file input; `.thumbs` previews below               |
-| Icons                        | `Icon` in `app/icons.tsx` (inline SVG, always beside words, `aria-hidden`)                  |
-| One list seen several ways   | `nav.seg` of links with `aria-current="page"` (the customer's Active, Completed, Cancelled) |
-| Link to pass on              | `ShareLink` (copy and WhatsApp), never a hand-built share row                               |
-| Member navigation            | `OwnerNav` at the end of every owner page, with `current` set                               |
-| Customer navigation          | `CustomerNav` (Home, Work list, Profile) at the end of every `/b/[slug]` page; the request form sets no `current`. Sign out lives only on Profile; a `.dock` sits above the bar |
+| A step of a form             | `section.panel` with an `h2` (sentence case; `.count` badge for a list)                                                                                                           |
+| A row to tap open            | `button.tile`: `.thumb`, `.text` (two lines), `.price`, `Icon name="chevron"`                                                                                                     |
+| Add another                  | `button.add` (dashed, with `Icon name="plus"`) closing a list of tiles                                                                                                            |
+| The screen's main action     | `.dock` at the end of the view: sticky at the bottom, full-width primary button                                                                                                   |
+| A screen inside a page       | `.sheet` with `.sheet-head` (`button.icon` back arrow + `h2`)                                                                                                                     |
+| Small inline action / state  | `button.link` (with an icon); `.pill` for a done state with a remove `×`                                                                                                          |
+| Photo picker                 | `label.drop` around a `.visually-hidden` file input; `.thumbs` previews below                                                                                                     |
+| Icons                        | `Icon` in `app/icons.tsx` (inline SVG, always beside words, `aria-hidden`)                                                                                                        |
+| One list seen several ways   | `nav.seg` of links with `aria-current="page"` (the customer's Active, Completed, Cancelled)                                                                                       |
+| Link to pass on              | `ShareLink` (copy and WhatsApp), never a hand-built share row                                                                                                                     |
+| Member navigation            | `OwnerNav` at the end of every owner page, with `current` set                                                                                                                     |
+| Customer navigation          | `CustomerNav` (Home, Work list, Profile) at the end of every `/b/[slug]` page; the request form sets no `current`. Sign out lives only on Profile; a `.dock` sits above the bar   |
 
 Buttons: primary is the default `button`/`.button` (3 rem tall, 0.8 rem radius); `quiet` is white with a
 soft edge; `link` is text-weight with an icon; `icon` is a round 44 px target (back arrow); `danger` is red

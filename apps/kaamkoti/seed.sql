@@ -21,23 +21,38 @@ insert into tenancy.member (id, business_id, identity_id, display_name, role) va
 -- Each business has a signed-in customer (identity_id set: Anita at Sharma, Suresh at Kaveri; their identities
 -- are in services/platform/seed.sql) and owner-entered ones (no identity_id). Meera and Kaveri's Anita carry an
 -- email, so signing in with it claims the row (meera@example.com has no identity yet; platform creates one).
-insert into kk.customer (id, business_id, identity_id, name, phone_e164, email, address) values
+insert into kk.customer (id, business_id, identity_id, name, phone_e164, email) values
   ('10000000-0000-4000-8000-0000000c0001', '10000000-0000-4000-8000-000000000001',
-   '00000000-0000-4000-8000-00000000d005',
-   'Anita Deshpande', '+919000001001', 'anita@example.com', 'Flat 4, Shanti Apartments, Kothrud, Pune'),
+   '00000000-0000-4000-8000-00000000d005', 'Anita Deshpande', '+919000001001', 'anita@example.com'),
   ('10000000-0000-4000-8000-0000000c0002', '10000000-0000-4000-8000-000000000001', null,
-   'Rahul Joshi', '+919000001002', null, '12 Lane 5, Baner, Pune'),
+   'Rahul Joshi', '+919000001002', null),
   ('10000000-0000-4000-8000-0000000c0003', '10000000-0000-4000-8000-000000000001', null,
-   'Meera Kulkarni', '+919000001003', 'meera@example.com', null),
+   'Meera Kulkarni', '+919000001003', 'meera@example.com'),
   ('20000000-0000-4000-8000-0000000c0001', '20000000-0000-4000-8000-000000000002',
-   '00000000-0000-4000-8000-00000000d006',
-   'Suresh Gowda', '+919000002001', 'suresh@example.com', '88 4th Cross, Jayanagar, Bengaluru'),
+   '00000000-0000-4000-8000-00000000d006', 'Suresh Gowda', '+919000002001', 'suresh@example.com'),
   ('20000000-0000-4000-8000-0000000c0002', '20000000-0000-4000-8000-000000000002', null,
-   'Lakshmi Rao', '+919000002002', null, '3 MG Road, Bengaluru'),
+   'Lakshmi Rao', '+919000002002', null),
   -- Same phone as a Sharma customer: one person can be a customer of two businesses. Entered by Kaveri's
   -- owner; Anita claims it by signing in at Kaveri's space with the same email.
   ('20000000-0000-4000-8000-0000000c0003', '20000000-0000-4000-8000-000000000002', null,
-   'Anita Deshpande', '+919000001001', 'Anita@Example.com', null);
+   'Anita Deshpande', '+919000001001', 'Anita@Example.com');
+
+-- Address books. Anita at Sharma has her own flat and her parents' house, where her father is the one to meet;
+-- Home was used last, so the request form preselects it. Rahul and Suresh have one each.
+insert into kk.customer_address (id, business_id, customer_id, label, contact_name, contact_phone_e164, address,
+                                 latitude, longitude, last_used_at) values
+  ('10000000-0000-4000-8000-000000110001', '10000000-0000-4000-8000-000000000001',
+   '10000000-0000-4000-8000-0000000c0001', 'Home', 'Anita Deshpande', '+919000001001',
+   'Flat 4, Shanti Apartments, Kothrud, Pune', 18.507400, 73.807700, now() - interval '1 day'),
+  ('10000000-0000-4000-8000-000000110002', '10000000-0000-4000-8000-000000000001',
+   '10000000-0000-4000-8000-0000000c0001', 'Parents', 'Vasant Deshpande', '+919000001011',
+   '22 Prabhat Road, Erandwane, Pune', null, null, now() - interval '20 days'),
+  ('10000000-0000-4000-8000-000000110003', '10000000-0000-4000-8000-000000000001',
+   '10000000-0000-4000-8000-0000000c0002', 'Home', 'Rahul Joshi', '+919000001002',
+   '12 Lane 5, Baner, Pune', null, null, now() - interval '3 days'),
+  ('20000000-0000-4000-8000-000000110001', '20000000-0000-4000-8000-000000000002',
+   '20000000-0000-4000-8000-0000000c0001', 'Home', 'Suresh Gowda', '+919000002001',
+   '88 4th Cross, Jayanagar, Bengaluru', null, null, now() - interval '2 days');
 
 -- Both businesses are onboarded. Sharma started from the ac_repair template (as startFromTemplate would copy it);
 -- Kaveri built its own list and asks no questions, so the form's no-questions path has a business too. Prices are
@@ -69,17 +84,21 @@ insert into kk.catalogue_item (id, business_id, name, unit, unit_price_minor, ta
 
 -- A request names one or more work items (tasks): a price-list item, or the customer's own words for the
 -- business to price. Photos are not seeded: their bytes live in Garage, not in this file.
-insert into kk.job (id, business_id, customer_id, number, source, address, latitude, longitude) values
+-- Each job carries its own contact and address, copied at send.
+insert into kk.job (id, business_id, customer_id, number, source, contact_name, contact_phone_e164, address,
+                    latitude, longitude) values
   ('10000000-0000-4000-8000-0000000e0001', '10000000-0000-4000-8000-000000000001',
-   '10000000-0000-4000-8000-0000000c0001', 1, 'public_form',
+   '10000000-0000-4000-8000-0000000c0001', 1, 'public_form', 'Anita Deshpande', '+919000001001',
    'Flat 4, Shanti Apartments, Kothrud, Pune', 18.507400, 73.807700),
   ('10000000-0000-4000-8000-0000000e0002', '10000000-0000-4000-8000-000000000001',
-   '10000000-0000-4000-8000-0000000c0002', 2, 'phone', '12 Lane 5, Baner, Pune', null, null),
+   '10000000-0000-4000-8000-0000000c0002', 2, 'phone', 'Rahul Joshi', '+919000001002',
+   '12 Lane 5, Baner, Pune', null, null),
   ('20000000-0000-4000-8000-0000000e0001', '20000000-0000-4000-8000-000000000002',
-   '20000000-0000-4000-8000-0000000c0001', 1, 'public_form',
+   '20000000-0000-4000-8000-0000000c0001', 1, 'public_form', 'Suresh Gowda', '+919000002001',
    '88 4th Cross, Jayanagar, Bengaluru', null, null),
   ('20000000-0000-4000-8000-0000000e0002', '20000000-0000-4000-8000-000000000002',
-   '20000000-0000-4000-8000-0000000c0003', 2, 'phone', '21 Residency Road, Bengaluru', null, null);
+   '20000000-0000-4000-8000-0000000c0003', 2, 'phone', 'Anita Deshpande', '+919000001001',
+   '21 Residency Road, Bengaluru', null, null);
 
 insert into kk.job_task (id, business_id, job_id, catalogue_item_id, title, details, added_by) values
   ('10000000-0000-4000-8000-0000000f0001', '10000000-0000-4000-8000-000000000001',
@@ -128,9 +147,10 @@ update kk.job set status = 'quoted' where id = '10000000-0000-4000-8000-0000000e
 -- A negotiation that ended in acceptance: Kaveri's request #3 had version 1 (₹472) countered at ₹400, then
 -- version 2 with a discount bringing it to ₹400, accepted. Each step is the update the app makes, in order,
 -- because the quote trigger allows only those moves. The job is `accepted` and its task `approved`.
-insert into kk.job (id, business_id, customer_id, number, source, address) values
+insert into kk.job (id, business_id, customer_id, number, source, contact_name, contact_phone_e164, address) values
   ('20000000-0000-4000-8000-0000000e0003', '20000000-0000-4000-8000-000000000002',
-   '20000000-0000-4000-8000-0000000c0002', 3, 'public_form', '3 MG Road, Bengaluru');
+   '20000000-0000-4000-8000-0000000c0002', 3, 'public_form', 'Lakshmi Rao', '+919000002002',
+   '3 MG Road, Bengaluru');
 insert into kk.job_task (id, business_id, job_id, catalogue_item_id, title, added_by) values
   ('20000000-0000-4000-8000-0000000f0003', '20000000-0000-4000-8000-000000000002',
    '20000000-0000-4000-8000-0000000e0003', '20000000-0000-4000-8000-0000000b0001', 'Fan installation', 'customer');
