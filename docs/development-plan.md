@@ -4,7 +4,12 @@ What we are building: [product-brief.md](product-brief.md). Shared modules:
 [platform-modules.md](platform-modules.md). The design is in [architecture.md](architecture.md);
 its first table says which sections each step reads.
 
-**Current position:** Step 3.3d done (2026-11-22): members' phones reach notify. `memberAddress` takes the
+**Current position:** Phase 3 done (2026-11-22, tag `phase-3-done`): every step's "Done when" holds;
+`validate full` green; `check:browser` passed on a fresh stack (126 screenshots, 375 px and 1280 px). Start the
+dev server and worker _after_ `up:fresh`: pg-boss creates its queues at start-up, so a reseed under a running
+server makes every send fail on `outbox.deliver`. The browser check now prints the page's alert when a request
+is not sent. **Next: 4.1 (HIGH)** in a fresh session.
+Before it, step 3.3d done (2026-11-22): members' phones reach notify. `memberAddress` takes the
 identity's email and phone, each only if verified, so an owner who signed in by phone gets their messages by
 WhatsApp; every Kaam Koti template now has a WhatsApp version (the owner's five open with text, as Meta refuses a
 body starting with a parameter, and end "Answer in Kaam Koti; replies here are not read."). A customer's
@@ -14,7 +19,6 @@ nothing, platform sends the owner `notify.quota_used` ("until 1 December…"), o
 new), kaamkoti 192, typecheck, biome clean on the changed files, 6 mutants killed (unverified phone used, told
 twice, notice counted against the quota, told when the customer got an email, told for a message with no
 address, owner ignored), `up:fresh` (30 s). No browser check: no screen changed.
-**Next: phase 3 close** (`validate full`, "Done when", tag `phase-3-done`), then 4.1 (HIGH).
 Before it, step 3.3c done (2026-11-22): sign-in by a WhatsApp code to an Indian mobile, for members
 and customers. 3.3c was split: its other half (members' phones in notify, telling the owner when the quota runs
 out) is 3.3d. The sign-in page takes "Email or mobile"; `POST /api/auth/phone-code/send` (ours: same-origin,

@@ -285,7 +285,12 @@ try {
   await shoot(form, "12b-request-with-items");
   await form.getByRole("button", { name: "Send request" }).click();
   // The request lands in their work list; a request's details and photo are checked on its page further on.
-  await form.waitForURL(`${PUBLIC}/b/sharma-cooling/requests`);
+  await form.waitForURL(`${PUBLIC}/b/sharma-cooling/requests`).catch(async (error: Error) => {
+    const alert = await form.getByRole("alert").allTextContents();
+    throw new Error(`the request was not sent; the page says ${JSON.stringify(alert)}`, {
+      cause: error,
+    });
+  });
   const sent = await form.locator(".cards > li").allTextContents();
   if (sent.length !== 1 || !sent[0]?.includes("AC gas refill"))
     problems.push(`the new customer's work list shows ${JSON.stringify(sent)}`);
