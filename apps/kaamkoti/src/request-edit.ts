@@ -6,15 +6,16 @@ import type { Audit } from "@bodhchakra/audit";
 import type { DbClient } from "@bodhchakra/db";
 import type { CheckedImage, Storage } from "@bodhchakra/storage";
 import { z } from "zod";
+import { addAddress, chooseAddress, label, type Place, readPlace } from "./address-book.ts";
 import type { SpaceCustomer } from "./customer-space.ts";
 import {
   activeItemsByName,
+  type IntakeInput,
   MAX_ITEM_DETAILS,
   MAX_ITEM_TITLE,
   MAX_REQUEST_ITEMS,
   MAX_REQUEST_PHOTOS,
   sameName,
-  type WorkItemInput,
 } from "./intake.ts";
 import { type JobStatus, transitionJob } from "./job.ts";
 
@@ -31,8 +32,8 @@ export interface CustomerRequest {
   readonly number: number;
   readonly status: JobStatus;
   readonly createdAt: Date;
-  readonly contactName: string;
-  readonly address: string;
+  /** Where and whom, as this request has them (E.164 phone). */
+  readonly place: Place;
   /** Work items still in the request, in the order they were added. */
   readonly tasks: readonly RequestTask[];
   /** True until the customer accepts a quote: the items can still be changed. */
@@ -52,9 +53,13 @@ export async function customerRequest(
     status: JobStatus;
     created_at: Date;
     contact_name: string;
+    contact_phone_e164: string;
     address: string;
+    latitude: number | null;
+    longitude: number | null;
   }>(
-    `select id, number, status, created_at, contact_name, address from kk.job
+    `select id, number, status, created_at, contact_name, contact_phone_e164, address, latitude, longitude
+     from kk.job
      where business_id = $1 and customer_id = $2 and id = $3`,
     [customer.businessId, customer.id, jobId],
   );
@@ -79,8 +84,15 @@ export async function customerRequest(
     number: job.number,
     status: job.status,
     createdAt: job.created_at,
-    contactName: job.contact_name,
-    address: job.address,
+    place: {
+      contactName: job.contact_name,
+      contactPhone: job.contact_phone_e164,
+      address: job.address,
+      location:
+        job.latitude !== null && job.longitude !== null
+          ? { latitude: job.latitude, longitude: job.longitude }
+          : null,
+    },
     tasks: tasks.rows,
     editable: job.status === "requested" || job.status === "quoted",
   };
@@ -104,14 +116,43 @@ export type EditResult =
   | "unchanged"
   | "not_found"
   | "locked"
+  | "contact"
+  | "location"
+  | "address"
+  | "addresses_full"
   | "items"
   | "too_many_photos";
 
 /**
- * The customer's edit of their request's items, as the form sends them: an item with the id of a task is kept
- * (and may change), one without is new, and a task no item names is dropped. `photos[i]` are the checked photos
- * newly added to `items[i]`; with the photos the kept items already hold they are at most `MAX_REQUEST_PHOTOS`.
- * The job row is locked first, so a quote sent or answered at the same moment is never half-edited over.
+ * The place of the form, as a new request sends it (a saved address by id, or a typed place saved under `label`
+ * if `saveAddress`), checked: a saved address must be this customer's own.
+ */
+async function choosePlace(
+  client: DbClient,
+  customer: SpaceCustomer,
+  choice: IntakeInput,
+): Promise<{ ok: true; place: Place } | { ok: false; error: EditResult }> {
+  if (choice.addressId) {
+    const saved = await chooseAddress(client, customer, choice.addressId);
+    return saved ? { ok: true, place: saved } : { ok: false, error: "address" };
+  }
+  const read = readPlace(choice);
+  if (!read.ok) return read;
+  if (choice.saveAddress) {
+    const name = label.safeParse(choice.label);
+    if (!name.success) return { ok: false, error: "contact" };
+    if ((await addAddress(client, customer, name.data, read.place)) === "full")
+      return { ok: false, error: "addresses_full" };
+  }
+  return read;
+}
+
+/**
+ * The customer's edit of their request, as the form sends it: where and whom, and the items. An item with the id
+ * of a task is kept (and may change), one without is new, and a task no item names is dropped. `photos[i]` are
+ * the checked photos newly added to `items[i]`; with the photos the kept items already hold they are at most
+ * `MAX_REQUEST_PHOTOS`. A changed place counts as a change like a changed item does. The job row is locked
+ * first, so a quote sent or answered at the same moment is never half-edited over.
  */
 export async function editRequest(
   client: DbClient,
@@ -119,7 +160,7 @@ export async function editRequest(
   audit: Audit,
   customer: SpaceCustomer,
   jobId: string,
-  items: readonly WorkItemInput[],
+  input: IntakeInput,
   photos: readonly (readonly CheckedImage[])[],
 ): Promise<EditResult> {
   if (!z.uuid().safeParse(jobId).success) return "not_found";
@@ -131,7 +172,7 @@ export async function editRequest(
   if (!job) return "not_found";
   if (job.status !== "requested" && job.status !== "quoted") return "locked";
 
-  const parsed = submitted.safeParse(items.map((i) => ({ id: i.id ?? "", ...i })));
+  const parsed = submitted.safeParse(input.items.map((i) => ({ id: i.id ?? "", ...i })));
   if (!parsed.success) return "items";
   const current = await client.query<{ id: string; title: string; details: string | null }>(
     `select id, title, details from kk.job_task
@@ -155,12 +196,36 @@ export async function editRequest(
   const added = photos.reduce((n, list) => n + list.length, 0);
   if ((kept.rows[0]?.n ?? 0) + added > MAX_REQUEST_PHOTOS) return "too_many_photos";
 
+  // The place comes last among the refusals: nothing is written until the whole edit is accepted.
+  const where = await choosePlace(client, customer, input);
+  if (!where.ok) return where.error;
+  const { place } = where;
+  // Only a difference updates a row, so the count says whether the place changed.
+  const relocated = await client.query(
+    `update kk.job set contact_name = $4, contact_phone_e164 = $5, address = $6, latitude = $7, longitude = $8
+     where business_id = $1 and customer_id = $2 and id = $3
+       and (contact_name, contact_phone_e164, address, latitude, longitude)
+           is distinct from ($4, $5, $6, $7::float8, $8::float8)`,
+    [
+      customer.businessId,
+      customer.id,
+      jobId,
+      place.contactName,
+      place.contactPhone,
+      place.address,
+      place.location?.latitude ?? null,
+      place.location?.longitude ?? null,
+    ],
+  );
+  const placeChanged = (relocated.rowCount ?? 0) > 0;
+
   const catalogue = await activeItemsByName(client);
   const resolved = parsed.data.map((item) => {
     const match = catalogue.get(sameName(item.title));
     return { ...item, title: match?.name ?? item.title, catalogueId: match?.id ?? null };
   });
   const changed =
+    placeChanged ||
     resolved.length !== existing.size ||
     resolved.some((item, i) => {
       const before = existing.get(item.id);

@@ -1,7 +1,7 @@
 "use client";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Icon } from "../../../icons.tsx";
-import { PlaceFields } from "../../place-fields.tsx";
+import { type PlaceDefaults, PlaceFields } from "../../place-fields.tsx";
 
 // Two screens in one form: the request (where and who, the list of work items) and the editor of one work
 // item. Every item's fields stay in the form while hidden, so the post carries them all, photos included.
@@ -40,11 +40,13 @@ export interface EditItem {
   readonly photos: number;
 }
 
-/** Present when the form edits a sent request: the same screens, over its items, with the place read-only. */
+/** Present when the form edits a sent request: the same screens, over its place and its items. */
 export interface EditRequest {
   readonly items: readonly EditItem[];
-  readonly contact: string;
-  readonly address: string;
+  /** The request's own place, which starts the "Somewhere else" fields. */
+  readonly place: PlaceDefaults;
+  /** The id of the saved address the request is at, or "" if it is at none. */
+  readonly savedId: string;
   /** A quote is out: changing an item withdraws it, saving without a change keeps it. */
   readonly quoted: boolean;
 }
@@ -99,9 +101,10 @@ export function RequestForm({
   const [problem, setProblem] = useState<string | null>(null);
   const [itemProblem, setItemProblem] = useState<string | null>(null);
   /** A saved address's id, or "" for somewhere else; the last used is preselected. */
-  const [where, setWhere] = useState(book[0]?.id ?? "");
+  const [where, setWhere] = useState(edit ? edit.savedId : (book[0]?.id ?? ""));
   const roomInBook = book.length < limits.addresses;
-  const [saveAddress, setSaveAddress] = useState(roomInBook);
+  // An edit's place is usually already saved or deliberately not; saving again is the customer's choice.
+  const [saveAddress, setSaveAddress] = useState(roomInBook && !edit);
   const [sending, setSending] = useState(false);
   const nextKey = useRef(edit?.items.length ?? 0);
   const files = useRef(new Map<number, HTMLInputElement>());
@@ -219,96 +222,90 @@ export function RequestForm({
           </p>
         ) : null}
 
-        {edit ? (
-          <section className="panel" aria-labelledby="where-title">
-            <h2 id="where-title">Where and who</h2>
-            <p>
-              <strong>{edit.contact}</strong>
-            </p>
-            <p className="muted">{edit.address}</p>
-          </section>
-        ) : (
-          <section className="panel" aria-labelledby="where-title">
-            <h2 id="where-title">Where and who</h2>
-            {book.length > 0 ? (
-              <div className="choices" role="radiogroup" aria-labelledby="where-title">
-                {book.map((entry) => (
-                  <label key={entry.id} className="choice place">
-                    <input
-                      type="radio"
-                      name="addressId"
-                      value={entry.id}
-                      checked={where === entry.id}
-                      onChange={() => setWhere(entry.id)}
-                    />
-                    <span className="text">
-                      <strong>
-                        {entry.label} · {entry.contactName} · {entry.contactPhone}
-                      </strong>
-                      <span className="muted small">{entry.address}</span>
-                    </span>
-                  </label>
-                ))}
-                <label className="choice place">
+        <section className="panel" aria-labelledby="where-title">
+          <h2 id="where-title">Where and who</h2>
+          {book.length > 0 ? (
+            <div className="choices" role="radiogroup" aria-labelledby="where-title">
+              {book.map((entry) => (
+                <label key={entry.id} className="choice place">
                   <input
                     type="radio"
                     name="addressId"
-                    value=""
-                    checked={where === ""}
-                    onChange={() => setWhere("")}
+                    value={entry.id}
+                    checked={where === entry.id}
+                    onChange={() => setWhere(entry.id)}
                   />
                   <span className="text">
-                    <strong>Somewhere else</strong>
-                    <span className="muted small">Another place, or someone else to meet</span>
+                    <strong>
+                      {entry.label} · {entry.contactName} · {entry.contactPhone}
+                    </strong>
+                    <span className="muted small">{entry.address}</span>
                   </span>
                 </label>
-              </div>
-            ) : null}
-            {where === "" ? (
-              <>
-                <PlaceFields
-                  // A first place is most likely the customer's own home, so their details start it.
-                  defaults={
-                    book.length === 0 ? { contactName: own?.name, contactPhone: own?.phone } : {}
-                  }
-                  placeAction={placeAction}
-                  maxAddress={limits.address}
-                  self={own === null}
+              ))}
+              <label className="choice place">
+                <input
+                  type="radio"
+                  name="addressId"
+                  value=""
+                  checked={where === ""}
+                  onChange={() => setWhere("")}
                 />
-                {roomInBook ? (
-                  <>
-                    <label className="choice">
+                <span className="text">
+                  <strong>Somewhere else</strong>
+                  <span className="muted small">Another place, or someone else to meet</span>
+                </span>
+              </label>
+            </div>
+          ) : null}
+          {where === "" ? (
+            <>
+              <PlaceFields
+                // A first place is most likely the customer's own home, so their details start it.
+                defaults={
+                  edit
+                    ? edit.place
+                    : book.length === 0
+                      ? { contactName: own?.name, contactPhone: own?.phone }
+                      : {}
+                }
+                placeAction={placeAction}
+                maxAddress={limits.address}
+                self={own === null}
+              />
+              {roomInBook ? (
+                <>
+                  <label className="choice">
+                    <input
+                      type="checkbox"
+                      name="saveAddress"
+                      checked={saveAddress}
+                      onChange={(e) => setSaveAddress(e.target.checked)}
+                    />
+                    Save for next time
+                  </label>
+                  {saveAddress ? (
+                    <label>
+                      Save as
                       <input
-                        type="checkbox"
-                        name="saveAddress"
-                        checked={saveAddress}
-                        onChange={(e) => setSaveAddress(e.target.checked)}
+                        name="label"
+                        required
+                        maxLength={limits.label}
+                        placeholder="Home, Parents, Shop"
+                        defaultValue={book.length === 0 ? "Home" : undefined}
                       />
-                      Save for next time
                     </label>
-                    {saveAddress ? (
-                      <label>
-                        Save as
-                        <input
-                          name="label"
-                          required
-                          maxLength={limits.label}
-                          placeholder="Home, Parents, Shop"
-                          defaultValue={book.length === 0 ? "Home" : undefined}
-                        />
-                      </label>
-                    ) : null}
-                  </>
-                ) : (
-                  <p className="hint">
-                    Your address book is full ({limits.addresses}). Delete one on your profile to
-                    save another.
-                  </p>
-                )}
-              </>
-            ) : null}
-          </section>
-        )}
+                  ) : null}
+                </>
+              ) : (
+                <p className="hint">
+                  Your address book is full ({limits.addresses}). Delete one on your profile to save
+                  another.
+                </p>
+              )}
+            </>
+          ) : null}
+        </section>
 
         <section className="panel" aria-labelledby="work-title">
           <h2 id="work-title">
@@ -354,8 +351,8 @@ export function RequestForm({
           </button>
           {edit?.quoted ? (
             <p className="muted small">
-              Changing a work item withdraws the quote, and the business quotes again. Saving
-              without a change keeps it.
+              Changing the place or a work item withdraws the quote, and the business quotes again.
+              Saving without a change keeps it.
             </p>
           ) : edit ? null : (
             <p className="muted small">Free to ask. You get a quote before any work starts.</p>

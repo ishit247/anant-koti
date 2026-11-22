@@ -1,7 +1,8 @@
 import { IMAGE_TYPES } from "@bodhchakra/storage";
 import { defineRoute } from "@bodhchakra/tenancy";
 import { notFound } from "next/navigation";
-import { MAX_ADDRESS, MAX_ADDRESSES, MAX_LABEL } from "../../../../../address-book.ts";
+import { addressBook, MAX_ADDRESS, MAX_ADDRESSES, MAX_LABEL } from "../../../../../address-book.ts";
+import { customerContact } from "../../../../../customer-space.ts";
 import { withCustomer } from "../../../../../guard.ts";
 import {
   MAX_ITEM_DETAILS,
@@ -10,6 +11,7 @@ import {
   MAX_REQUEST_PHOTOS,
 } from "../../../../../intake.ts";
 import { CUSTOMER_STATUS_LABEL, formatWhen, statusTone } from "../../../../../job-labels.ts";
+import { localPhone } from "../../../../../phone.ts";
 import { formatPrice } from "../../../../../price.ts";
 import { publicPage } from "../../../../../public-page.ts";
 import { customerRequest } from "../../../../../request-edit.ts";
@@ -25,6 +27,10 @@ const route = defineRoute({ scope: "customer" });
 
 const ERRORS = {
   locked: "A quote has been accepted, so the work items can no longer be changed here.",
+  contact: "Please check the name, a 10-digit mobile number, the address and what to save it as.",
+  location: "Your location could not be read. Please try again, or leave it out.",
+  address: "That address is no longer in your address book. Please choose again.",
+  addresses_full: `Your address book is full (${MAX_ADDRESSES}). Untick "Save for next time", or delete one on your profile.`,
   items: "Please keep at least one work item, each with a title.",
   too_many_photos: `Please keep at most ${MAX_REQUEST_PHOTOS} photos in all.`,
   photo_too_large: "A photo is larger than 10 MB. Please send a smaller one.",
@@ -46,8 +52,14 @@ export default async function RequestDetail({
   const { slug, jobId } = await params;
   const { result, error } = await searchParams;
   const space = `/b/${encodeURIComponent(slug)}`;
-  const job = await withCustomer(slug, `${space}/requests/${jobId}`, async (client, customer) =>
-    customer ? customerRequest(client, customer, jobId) : null,
+  const { job, own, book } = await withCustomer(
+    slug,
+    `${space}/requests/${jobId}`,
+    async (client, customer) => ({
+      job: customer ? await customerRequest(client, customer, jobId) : null,
+      own: customer ? await customerContact(client, customer) : null,
+      book: customer ? await addressBook(client, customer) : [],
+    }),
   );
   if (!job) notFound();
   const page = await publicPage(server().db, slug);
@@ -58,13 +70,13 @@ export default async function RequestDetail({
   return (
     <>
       <BusinessHeader business={page} home={{ href: `${space}/requests` }}>
-        <h1>Request #{job.number}</h1>
-        <p>
+        <h1>
+          Request #{job.number}{" "}
           <span className={`chip ${statusTone(job.status)}`}>
             {CUSTOMER_STATUS_LABEL[job.status]}
           </span>{" "}
           <span className="muted small">{formatWhen(job.createdAt)}</span>
-        </p>
+        </h1>
       </BusinessHeader>
       {done ? (
         <p className="notice" role="status">
@@ -75,10 +87,16 @@ export default async function RequestDetail({
         <RequestForm
           // A saved edit shows the new items: the form's state starts from what the server sent.
           key={`${job.id}:${job.tasks.map((t) => t.id).join()}:${result ?? ""}`}
-          own={null}
-          book={[]}
+          own={own}
+          book={book.map((entry) => ({
+            id: entry.id,
+            label: entry.label,
+            contactName: entry.contactName,
+            contactPhone: localPhone(entry.contactPhone),
+            address: entry.address,
+          }))}
           action={`${space}/requests/${job.id}/edit`}
-          placeAction=""
+          placeAction={`${space}/request/place`}
           services={page.services.map((s) => ({
             name: s.name,
             price: formatPrice(s.price, s.unit),
@@ -102,8 +120,21 @@ export default async function RequestDetail({
               details: t.details ?? "",
               photos: t.photos,
             })),
-            contact: job.contactName,
-            address: job.address,
+            place: {
+              contactName: job.place.contactName,
+              contactPhone: localPhone(job.place.contactPhone),
+              address: job.place.address,
+              latitude: job.place.location?.latitude,
+              longitude: job.place.location?.longitude,
+            },
+            // The saved address this request went to, if it is still in the book, starts selected.
+            savedId:
+              book.find(
+                (entry) =>
+                  entry.address === job.place.address &&
+                  entry.contactName === job.place.contactName &&
+                  entry.contactPhone === job.place.contactPhone,
+              )?.id ?? "",
             quoted: job.status === "quoted",
           }}
         />
@@ -111,9 +142,9 @@ export default async function RequestDetail({
         <>
           <div className="panel">
             <p>
-              <strong>{job.contactName}</strong>
+              <strong>{job.place.contactName}</strong>
             </p>
-            <p className="muted">{job.address}</p>
+            <p className="muted">{job.place.address}</p>
           </div>
           <ul className="cards">
             {job.tasks.map((task) => (

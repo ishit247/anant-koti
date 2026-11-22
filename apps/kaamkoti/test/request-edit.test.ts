@@ -7,6 +7,7 @@ import { createLogger } from "@bodhchakra/log";
 import type { Storage } from "@bodhchakra/storage";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+  addressBook,
   customerFor,
   customerRequest,
   editRequest,
@@ -66,8 +67,22 @@ describe("a customer editing their request", () => {
       if (!me) throw new Error("Anita has no row");
       return fn(client, me);
     });
-  const edit = (jobId: string, items: readonly WorkItemInput[]) =>
-    asAnita((c, me) => editRequest(c, noStorage, audit, me, jobId, items, none(items)));
+  /** A place typed as the form sends it. */
+  const typed = (where: { contactName: string; contactPhone: string; address: string }) => ({
+    addressId: "",
+    saveAddress: false,
+    label: "",
+    latitude: "",
+    longitude: "",
+    ...where,
+  });
+  /** Edits the items; the place is sent back as the request has it, unless one is given. */
+  const edit = (jobId: string, items: readonly WorkItemInput[], place?: ReturnType<typeof typed>) =>
+    asAnita(async (c, me) => {
+      const now = (await customerRequest(c, me, jobId))?.place;
+      const where = place ?? typed(now ?? { contactName: "x", contactPhone: "x", address: "x" });
+      return editRequest(c, noStorage, audit, me, jobId, { ...where, items }, none(items));
+    });
 
   /** A request of the customer's that nobody has quoted, with one item "Fix tap". */
   async function freshRequest(customer = ANITA_ROW) {
@@ -151,6 +166,51 @@ describe("a customer editing their request", () => {
       c.query("select 1 from audit.event where action = 'job.edit' and entity_id = $1", [QUOTED]),
     );
     expect(audited.rowCount).toBe(1);
+  });
+
+  it("changes the place, and withdraws a sent quote like an item change does", async () => {
+    const { jobId, taskId } = await freshRequest();
+    const fixTap = [item(taskId, "Fix tap")];
+    const parents = typed({ contactName: "Meera", contactPhone: "9000001002", address: "Baner" });
+    expect(await edit(jobId, fixTap, parents)).toBe("saved");
+    expect((await asAnita((c, me) => customerRequest(c, me, jobId)))?.place).toMatchObject({
+      contactName: "Meera",
+      contactPhone: "+919000001002",
+      address: "Baner",
+    });
+    expect(await edit(jobId, fixTap, parents)).toBe("unchanged");
+
+    // QUOTED belongs to Anita since the test above; only its place changes.
+    expect(await edit(QUOTED, [item(INSPECTION, "Inspection visit")], parents)).toBe("saved");
+    expect(await stateOf(QUOTED)).toEqual({ job: "requested", quote: "superseded" });
+  });
+
+  it("sends the request to one of the customer's saved addresses, and refuses another's", async () => {
+    const { jobId, taskId } = await freshRequest();
+    const fixTap = [item(taskId, "Fix tap")];
+    const place = typed({ contactName: "Asha", contactPhone: "9000001003", address: "Kothrud" });
+    expect(await edit(jobId, fixTap, { ...place, saveAddress: true, label: "Office" })).toBe(
+      "saved",
+    );
+    const saved = (await asAnita((c, me) => addressBook(c, me))).find((a) => a.label === "Office");
+    expect(saved?.address).toBe("Kothrud");
+    const home = typed({ contactName: "Someone", contactPhone: "9000001001", address: "Pune" });
+    expect(await edit(jobId, fixTap, home)).toBe("saved");
+    expect(await edit(jobId, fixTap, { ...home, addressId: saved?.id ?? "" })).toBe("saved");
+    expect((await asAnita((c, me) => customerRequest(c, me, jobId)))?.place.address).toBe(
+      "Kothrud",
+    );
+    const rahul = await owner.tx((c) =>
+      c.query<{ id: string }>(
+        `insert into kk.customer_address (business_id, customer_id, label, contact_name, contact_phone_e164, address)
+         values ($1, $2, 'Home', 'Rahul', '+919000001004', 'Aundh') returning id`,
+        [SHARMA, RAHUL_ROW],
+      ),
+    );
+    expect(await edit(jobId, fixTap, { ...home, addressId: rahul.rows[0]?.id ?? "" })).toBe(
+      "address",
+    );
+    expect(await edit(jobId, fixTap, typed({ ...home, address: "  " }))).toBe("contact");
   });
 
   it("refuses an edit once a quote is accepted, and leaves the items alone", async () => {
