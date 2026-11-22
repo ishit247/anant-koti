@@ -1,7 +1,8 @@
 // Development stack: `pnpm run up | down | up:fresh` (never bare `pnpm up`, which updates dependencies).
 //   up        start the services (data kept), set up Garage, apply pending migrations
-//   down      stop the services (data kept)
-//   up:fresh  destroy the volumes, then `up` and seed: every migration from 0001 on an empty database
+//   down      stop the services, platform included (data kept)
+//   up:fresh  destroy the volumes, then `up`, seed and start the platform container: every migration from
+//             0001 on an empty database, and sign-in ready. Only the app itself is left to start.
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -82,15 +83,22 @@ switch (command) {
     await up();
     break;
   case "down":
-    compose("down");
+    compose("--profile", "platform", "down");
     break;
   case "fresh":
-    compose("down", "-v");
+    // The profile is needed or the platform container survives and keeps the network and its old state.
+    compose("--profile", "platform", "down", "-v");
     await up();
     await kaamkoti.seed(KAAMKOTI_OWNER_URL, log);
     log.info("seeded", { database: "kaamkoti", businesses: 2, members: 4, customers: 6, jobs: 5 });
     await platform.seed(PLATFORM_OWNER_URL, log);
     log.info("seeded", { database: "platform", identities: 4 });
+    // Last, on the migrated and seeded database: it registers the apps' sign-in clients when it starts.
+    compose("--profile", "platform", "up", "-d", "--build", "--wait", "platform");
+    log.info("platform ready", {
+      signIn: "http://127.0.0.1:45443",
+      mail: "http://127.0.0.1:45446",
+    });
     break;
   default:
     console.error("usage: node scripts/stack.ts up|down|fresh");

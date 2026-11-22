@@ -137,7 +137,7 @@ export function identityOptions(deps: IdentityDeps) {
           }),
           ...(scopes.includes("profile") && { name: user.name }),
         }),
-        codeExpiresIn: 60,
+        codeExpiresIn: 180,
       }),
     ],
   } satisfies BetterAuthOptions;
