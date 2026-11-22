@@ -84,6 +84,7 @@ export default async function RequestPage({
           label: MAX_LABEL,
           addresses: MAX_ADDRESSES,
         }}
+        errors={ERRORS}
         refused={refused}
       />
       <CustomerNav space={space} />

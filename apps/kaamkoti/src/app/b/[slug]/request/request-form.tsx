@@ -51,6 +51,7 @@ export function RequestForm({
   services,
   imageTypes,
   limits,
+  errors,
   refused,
 }: {
   /** The customer's own name and mobile here; null before their first request. */
@@ -63,7 +64,9 @@ export function RequestForm({
   services: readonly Service[];
   imageTypes: string;
   limits: RequestLimits;
-  /** The server's reason for refusing the last post, in words. */
+  /** The server's refusals by code, in words. */
+  errors: Readonly<Record<string, string>>;
+  /** The server's reason for refusing the last plain (no JavaScript) post, in words. */
   refused: string | null;
 }) {
   const [items, setItems] = useState<Item[]>([]);
@@ -146,13 +149,38 @@ export function RequestForm({
     setEditing(null);
   };
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  // Sent with fetch so that a refusal keeps what was typed and the chosen photos, which a reload would lose.
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     if (items.length === 0) {
-      event.preventDefault();
       setProblem("Add at least one work item.");
       return;
     }
     setSending(true);
+    const refuse = (reason: string) => {
+      setProblem(reason);
+      setSending(false);
+      window.scrollTo({ top: 0 });
+    };
+    try {
+      const response = await fetch(action, {
+        method: "POST",
+        headers: { accept: "application/json" },
+        body: new FormData(event.currentTarget),
+      });
+      if (response.headers.get("content-type")?.startsWith("application/json")) {
+        const answer = (await response.json()) as { location?: string; error?: string };
+        if (answer.location) window.location.assign(answer.location);
+        else
+          refuse(errors[answer.error ?? ""] ?? "The request could not be sent. Please try again.");
+      } else
+        refuse(
+          (await response.text()).trim() || "The request could not be sent. Please try again.",
+        );
+    } catch {
+      // Documented fallback: offline or the connection dropped; everything typed stays for another try.
+      refuse("The request could not be sent. Check your connection and try again.");
+    }
   };
 
   const message = problem ?? refused;

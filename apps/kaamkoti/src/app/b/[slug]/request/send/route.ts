@@ -23,10 +23,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
   // The cookie is SameSite=Lax already; this refuses another site's post outright, as sign-out does.
   if (!fromOwnPages(request)) return new Response(null, { status: 403 });
   const form = `/b/${encodeURIComponent(slug)}/request`;
+  // The form posts with fetch and asks for JSON, so a refusal leaves everything typed and every photo chosen in
+  // place; without JavaScript it posts plainly and is answered with redirects.
+  const json = request.headers.get("accept") === "application/json";
+  // 303, not the 307 of redirect(): the browser must not post the form again to the next page.
+  const go = (location: string) => (json ? Response.json({ location }) : seeOther(location));
   const session = await customerAuth.getSession(request.headers.get("cookie"));
-  // 303, not the 307 of redirect(): the browser must not post the form again to the sign-in page.
   if (!session)
-    return seeOther(`/b/${encodeURIComponent(slug)}/login?return=${encodeURIComponent(form)}`);
+    return go(`/b/${encodeURIComponent(slug)}/login?return=${encodeURIComponent(form)}`);
 
   const refused = await overLimit(limiter.limit, [
     [`intake-ip:${clientIp(request.headers)}`, LIMITS.intakePerIp],
@@ -46,7 +50,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
     return new Response("Expected a form.\n", { status: 400 });
   }
   const result = await submitRequest(db, storage, audit, slug, session, await readIntakeForm(body));
-  if (result.ok) return seeOther(`/b/${encodeURIComponent(slug)}/requests`);
+  if (result.ok) return go(`/b/${encodeURIComponent(slug)}/requests`);
   if (result.error === "not_found") return new Response("No such business.\n", { status: 404 });
-  return seeOther(`${form}?error=${result.error}`);
+  return json
+    ? Response.json({ error: result.error }, { status: 422 })
+    : seeOther(`${form}?error=${result.error}`);
 }
