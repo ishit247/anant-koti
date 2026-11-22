@@ -26,6 +26,7 @@ const sharmaOwner = { businessId: SHARMA, memberId: "10000000-0000-4000-8000-000
 const ANITA = {
   identityId: "00000000-0000-4000-8000-00000000d005",
   email: "anita@example.com",
+  phone: null,
 };
 const ANITA_ROW = "10000000-0000-4000-8000-0000000c0001";
 const RAHUL_ROW = "10000000-0000-4000-8000-0000000c0002";

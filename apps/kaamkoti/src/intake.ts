@@ -269,9 +269,10 @@ export async function activeItems(client: DbClient, ids: readonly string[]) {
 export type Contact = z.infer<typeof contact>;
 
 /**
- * A new customer row for the signed-in person, with the name and mobile of the place they typed on their first
- * request. Null when the mobile is on another customer's row: a phone is not verified yet (3.3), so typing
- * someone's number must neither file the request under their record nor take the number over.
+ * A new customer row for the signed-in person, with the name of the place they typed on their first request
+ * and the mobile they signed in with, else that place's. Null when the mobile is on another customer's row: a
+ * typed mobile is not verified, so typing someone's number must neither file the request under their record
+ * nor take the number over.
  */
 async function newCustomer(
   client: DbClient,
@@ -285,7 +286,13 @@ async function newCustomer(
      values ($1, $2, $3, $4, $5)
      on conflict do nothing
      returning id`,
-    [businessId, session.identityId, first.contactName, first.contactPhone, session.email],
+    [
+      businessId,
+      session.identityId,
+      first.contactName,
+      session.phone ?? first.contactPhone,
+      session.email,
+    ],
   );
   if (created.rows[0]) return { id: created.rows[0].id, businessId };
   // Either the same person's other request created their row a moment ago, or the phone is someone else's.

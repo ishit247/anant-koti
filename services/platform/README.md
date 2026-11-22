@@ -35,14 +35,17 @@ Topics: `notify.send` (below). Bodies over 64 KB are refused (413).
 - Sign-in clients come from `SIGN_IN_CLIENTS` and are written to `identity."oauthClient"` at start-up: first
   party (no consent), confidential (`client_secret_basic`), PKCE required. A client dropped from config is
   disabled, not deleted.
-- The ID token carries `email`, `email_verified` and `name`, so an app needs no userinfo call. It lives 5
-  minutes, and a code lives 60 seconds.
+- The ID token carries `name` and the verified addresses only: `email` and `email_verified`, `phone_number`
+  and `phone_number_verified` (scope `phone`), so an app needs no userinfo call. It lives 5 minutes, and a code
+  lives 60 seconds.
 - Codes: 6 digits, 10 minutes, 5 attempts, stored as an HMAC under `IDENTITY_SECRET`. At most 5 codes an hour
   to one address, plus per-IP limits, counted in Redis. The client IP comes from `x-client-ip`, which the proxy
   sets.
+- Sign-in by mobile (Indian numbers) needs the WhatsApp channel below; without it `/api/auth/phone-code/send`
+  answers 503 and the page asks for an email. Its codes are in `identity.phone_code`, not better-auth's
+  verification table. A mobile's identity gets the placeholder email `<digits>@phone.invalid`.
 - Redirect URIs must be HTTPS, except loopback ones while platform itself runs on plain HTTP on loopback
   (development).
-- Sign-in by phone arrives with WhatsApp delivery (3.3c).
 
 ## Config
 
@@ -71,7 +74,9 @@ WhatsApp (Meta Cloud API, D7) is off unless all of these are given; some but not
 | `WHATSAPP_API_URL`              | Optional; default `https://graph.facebook.com/v23.0`.                                       |
 
 Each template's WhatsApp version (`src/templates/kaamkoti.ts`) must be approved in Meta under its `name`, in
-English (`en`), with its `body` as written there.
+English (`en`), with its `body` as written there. Sign-in codes need one more: an **Authentication** template
+named `sign_in_code` in `en`, with a copy-code button (Meta writes its body, "{{1}} is your verification
+code.").
 
 Bad config stops start-up.
 

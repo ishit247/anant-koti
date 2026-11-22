@@ -20,10 +20,12 @@ const KAVERI = "20000000-0000-4000-8000-000000000002";
 const ANITA: CustomerSession = {
   identityId: "00000000-0000-4000-8000-00000000d005",
   email: "anita@example.com",
+  phone: null,
 };
 const SURESH: CustomerSession = {
   identityId: "00000000-0000-4000-8000-00000000d006",
   email: "suresh@example.com",
+  phone: null,
 };
 const ANITA_AT_SHARMA = "10000000-0000-4000-8000-0000000c0001";
 const ANITA_AT_KAVERI = "20000000-0000-4000-8000-0000000c0003";
@@ -84,7 +86,11 @@ describe("the customer space on the seeded database", () => {
   });
 
   it("does not hand a claimed customer to another identity with the same email", async () => {
-    const other = { identityId: "00000000-0000-4000-8000-00000000d099", email: ANITA.email };
+    const other = {
+      identityId: "00000000-0000-4000-8000-00000000d099",
+      email: ANITA.email,
+      phone: null,
+    };
     expect(await home(SHARMA, other)).toBeNull();
     const { rows } = await owner.tx((c) =>
       c.query<{ identity_id: string }>("select identity_id from kk.customer where id = $1", [
@@ -98,6 +104,34 @@ describe("the customer space on the seeded database", () => {
     const stranger = {
       identityId: "00000000-0000-4000-8000-00000000d098",
       email: "nobody@example.com",
+      phone: null,
+    };
+    expect(await home(SHARMA, stranger)).toBeNull();
+  });
+
+  it("claims an owner-entered customer by verified mobile, and keeps it from the next identity with it", async () => {
+    // Sharma entered Rahul by phone, with no email and no identity; his phone enquiry is Sharma's #2.
+    const rahul = {
+      identityId: "00000000-0000-4000-8000-00000000d097",
+      email: null,
+      phone: "+919000001002",
+    };
+    expect(await home(SHARMA, rahul)).toEqual([2]);
+    const { rows } = await owner.tx((c) =>
+      c.query<{ identity_id: string }>("select identity_id from kk.customer where id = $1", [
+        "10000000-0000-4000-8000-0000000c0002",
+      ]),
+    );
+    expect(rows[0]?.identity_id).toBe(rahul.identityId);
+    const other = { ...rahul, identityId: "00000000-0000-4000-8000-00000000d096" };
+    expect(await home(SHARMA, other)).toBeNull();
+  });
+
+  it("claims nothing with neither an email nor a mobile on any row", async () => {
+    const stranger = {
+      identityId: "00000000-0000-4000-8000-00000000d095",
+      email: null,
+      phone: "+919999999999",
     };
     expect(await home(SHARMA, stranger)).toBeNull();
   });

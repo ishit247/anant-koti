@@ -3,7 +3,7 @@ import type { AddressInfo } from "node:net";
 import { defineConfig } from "@bodhchakra/config";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { platformConfig } from "../src/config.ts";
-import { whatsappSender } from "../src/whatsapp.ts";
+import { codeTexter, whatsappSender } from "../src/whatsapp.ts";
 
 /** A stand-in for Meta's Graph API: records each request and answers with the next reply queued. */
 describe("whatsappSender", () => {
@@ -69,6 +69,31 @@ describe("whatsappSender", () => {
           ],
         },
       },
+    });
+  });
+
+  it("sends a sign-in code by the authentication template, in its body and its copy button", async () => {
+    replies.push({ status: 200, body: { messages: [{ id: "wamid.CODE" }] } });
+    const sender = whatsappSender({
+      apiUrl,
+      phoneNumberId: "1234567890",
+      accessToken: "token-".padEnd(30, "t"),
+    });
+    await codeTexter(sender)("+919000000102", "042917");
+    const sent = requests.at(-1)?.body as { to: string; template: unknown };
+    expect(sent.to).toBe("919000000102");
+    expect(sent.template).toEqual({
+      name: "sign_in_code",
+      language: { code: "en" },
+      components: [
+        { type: "body", parameters: [{ type: "text", text: "042917" }] },
+        {
+          type: "button",
+          sub_type: "url",
+          index: "0",
+          parameters: [{ type: "text", text: "042917" }],
+        },
+      ],
     });
   });
 

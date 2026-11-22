@@ -125,12 +125,13 @@ export function createNotifyService(deps: NotifyDeps): NotifyService {
   });
 
   /**
-   * A member's addresses, from their identity: the email they sign in with (a phone joins in 3.3). An identity
-   * that is gone leaves only the id, which is a message with no channel.
+   * A member's addresses, from their identity: the email they sign in with, if verified (an identity made by
+   * phone has a placeholder; its phone joins in 3.3d). An identity that is gone leaves only the id, which is a
+   * message with no channel.
    */
   async function memberAddress(client: DbClient, identityId: string): Promise<NotifyMessage["to"]> {
     const { rows } = await client.query<{ email: string }>(
-      'select email from identity."user" where id = $1',
+      'select email from identity."user" where id = $1 and "emailVerified"',
       [identityId],
     );
     const email = rows[0]?.email;
@@ -231,7 +232,7 @@ export function createNotifyService(deps: NotifyDeps): NotifyService {
         return;
       }
       // A customer with only a phone, when WhatsApp is off or over quota, gets nothing; the owner still shares the
-      // link. Telling the owner when the quota runs out waits for 3.3c.
+      // link. Telling the owner when the quota runs out waits for 3.3d.
       log.warn("notify: no channel for message", { messageId: id, template: message.template });
       await recordOutcome(
         client,

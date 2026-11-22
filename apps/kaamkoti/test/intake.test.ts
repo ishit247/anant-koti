@@ -35,6 +35,7 @@ const GENERAL_SERVICE = "10000000-0000-4000-8000-0000000b0003";
 const ANITA: CustomerSession = {
   identityId: "00000000-0000-4000-8000-00000000d005",
   email: "anita@example.com",
+  phone: null,
 };
 const ANITA_AT_SHARMA = "10000000-0000-4000-8000-0000000c0001";
 const RAHUL_AT_SHARMA = "10000000-0000-4000-8000-0000000c0002";
@@ -45,6 +46,7 @@ const MEERA_AT_SHARMA = "10000000-0000-4000-8000-0000000c0003";
 const newcomer = (email = `${randomUUID()}@example.test`): CustomerSession => ({
   identityId: randomUUID(),
   email,
+  phone: null,
 });
 /** The person most tests send as. */
 const VIKRAM = newcomer("vikram@example.test");

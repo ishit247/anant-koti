@@ -74,9 +74,18 @@ There is one identity per person, and it lives in `platform`. Each app keeps its
 
 - **Platform is the OpenID Connect provider** (D14): authorization code flow with PKCE. Each app is a
   registered confidential client (client id and secret from config). First-party clients skip the consent
-  screen. Sign-in is by OTP to email (phone joins with WhatsApp delivery in 3.3). Rate limits are per identifier
-  and per IP, in Redis; the IP comes from `x-client-ip`, set by the proxy. The ID token carries `email`, `name`
-  and `email_verified`, so the callback needs no userinfo call.
+  screen. Sign-in is by OTP to email, or to an Indian mobile by WhatsApp (3.3c). Rate limits are per identifier
+  and per IP, in Redis; the IP comes from `x-client-ip`, set by the proxy. The ID token carries `name` and only
+  verified addresses: `email` with `email_verified`, `phone_number` with `phone_number_verified` (scope `phone`),
+  at least one of them, so the callback needs no userinfo call.
+- **Phone codes (3.3c).** better-auth's phone plugin stores codes in plain text, so only its verify route is
+  listed, with `verifyOTP` checking our own table `identity.phone_code` (one live code per number, an HMAC of
+  number and code, five guesses, 10 minutes, used once). Sending is ours too: `POST /api/auth/phone-code/send`
+  (same-origin only, the same per-IP and per-number limits as email) stores the code and sends it straight to
+  WhatsApp's authentication template `sign_in_code` (body and copy-code button). While the WhatsApp channel is
+  off it answers 503 and the page asks for an email. A mobile's first sign-in creates an identity with a
+  placeholder email `<digits>@phone.invalid`, never verified, never in a token, never sent a code. An email
+  identity and a phone identity are two people to platform until accounts can be linked (not in MVP).
 - **Platform internals (D13, decided 2026-11-21):** better-auth with its OIDC provider plugin, wrapped so only
   `services/platform` imports it. Its tables live in the `identity` schema.
   `identity.user.id` is a UUID and is the `sub` claim.
@@ -86,8 +95,8 @@ There is one identity per person, and it lives in `platform`. Each app keeps its
   2. `GET /auth/callback`: look up the attempt by `state` and delete it in the same statement (single use).
      The login cookie must carry the same state, so a response started in another browser is refused (login
      CSRF). Exchange the code over the internal network. Verify the ID token's signature against the cached
-     JWKS (EdDSA only), plus `iss`, `aud`, `exp`, `iat` (at most 5 minutes old), `nonce` and
-     `email_verified`. Any failure is refused with no session. A replayed response finds no attempt row.
+     JWKS (EdDSA only), plus `iss`, `aud`, `exp`, `iat` (at most 5 minutes old), `nonce`, and a verified email
+     or mobile. Any failure is refused with no session. A replayed response finds no attempt row.
   3. Create `auth.session` (random 32-byte id, only its SHA-256 stored; 30 days absolute, 7 days idle) and set
      `__Host-kk_session`. Expired attempts are purged when a sign-in starts, expired sessions when one
      finishes, so no job is needed.
@@ -110,12 +119,11 @@ There is one identity per person, and it lives in `platform`. Each app keeps its
   `auth.login_attempt` carry `kind` (`member`, `customer`); each `createAuth` serves one kind, so a host accepts
   only its own sessions and finishes only its own attempts. Step 4 differs: a customer session belongs to an
   identity, not to a business. The customer space resolves the slug's business, then the `customer` row for
-  (business, identity); with none, an owner-entered row with the session's verified email is claimed (audit
-  `customer.claimed`); still none means the customer has not asked this business for anything, and their list
+  (business, identity); with none, an owner-entered row with the session's verified email or verified mobile
+  is claimed (audit `customer.claimed`); a new row takes the verified mobile as the customer's own; still none means the customer has not asked this business for anything, and their list
   is empty. Sign-out is a post to `/b/<slug>/signout` (from the app's own pages only: `fromOwnPages`, section 7), through platform's
   end-session, back to `/customer/signed-out?state=<slug>`, which goes to `/b/<slug>`. One sign-in page serves
-  members and customers: the email and "Get code", then the code and "Sign in"; the field becomes "Email or
-  mobile" in 3.3.
+  members and customers: "Email or mobile" and "Get code", then the code and "Sign in" (3.3c).
 - Identity holds name, email and phone. A member row holds only `identity_id` and a display name copied at
   sign-in, so personal data has one home. (The ID token kept for sign-out also carries email and name; it
   lives no longer than the session.)
@@ -418,12 +426,13 @@ receiver code handles provider webhooks, with the provider's signature in place 
   messages are queued by `Notices` (`src/notices.ts`), each in the transaction of its change; a sent quote also
   queues `kaamkoti.quote_expiry` at its `valid_until`, which the worker runs (section 6).
 - WhatsApp is Meta's Cloud API (D7, 3.3a). Only templates with a WhatsApp version go there (the customer's
-  messages; owners' join when members' phones do, 3.3c); each version holds the body submitted to Meta, with
+  messages; owners' join when members' phones do, 3.3d); each version holds the body submitted to Meta, with
   `{{n}}` placeholders, and is sent by name with its parameters. The channel is off until all its settings are
   given (no Meta account in development).
 - The WhatsApp quota (`notify.quota`) counts per (product, business, UTC calendar month) when a message is queued
   for WhatsApp, with top-ups (5.2); until plans carry it (5.1) it is platform config. Over quota falls back to
-  email. If there is no email, the owner is told (3.3c).
+  email. If there is no email, the owner is told (3.3d). A member's email is used only if verified: an
+  identity made by phone has a placeholder (section 3).
 - Meta's status webhook reaches `hooks.` at `/hooks/whatsapp`, verified by `X-Hub-Signature-256` (HMAC of the
   raw body with the app secret); a bad signature is 401. `delivered`/`read` mark a sent message `delivered`;
   `failed` marks it `failed`, audited, with Meta's numeric code logged. Each change is guarded by the status it

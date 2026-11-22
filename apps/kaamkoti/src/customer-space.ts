@@ -34,8 +34,8 @@ export interface SpaceCustomer {
 
 /**
  * The current business's customer row for this identity. With none yet, an owner-entered row (no identity) with
- * the session's verified email is claimed for it, the oldest if several. Null: this person has not asked the
- * business for anything, so their list is empty.
+ * the session's verified email or verified mobile is claimed for it, the oldest if several. Null: this person
+ * has not asked the business for anything, so their list is empty.
  */
 export async function customerFor(
   client: DbClient,
@@ -59,10 +59,11 @@ export async function customerFor(
       `update kk.customer set identity_id = $1
        where identity_id is null
          and id = (select id from kk.customer
-                   where identity_id is null and lower(email) = lower($2)
+                   where identity_id is null
+                     and (lower(email) = lower($2) or phone_e164 = $3)
                    order by created_at, id limit 1)
        returning id, business_id`,
-      [session.identityId, session.email],
+      [session.identityId, session.email, session.phone],
     ));
     await client.query("release savepoint claim");
   } catch (error) {
@@ -105,7 +106,8 @@ const ownDetails = z.object({ name: z.string().trim().min(1).max(120), phone });
 
 /**
  * The customer's own name and mobile, edited on Profile. A mobile on another customer's row is refused
- * (`phone_taken`): phones are unverified until 3.3, so typing someone's number must not take it over.
+ * (`phone_taken`): a typed mobile is not verified (only the one signed in with is), so typing someone's number
+ * must not take it over.
  */
 export async function updateOwnDetails(
   client: DbClient,

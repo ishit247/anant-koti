@@ -310,6 +310,33 @@ describe("notify", () => {
     expect(email?.text).toContain("offered ₹250.00 for your quote of ₹295.00");
   });
 
+  it("never sends to the placeholder email of an identity made by phone", async () => {
+    const identityId = "00000000-0000-4000-8000-0000000000c2";
+    await owner.tx((client) =>
+      client.query(
+        `insert into identity."user" (id, name, email, "emailVerified", "phoneNumber", "phoneNumberVerified")
+         values ($1, '+919000000301', '919000000301@phone.invalid', false, '+919000000301', true)`,
+        [identityId],
+      ),
+    );
+    await post("to-phone-owner", {
+      businessId: BUSINESS,
+      template: "request.edited",
+      to: { identityId },
+      vars: {
+        customerName: "Phone Owner Case",
+        number: "#4",
+        link: "http://127.0.0.1:45450/jobs/z",
+      },
+    });
+    const { rows } = await owner.tx((client) =>
+      client.query<{ status: string }>(
+        "select status from notify.message where vars->>'customerName' = 'Phone Owner Case'",
+      ),
+    );
+    expect(rows).toEqual([{ status: "no_channel" }]);
+  });
+
   it("records a message to an unknown identity as having no channel", async () => {
     await post("to-nobody", {
       businessId: BUSINESS,

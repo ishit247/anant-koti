@@ -10,7 +10,19 @@ export type SendWhatsApp = (message: {
   readonly name: string;
   readonly language: string;
   readonly params: readonly string[];
+  /** An authentication template's copy-code button, which Meta requires to carry the code as well. */
+  readonly copyCode?: string;
 }) => Promise<{ providerId: string }>;
+
+/** The authentication template the sign-in code goes by, as submitted to Meta: "{{1}} is your verification code." */
+export const SIGN_IN_CODE_TEMPLATE = { name: "sign_in_code", language: "en" } as const;
+
+/** Identity's sign-in codes by WhatsApp: the code is the body's one parameter and the copy button's. */
+export const codeTexter =
+  (send: SendWhatsApp) =>
+  async (phone: string, code: string): Promise<void> => {
+    await send({ to: phone, ...SIGN_IN_CODE_TEMPLATE, params: [code], copyCode: code });
+  };
 
 export interface WhatsAppAccount {
   /** The Graph API base, with its version, e.g. `https://graph.facebook.com/v23.0`. */
@@ -30,7 +42,7 @@ const failure = (code: string, responseCode?: number) =>
 
 export function whatsappSender(account: WhatsAppAccount): SendWhatsApp {
   const endpoint = `${account.apiUrl.replace(/\/$/, "")}/${account.phoneNumberId}/messages`;
-  return async ({ to, name, language, params }) => {
+  return async ({ to, name, language, params, copyCode }) => {
     let response: Response;
     try {
       response = await fetch(endpoint, {
@@ -49,6 +61,16 @@ export function whatsappSender(account: WhatsAppAccount): SendWhatsApp {
             language: { code: language },
             components: [
               { type: "body", parameters: params.map((text) => ({ type: "text", text })) },
+              ...(copyCode === undefined
+                ? []
+                : [
+                    {
+                      type: "button",
+                      sub_type: "url",
+                      index: "0",
+                      parameters: [{ type: "text", text: copyCode }],
+                    },
+                  ]),
             ],
           },
         }),

@@ -173,7 +173,6 @@ describe("auth", () => {
     expect(signedIn.session.memberships.map((m) => [m.businessId, m.role])).toEqual([
       [sharma, "owner"],
     ]);
-    expect(signedIn.identity).toEqual({ email: "prakash@example.com", name: "Prakash Sharma" });
     expect(signedIn.returnTo).toBe("/jobs?day=today");
     expect(signedIn.setCookies[0]).toMatch(
       /^__Host-kk_session=[\w-]{43}; Path=\/; Max-Age=2592000; Secure; HttpOnly; SameSite=Lax$/,
@@ -196,6 +195,22 @@ describe("auth", () => {
     );
   });
 
+  it("signs a member in by a verified mobile alone, to the same memberships", async () => {
+    const browser = await begin();
+    issue(
+      await idToken(browser.nonce, {
+        email: undefined,
+        email_verified: undefined,
+        phone_number: "+919000000204",
+        phone_number_verified: true,
+      }),
+    );
+    const signedIn = await auth.handleCallback(browser.query, browser.cookie);
+    expect(signedIn.session.memberships.map((m) => [m.businessId, m.role])).toEqual([
+      [sharma, "owner"],
+    ]);
+  });
+
   it("sends the browser to platform's authorize with PKCE, state and nonce", async () => {
     const { authorize, cookie } = await begin();
     expect(authorize.origin + authorize.pathname).toBe(`${ISSUER}/api/auth/oauth2/authorize`);
@@ -203,7 +218,7 @@ describe("auth", () => {
       response_type: "code",
       client_id: CLIENT,
       redirect_uri: REDIRECT_URI,
-      scope: "openid email profile",
+      scope: "openid email profile phone",
       code_challenge_method: "S256",
     });
     expect(cookie).toBe(`__Host-kk_login=${authorize.searchParams.get("state")}`);
@@ -300,6 +315,16 @@ describe("auth", () => {
         (nonce) => idToken(nonce, { iat: Math.floor(Date.now() / 1000) - 600 }),
       ],
       ["with an unverified email", (nonce) => idToken(nonce, { email_verified: false })],
+      [
+        "with an unverified mobile and no email",
+        (nonce) =>
+          idToken(nonce, {
+            email: undefined,
+            email_verified: undefined,
+            phone_number: "+919000000201",
+            phone_number_verified: false,
+          }),
+      ],
       ["with a subject that is not an identity id", (nonce) => idToken(nonce, { sub: "admin" })],
       [
         "unsigned",
@@ -448,12 +473,12 @@ describe("auth", () => {
       });
     });
 
-    async function customerSignIn() {
+    async function customerSignIn(claims: JWTPayload = {}) {
       const { location, setCookie } = await customers.startLogin("/b/sharma-cooling/requests");
       const authorize = new URL(location);
       const state = authorize.searchParams.get("state") ?? "";
       expect(authorize.searchParams.get("redirect_uri")).toBe(CUSTOMER_REDIRECT_URI);
-      issue(await idToken(authorize.searchParams.get("nonce") ?? "", { sub: NEWCOMER }));
+      issue(await idToken(authorize.searchParams.get("nonce") ?? "", { sub: NEWCOMER, ...claims }));
       return customers.handleCallback(
         new URLSearchParams({ code: `code-${state}`, state }),
         setCookie.split(";")[0] ?? "",
@@ -462,11 +487,40 @@ describe("auth", () => {
 
     it("sign in with their own cookie, and their session carries the verified email", async () => {
       const signedIn = await customerSignIn();
-      expect(signedIn.session).toEqual({ identityId: NEWCOMER, email: "prakash@example.com" });
+      expect(signedIn.session).toEqual({
+        identityId: NEWCOMER,
+        email: "prakash@example.com",
+        phone: null,
+      });
       expect(signedIn.returnTo).toBe("/b/sharma-cooling/requests");
       expect(signedIn.setCookies[0]).toMatch(/^__Host-kk_customer=[\w-]{43}; Path=\/;/);
       const cookie = signedIn.setCookies[0]?.split(";")[0] ?? "";
       expect(await customers.getSession(cookie)).toEqual(signedIn.session);
+    });
+
+    it("sign in by mobile, and their session carries the verified mobile and no email", async () => {
+      const signedIn = await customerSignIn({
+        email: undefined,
+        email_verified: undefined,
+        phone_number: "+919000000202",
+        phone_number_verified: true,
+      });
+      expect(signedIn.session).toEqual({
+        identityId: NEWCOMER,
+        email: null,
+        phone: "+919000000202",
+      });
+      const cookie = signedIn.setCookies[0]?.split(";")[0] ?? "";
+      expect(await customers.getSession(cookie)).toEqual(signedIn.session);
+    });
+
+    it("carry no mobile the token does not vouch for", async () => {
+      const signedIn = await customerSignIn({
+        phone_number: "+919000000203",
+        phone_number_verified: false,
+      });
+      expect(signedIn.session.phone).toBeNull();
+      expect(signedIn.session.email).toBe("prakash@example.com");
     });
 
     it("are refused as members, and members as customers, even under the other cookie's name", async () => {

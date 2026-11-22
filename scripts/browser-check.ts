@@ -63,6 +63,28 @@ async function expectMail(to: string, subject: RegExp, what: string): Promise<vo
 }
 
 /** The platform sign-in page: the email and "Get code", then the code and "Sign in". */
+/**
+ * The one field takes a mobile too (3.3c): something that is neither is refused on the page, and a mobile is
+ * answered "not available yet" while development has no WhatsApp channel.
+ */
+async function checkMobileField(page: Page) {
+  const note = page.locator("output");
+  await page.fill("input[name=who]", "12345");
+  await page.getByRole("button", { name: "Get code" }).click();
+  if (!/10-digit mobile/.test((await note.textContent()) ?? ""))
+    problems.push("sign-in: a value that is neither email nor mobile was not refused");
+  await page.fill("input[name=who]", "98765 43210");
+  await page.getByRole("button", { name: "Get code" }).click();
+  const pointed = await note
+    .filter({ hasText: /not available yet/ })
+    .waitFor({ timeout: 5000 })
+    .then(
+      () => true,
+      () => false,
+    );
+  if (!pointed) problems.push("sign-in: a mobile with WhatsApp off did not point to email");
+}
+
 async function signInAs(page: Page, address: string, shotName?: string) {
   await page.waitForURL(/\/sign-in/);
   if (shotName) await shoot(page, shotName);
@@ -70,7 +92,8 @@ async function signInAs(page: Page, address: string, shotName?: string) {
   await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:"${address}"`)}`, {
     method: "DELETE",
   });
-  await page.fill("input[name=email]", address);
+  if (shotName) await checkMobileField(page);
+  await page.fill("input[name=who]", address);
   await page.getByRole("button", { name: "Get code" }).click();
   await page.locator("input[name=code]").waitFor({ state: "visible" });
   if (shotName) await shoot(page, `${shotName}-code`);

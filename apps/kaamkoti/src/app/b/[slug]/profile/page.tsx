@@ -47,13 +47,14 @@ export default async function ProfilePage({
   const { slug } = await params;
   const { saved, error } = await searchParams;
   const space = `/b/${encodeURIComponent(slug)}`;
-  const { own, book, email } = await withCustomer(
+  const { own, book, signedInWith } = await withCustomer(
     slug,
     `${space}/profile`,
     async (client, customer, session) => ({
       own: customer ? await customerContact(client, customer) : null,
       book: customer ? await addressBook(client, customer) : [],
-      email: session.email,
+      // A session vouches for at least one of the two.
+      signedInWith: session.email ?? localPhone(session.phone ?? ""),
     }),
   );
   const page = await publicPage(server().db, slug);
@@ -67,7 +68,7 @@ export default async function ProfilePage({
       </BusinessHeader>
       <ProfileSheets
         own={own}
-        email={email}
+        signedInWith={signedInWith}
         book={book.map((entry) => ({
           id: entry.id,
           label: entry.label,

@@ -19,7 +19,7 @@ export interface ProfileAddress {
 
 export function ProfileSheets({
   own,
-  email,
+  signedInWith,
   book,
   detailsAction,
   addressAction,
@@ -30,7 +30,8 @@ export function ProfileSheets({
 }: {
   /** Null before the first request, when there is nothing to edit yet. */
   own: { name: string; phone: string } | null;
-  email: string;
+  /** What the person signs in with: their email, else their mobile as typed in India. */
+  signedInWith: string;
   book: readonly ProfileAddress[];
   detailsAction: string;
   addressAction: string;
@@ -103,8 +104,8 @@ export function ProfileSheets({
               </>
             ) : null}
             <div>
-              <dt>Email</dt>
-              <dd>{email}</dd>
+              <dt>Signed in with</dt>
+              <dd>{signedInWith}</dd>
             </div>
           </dl>
           {own ? (

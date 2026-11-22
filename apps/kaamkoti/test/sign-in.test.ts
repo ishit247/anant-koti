@@ -3,13 +3,15 @@
 import { randomBytes } from "node:crypto";
 import { get as httpGet, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { createAudit } from "@bodhchakra/audit";
 import { type Auth, createAuth, SignInRefused } from "@bodhchakra/auth";
-import { type TestDb, testDb } from "@bodhchakra/db";
+import { type Db, type TestDb, testDb } from "@bodhchakra/db";
 import { createLogger } from "@bodhchakra/log";
 import { type Limiter, redisLimiter } from "@bodhchakra/rate-limit";
 import pg from "pg";
 import * as platform from "platform";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { customerFor } from "../src/customer-space.ts";
 import { migrations, RUNTIME_ROLE, seed } from "../src/index.ts";
 
 const CLIENT = "kaamkoti";
@@ -20,6 +22,9 @@ const REDIS_URL = process.env.TEST_REDIS_URL ?? "redis://127.0.0.1:45444";
 /** Seeded on both sides: platform's identity and Kaam Koti's member share the id. */
 const PRAKASH = { id: "00000000-0000-4000-8000-00000000d001", email: "prakash@example.com" };
 const SHARMA = "10000000-0000-4000-8000-000000000001";
+const CUSTOMER_REDIRECT_URI = "https://kaamkoti.test/customer/callback";
+/** Seeded at Sharma by the owner from a phone enquiry: no email, no identity yet. */
+const RAHUL = { customerId: "10000000-0000-4000-8000-0000000c0002", phone: "+919000001002" };
 
 describe("signing in to Kaam Koti through platform", () => {
   let kaamkoti: TestDb;
@@ -29,6 +34,8 @@ describe("signing in to Kaam Koti through platform", () => {
   let server: Server;
   let origin: string;
   let auth: Auth;
+  let customerAuth: Auth<"customer">;
+  let app: Db;
   const codes = new Map<string, string>();
   /** One per run, so earlier runs' counters in Redis do not count against this one. */
   const ip = `10.${randomBytes(3).join(".")}`;
@@ -55,7 +62,7 @@ describe("signing in to Kaam Koti through platform", () => {
     await platform.registerClients(identityPool, {
       [CLIENT]: {
         secret: CLIENT_SECRET,
-        redirectUris: [REDIRECT_URI],
+        redirectUris: [REDIRECT_URI, CUSTOMER_REDIRECT_URI],
         postLogoutRedirectUris: [HOME],
       },
     });
@@ -78,20 +85,36 @@ describe("signing in to Kaam Koti through platform", () => {
           sendCode: async (to, code) => {
             codes.set(to.email, code);
           },
+          sendPhoneCode: async (phone, code) => {
+            codes.set(phone, code);
+          },
         },
         log,
       ),
     });
 
+    app = kaamkoti.connect(RUNTIME_ROLE);
     auth = createAuth({
       kind: "member",
-      db: kaamkoti.connect(RUNTIME_ROLE),
+      db: app,
       log,
       issuer: origin,
       internalUrl: origin,
       clientId: CLIENT,
       clientSecret: CLIENT_SECRET,
       redirectUri: REDIRECT_URI,
+      postLogoutRedirectUri: HOME,
+      cookiePrefix: "kk",
+    });
+    customerAuth = createAuth({
+      kind: "customer",
+      db: app,
+      log,
+      issuer: origin,
+      internalUrl: origin,
+      clientId: CLIENT,
+      clientSecret: CLIENT_SECRET,
+      redirectUri: CUSTOMER_REDIRECT_URI,
       postLogoutRedirectUri: HOME,
       cookiePrefix: "kk",
     });
@@ -179,7 +202,6 @@ describe("signing in to Kaam Koti through platform", () => {
     expect(signedIn.session.memberships).toMatchObject([
       { businessId: SHARMA, role: "owner", displayName: "Prakash Sharma" },
     ]);
-    expect(signedIn.identity.email).toBe(PRAKASH.email);
     expect(signedIn.returnTo).toBe("/jobs");
 
     // The same response again is refused.
@@ -202,5 +224,31 @@ describe("signing in to Kaam Koti through platform", () => {
     // Platform asks again: the next person on this device does not walk in.
     const afterSignOut = await navigate((await auth.startLogin()).location);
     expect(afterSignOut.origin + afterSignOut.pathname).toBe(`${origin}/sign-in`);
+  });
+
+  it("signs a customer in by a WhatsApp code, and the verified mobile claims the owner's entry", async () => {
+    // GET /b/sharma-cooling/login on Kaam Koti, after the member test above signed out of platform.
+    const login = await customerAuth.startLogin("/b/sharma-cooling/requests");
+    const loginCookie = login.setCookie.split(";")[0] ?? "";
+    const signInPage = await navigate(login.location);
+    expect(signInPage.origin + signInPage.pathname).toBe(`${origin}/sign-in`);
+    await post("/phone-code/send", { phone: RAHUL.phone });
+    const { url } = await post("/phone-number/verify", {
+      phoneNumber: RAHUL.phone,
+      code: codes.get(RAHUL.phone),
+      oauth_query: signInPage.search.slice(1),
+    });
+    const callback = new URL(url ?? "");
+    expect(callback.origin + callback.pathname).toBe(CUSTOMER_REDIRECT_URI);
+
+    // GET /customer/callback on Kaam Koti.
+    const signedIn = await customerAuth.handleCallback(callback.searchParams, loginCookie);
+    expect(signedIn.session).toMatchObject({ email: null, phone: RAHUL.phone });
+
+    // The customer space at Sharma finds the row the owner entered for this number.
+    const space = await app.withTenant(SHARMA, (client) =>
+      customerFor(client, createAudit(log), signedIn.session),
+    );
+    expect(space).toEqual({ id: RAHUL.customerId, businessId: SHARMA });
   });
 });

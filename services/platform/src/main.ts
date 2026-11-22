@@ -13,7 +13,7 @@ import { createIdentity, registerClients } from "./identity.ts";
 import { codeMailer, emailSender } from "./mail.ts";
 import { createNotifyService } from "./notify.ts";
 import { createHandler, listen } from "./server.ts";
-import { whatsappSender } from "./whatsapp.ts";
+import { codeTexter, whatsappSender } from "./whatsapp.ts";
 
 const config = defineConfig(platformConfig);
 const log = createLogger({ service: "platform" });
@@ -53,6 +53,8 @@ const identity = createIdentity(
     secret: config.IDENTITY_SECRET,
     limit: limiter.limit,
     sendCode,
+    // Sign-in by mobile needs the WhatsApp channel; without it the page asks for an email.
+    ...(config.whatsapp && { sendPhoneCode: codeTexter(whatsappSender(config.whatsapp)) }),
   },
   log,
 );

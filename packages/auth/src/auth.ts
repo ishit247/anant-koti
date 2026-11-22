@@ -57,18 +57,20 @@ export interface Session {
   readonly memberships: readonly Membership[];
 }
 
-/** A signed-in customer: the identity, and the verified email it signed in with (it claims a customer row). */
+/**
+ * A signed-in customer: the identity, and the verified email or mobile (E.164) it signed in with, at least one
+ * of them; either claims an owner-entered customer row.
+ */
 export interface CustomerSession {
   readonly identityId: string;
-  readonly email: string;
+  readonly email: string | null;
+  readonly phone: string | null;
 }
 
 export type SessionOf<K extends SessionKind> = K extends "customer" ? CustomerSession : Session;
 
 export interface SignedIn<S = Session> {
   readonly session: S;
-  /** From the ID token, for onboarding; not stored here (personal data lives in platform). */
-  readonly identity: { readonly email: string; readonly name: string };
   /** A path on this app, checked: never another origin. */
   readonly returnTo: string;
   /** Set the session cookie and clear the login cookie. */
@@ -125,16 +127,26 @@ const sha256 = (value: string) => createHash("sha256").update(value).digest();
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 
 const tokenResponse = z.object({ id_token: z.string().min(1) });
-const idTokenClaims = z.object({
-  sub: z.uuid(),
-  nonce: z.string(),
-  email: z.email(),
-  // Platform signs in by a code sent to the address, so it is always verified; anything else is not ours.
-  email_verified: z.literal(true),
-  name: z.string(),
+/** The addresses an ID token may carry; platform puts in only verified ones, and only those are used. */
+const addressClaims = z.object({
+  email: z.email().optional(),
+  email_verified: z.boolean().optional(),
+  phone_number: z
+    .string()
+    .regex(/^\+[1-9][0-9]{6,14}$/)
+    .optional(),
+  phone_number_verified: z.boolean().optional(),
 });
-/** The email in a stored ID token: verified when the session was made, read back without verifying again. */
-const storedClaims = z.object({ email: z.email() });
+const idTokenClaims = addressClaims.extend({ sub: z.uuid(), nonce: z.string(), name: z.string() });
+
+/** The verified email and mobile of a token's claims, each null when absent or unverified. */
+function verifiedAddresses(claims: z.infer<typeof addressClaims>) {
+  return {
+    email: claims.email_verified === true && claims.email ? claims.email : null,
+    phone:
+      claims.phone_number_verified === true && claims.phone_number ? claims.phone_number : null,
+  };
+}
 
 /** A same-origin path, or `/`. Stops `/login?return=//evil.example` sending the person elsewhere. */
 export function safeReturnTo(path: string | null | undefined): string {
@@ -162,11 +174,14 @@ export function createAuth<K extends SessionKind>(options: AuthOptions<K>): Auth
   const sessionCookie = `__Host-${options.cookiePrefix}_${kind === "member" ? "session" : "customer"}`;
   const loginCookie = `__Host-${options.cookiePrefix}_login`;
 
-  /** What a session row means for this kind: a member's businesses, or a customer's verified email. */
+  /**
+   * What a session row means for this kind: a member's businesses, or a customer's verified addresses, read back
+   * from the stored ID token, which was verified when the session was made.
+   */
   async function load(client: DbClient, identityId: string, idToken: string) {
     const session: Session | CustomerSession =
       kind === "customer"
-        ? { identityId, email: storedClaims.parse(decodeJwt(idToken)).email }
+        ? { identityId, ...verifiedAddresses(addressClaims.parse(decodeJwt(idToken))) }
         : { identityId, memberships: await membershipsOf(client, identityId) };
     return session as SessionOf<K>;
   }
@@ -231,6 +246,10 @@ export function createAuth<K extends SessionKind>(options: AuthOptions<K>): Auth
     const claims = idTokenClaims.safeParse(payload);
     if (!claims.success) throw new SignInRefused("ID token claims are not as expected");
     if (claims.data.nonce !== nonce) throw new SignInRefused("ID token nonce does not match");
+    // Platform signs in by a code sent to the address, so a token from it vouches for one; one that does not is
+    // not ours.
+    const { email, phone } = verifiedAddresses(claims.data);
+    if (!email && !phone) throw new SignInRefused("ID token has no verified email or mobile");
     return claims.data;
   }
 
@@ -278,7 +297,6 @@ export function createAuth<K extends SessionKind>(options: AuthOptions<K>): Auth
     });
     return {
       session,
-      identity: { email: claims.email, name: claims.name },
       returnTo: attempt.return_to,
       setCookies: [cookie(sessionCookie, token, SESSION_DAYS * 86_400), cookie(loginCookie, "", 0)],
     };
@@ -304,7 +322,7 @@ export function createAuth<K extends SessionKind>(options: AuthOptions<K>): Auth
         response_type: "code",
         client_id: options.clientId,
         redirect_uri: options.redirectUri,
-        scope: "openid email profile",
+        scope: "openid email profile phone",
         state,
         nonce,
         code_challenge: sha256(verifier).toString("base64url"),
