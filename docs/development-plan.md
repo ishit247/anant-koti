@@ -4,8 +4,18 @@ What we are building: [product-brief.md](product-brief.md). Shared modules:
 [platform-modules.md](platform-modules.md). The design is in [architecture.md](architecture.md);
 its first table says which sections each step reads.
 
-**Current position:** Step 2.2 done (2026-11-22). Next: step 2.3 (STANDARD); a fresh session is a good place
-to start it. Request intake: `@bodhchakra/storage` (`checkImage` by magic bytes, re-encode strips EXIF, 2048 px;
+**Current position:** Step 2.3 done (2026-11-22). Next: step 2.4 (HIGH: money and quotes; start it on Opus or
+Fable, in a fresh session). Owner inbox: `src/inbox.ts` (`listInbox`, `ownerJob`, `logPhoneEnquiry`,
+`reissueJobLink`, `countNewRequests`), pages `/jobs`, `/jobs/[id]`, `/jobs/new` (scope `member`, owner only; the
+id in the path is read inside `withTenant`, so another business's id is a 404). Phone enquiries reuse the
+intake's customer and job rules (`source = 'phone'`, tasks `added_by = 'business'`); a new link revokes the old
+ones and is audited (`job.logged`, `job.link_reissued`; `server().audit` is new). Mobile-first UI refresh: design
+tokens and cards in `globals.css`, a fixed bottom tab bar (`OwnerNav`: Home, Requests, Prices), `ShareLink`
+(copy and WhatsApp) shared by the invite, the public page and the re-sent link; home shows the new-request
+count and the public-page link. `@bodhchakra/audit` now builds its migrations path like storage does, so the web
+bundler accepts it. Verified: `validate standard` (77 kaamkoti tests), 2 mutants killed (no revoke on re-send;
+cross-business catalogue item accepted), `check:browser` extended with the inbox flow, at 375 px and 1280 px,
+screenshots viewed. Step 2.2 before it: request intake: `@bodhchakra/storage` (`checkImage` by magic bytes, re-encode strips EXIF, 2048 px;
 `putImage`, `signedUrl`; `storage.object`), `@bodhchakra/rate-limit` (moved out of platform), Garage in the dev
 stack (`kaamkoti-private`, web key read+write only, set up by `pnpm run up`). Public form `/b/[slug]/request`
 posts to the route handler `…/request/send` (scope `public-intake`; a route handler, not a server action, to
@@ -100,7 +110,7 @@ also write the module's README, and their tests run through the module's public 
 | --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | -------- | ------ | ------------------------------------------------------------------------------------------------------------------ |
 | 2.1 | `[module]` `tokens` links; customer magic links: scoped to one job, expiring, revocable                                                                                                                                      | M    | HIGH     | done   | A token cannot read another job; expired token is refused; mutant proves both                                      |
 | 2.2 | `[module]` `storage`; request intake: public form (pick one or more catalogue tasks), trade questions, photo upload (type and size checks, private storage); the app's per-IP rate limiter, for intake and for `/j/` lookups | M    | HIGH     | done   | Upload rejects wrong types and sizes; photos are not publicly listable; intake and `/j/` answer 429 past the limit |
-| 2.3 | Owner inbox: new requests, log a phone enquiry; a link to the owner's public page from home; on a job, "revoke links and send a new one" (`revokeJobLinks` + `issueJobLink`, audited)                                        | S    | STANDARD | todo   | Both request sources appear in one list                                                                            |
+| 2.3 | Owner inbox: new requests, log a phone enquiry; a link to the owner's public page from home; on a job, "revoke links and send a new one" (`revokeJobLinks` + `issueJobLink`, audited)                                        | S    | STANDARD | done   | Both request sources appear in one list                                                                            |
 | 2.4 | `[module]` `money`; quotes (`job_task` came in 2.2): lines from the catalogue at task or request level, versions, expiry                                                                                                     | M    | HIGH     | todo   | Totals and tax are tested; old versions are immutable                                                              |
 | 2.5 | Negotiation: customer accepts, rejects or counters; owner revises; accepted quote locked                                                                                                                                     | M    | HIGH     | todo   | State machine test covers every transition; a locked quote cannot be edited                                        |
 

@@ -22,6 +22,19 @@ export {
 } from "./business-profile.ts";
 export { PRIVATE_BUCKET } from "./config.ts";
 export {
+  countNewRequests,
+  type InboxRow,
+  type JobSource,
+  listInbox,
+  logPhoneEnquiry,
+  type OwnerJobView,
+  ownerJob,
+  type PhoneEnquiryError,
+  type PhoneEnquiryInput,
+  type PhoneEnquiryResult,
+  reissueJobLink,
+} from "./inbox.ts";
+export {
   type IntakeError,
   type IntakeInput,
   type IntakeResult,

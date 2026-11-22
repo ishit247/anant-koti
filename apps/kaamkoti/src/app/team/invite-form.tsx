@@ -1,41 +1,28 @@
 "use client";
 import { useActionState } from "react";
+import { ShareLink } from "../share-link.tsx";
 import { type InviteState, inviteTechnician } from "./actions.ts";
 
 export function InviteForm({ businessName }: { businessName: string }) {
   const [state, action, pending] = useActionState<InviteState>(inviteTechnician, {});
   const link = state.secret ? `${window.location.origin}/invite/${state.secret}` : null;
-  const message = `Join ${businessName} on Kaam Koti: ${link}`;
   return (
     <>
       <form action={action}>
-        <button type="submit" disabled={pending}>
+        <button type="submit" className="quiet" disabled={pending}>
           {pending ? "Making link…" : "Invite a technician"}
         </button>
       </form>
       {link ? (
         <div>
-          <p className="muted">
+          <p className="muted small">
             Share this link with your technician. It works once and expires in 7 days.
           </p>
-          <div className="share">
-            <input
-              readOnly
-              value={link}
-              aria-label="Invite link"
-              onFocus={(e) => e.currentTarget.select()}
-            />
-            <button
-              type="button"
-              className="quiet"
-              onClick={() => navigator.clipboard.writeText(link)}
-            >
-              Copy
-            </button>
-            <a className="button" href={`https://wa.me/?text=${encodeURIComponent(message)}`}>
-              WhatsApp
-            </a>
-          </div>
+          <ShareLink
+            link={link}
+            label="Invite link"
+            message={`Join ${businessName} on Kaam Koti:`}
+          />
         </div>
       ) : null}
     </>

@@ -102,6 +102,42 @@ try {
   await page.goto(`${APP}/`);
   await shoot(page, "7-home-owner");
 
+  // The owner's inbox: log a phone enquiry, open it, and send the customer a fresh link.
+  const tabs = page.getByRole("navigation", { name: "Main" });
+  await tabs.getByRole("link", { name: "Requests" }).click();
+  await page.waitForURL(`${APP}/jobs`);
+  await shoot(page, "7a-inbox-empty");
+  await page.getByRole("link", { name: "+ Phone enquiry" }).click();
+  await page.waitForURL(`${APP}/jobs/new`);
+  await page.fill("input[name=name]", "Phone Caller");
+  await page.fill("input[name=phone]", "98220 11122");
+  await page.fill("textarea[name=address]", "3 Call Lane, Pune");
+  await page.getByRole("button", { name: "Save request" }).click();
+  await page.getByRole("alert").filter({ hasText: "at least one service" }).waitFor();
+  await shoot(page, "7b-enquiry-refused");
+  await page.getByRole("checkbox").first().check();
+  await page.getByRole("button", { name: "Save request" }).click();
+  await page.waitForURL(/\/jobs\/[0-9a-f-]{36}$/);
+  if (!(await page.getByRole("heading", { name: "Request #1" }).count()))
+    problems.push("a logged enquiry does not open as request #1");
+  await shoot(page, "7c-job-detail");
+  await page.getByRole("button", { name: "Revoke old links, send a new one" }).click();
+  const fresh = await page.getByLabel("Customer link").inputValue();
+  const stranger = await browser.newContext({ viewport: WIDTHS.phone });
+  const strangerPage = await stranger.newPage();
+  await strangerPage.goto(fresh);
+  if (!(await strangerPage.getByRole("heading", { name: "Request #1" }).count()))
+    problems.push("the re-sent customer link does not open the request");
+  await stranger.close();
+  await shoot(page, "7d-link-resent");
+  await tabs.getByRole("link", { name: "Requests" }).click();
+  await page.waitForURL(`${APP}/jobs`);
+  if (!(await page.getByText("Phone Caller").count()))
+    problems.push("the logged enquiry is missing from the inbox");
+  await shoot(page, "7e-inbox");
+  await page.goto(`${APP}/`);
+  await shoot(page, "7f-home-with-requests");
+
   // The public page in a context that has never held a cookie.
   const visitor = await browser.newContext({ viewport: WIDTHS.phone });
   const publicPage = await visitor.newPage();

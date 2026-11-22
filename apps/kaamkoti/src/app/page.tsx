@@ -3,7 +3,10 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { businessProfile } from "../business-profile.ts";
 import { requireMember } from "../guard.ts";
+import { countNewRequests } from "../inbox.ts";
 import { server } from "../server.ts";
+import { OwnerNav } from "./owner-nav.tsx";
+import { ShareLink } from "./share-link.tsx";
 import { InviteForm } from "./team/invite-form.tsx";
 
 // Signed-out visitors see the welcome; signed-in members see their own business. Both are decided here, and the
@@ -17,25 +20,29 @@ export default async function Home() {
       <>
         <h1>Kaam Koti</h1>
         <p>Quotes, jobs and payments for tradespeople, in one place.</p>
-        <p>
+        <p className="actions">
           <a className="button" href="/login?return=/signup">
             Start free
-          </a>{" "}
-          <a href="/login">Sign in</a>
+          </a>
+          <a className="button quiet" href="/login">
+            Sign in
+          </a>
         </p>
       </>
     );
   }
   const me = await requireMember(route);
-  const { business, members, profile } = await server().db.withTenant(
+  const { business, members, profile, newRequests } = await server().db.withTenant(
     me.businessId,
     async (client) => ({
       business: await currentBusiness(client),
       members: await listMembers(client),
       profile: await businessProfile(client),
+      newRequests: me.role === "owner" ? await countNewRequests(client) : 0,
     }),
   );
   if (me.role === "owner" && !profile) redirect("/onboarding");
+  const publicLink = `${server().origin}/b/${encodeURIComponent(business.slug)}`;
   return (
     <>
       <header className="bar">
@@ -47,25 +54,49 @@ export default async function Home() {
         </form>
       </header>
       <p className="muted">
-        {business.city} · you are {me.role === "owner" ? "the owner" : "a technician"}
+        {business.city} · {me.role === "owner" ? "owner" : "technician"}
       </p>
       {me.role === "owner" ? (
         <>
-          <h2>Prices</h2>
-          <p>
-            <a href="/catalogue">Edit your price list</a>
-          </p>
+          <a className="card stat" href="/jobs">
+            <span>
+              <strong>{newRequests === 0 ? "No new requests" : "New requests"}</strong>
+              <br />
+              <span className="small">Open your requests</span>
+            </span>
+            <span className="count">{newRequests}</span>
+          </a>
+
+          <h2>Your public page</h2>
+          <div className="card">
+            <p className="muted small">
+              Customers request a visit here. Put the link on WhatsApp, a card or a board.
+            </p>
+            <ShareLink
+              link={publicLink}
+              label="Your public page"
+              message={`Book ${business.name}:`}
+            />
+            <a href={`/b/${encodeURIComponent(business.slug)}`}>Open the page</a>
+          </div>
+
           <h2>Team</h2>
-          <ul>
-            {members.map((m) => (
-              <li key={m.memberId}>
-                {m.displayName} <span className="muted">({m.role})</span>
-              </li>
-            ))}
-          </ul>
-          <InviteForm businessName={business.name} />
+          <div className="card">
+            <ul className="cards">
+              {members.map((m) => (
+                <li key={m.memberId} className="row">
+                  <span>{m.displayName}</span>
+                  <span className="chip">{m.role}</span>
+                </li>
+              ))}
+            </ul>
+            <InviteForm businessName={business.name} />
+          </div>
+          <OwnerNav current="/" />
         </>
-      ) : null}
+      ) : (
+        <p className="empty">Your jobs will appear here once the owner assigns them.</p>
+      )}
     </>
   );
 }

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { businessProfile, listCatalogue } from "../../business-profile.ts";
 import { requireMember } from "../../guard.ts";
 import { server } from "../../server.ts";
+import { OwnerNav } from "../owner-nav.tsx";
 import { CatalogueForm, type FormRow } from "./catalogue-form.tsx";
 
 const route = defineRoute({ scope: "member", roles: ["owner"] });
@@ -27,15 +28,13 @@ export default async function CataloguePage() {
   }));
   return (
     <>
-      <p>
-        <a href="/">← Home</a>
-      </p>
       <h1>Your prices</h1>
       <p className="muted">
         Prices in rupees, tax in percent. Hide an item to stop offering it; old quotes keep their
         price.
       </p>
       <CatalogueForm rows={rows} />
+      <OwnerNav current="/catalogue" />
     </>
   );
 }

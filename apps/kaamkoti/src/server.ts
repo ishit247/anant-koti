@@ -1,6 +1,7 @@
 // The web process's shared objects, built on the first request: config is parsed once, the pool, the sign-in
 // client, the object store and the rate limiter are made once. Kept on globalThis so Next's dev reloads do not
 // leak a pool each time.
+import { type Audit, createAudit } from "@bodhchakra/audit";
 import { type Auth, createAuth } from "@bodhchakra/auth";
 import { defineConfig } from "@bodhchakra/config";
 import { createPool, type Db } from "@bodhchakra/db";
@@ -15,6 +16,9 @@ export interface Server {
   readonly log: Logger;
   readonly storage: Storage;
   readonly limiter: Limiter;
+  readonly audit: Audit;
+  /** Where browsers reach this app: the base of every link sent to a customer. */
+  readonly origin: string;
 }
 
 const holder = globalThis as { __kaamkotiServer?: Server };
@@ -47,5 +51,13 @@ function build(): Server {
     secretAccessKey: config.S3_SECRET_ACCESS_KEY,
     bucket: PRIVATE_BUCKET,
   });
-  return { db, auth, log, storage, limiter: redisLimiter(config.REDIS_URL, log) };
+  return {
+    db,
+    auth,
+    log,
+    storage,
+    limiter: redisLimiter(config.REDIS_URL, log),
+    audit: createAudit(log),
+    origin: config.APP_ORIGIN,
+  };
 }

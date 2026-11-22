@@ -1,3 +1,4 @@
+import { pathToFileURL } from "node:url";
 import type { DbClient, MigrationFolder } from "@bodhchakra/db";
 import type { Logger } from "@bodhchakra/log";
 
@@ -71,5 +72,6 @@ export function createAudit(log: Logger): Audit {
 /** The module's schema migrations; an app lists this before its own folder. */
 export const migrations: MigrationFolder = {
   name: "audit",
-  dir: new URL("../migrations/", import.meta.url),
+  // Not `new URL(…, import.meta.url)`: the web bundler would try to resolve the folder as a module.
+  dir: pathToFileURL(`${import.meta.dirname}/../migrations/`),
 };

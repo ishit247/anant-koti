@@ -85,7 +85,7 @@ export function toE164(typed: string): string {
   return compact;
 }
 
-const contact = z.object({
+export const contact = z.object({
   name: z.string().trim().min(1).max(120),
   phone: z.string().transform(toE164).pipe(z.string().regex(E164)),
   address: z.string().trim().min(1).max(500),
@@ -200,7 +200,7 @@ export async function submitRequest(
 }
 
 /** The requested items that this business offers now, in its display order. RLS keeps other businesses out. */
-async function activeItems(client: DbClient, ids: readonly string[]) {
+export async function activeItems(client: DbClient, ids: readonly string[]) {
   const { rows } = await client.query<{ id: string; name: string }>(
     `select id, name from kk.catalogue_item where id = any($1::uuid[]) and active order by position`,
     [ids],
@@ -208,13 +208,13 @@ async function activeItems(client: DbClient, ids: readonly string[]) {
   return rows;
 }
 
-type Contact = z.infer<typeof contact>;
+export type Contact = z.infer<typeof contact>;
 
 /**
  * The business's customer with this phone, or a new one. An existing customer's details are left alone: a form
  * anyone can fill in must not rename someone else's customer record. This request's address goes on the job.
  */
-async function findOrCreateCustomer(
+export async function findOrCreateCustomer(
   client: DbClient,
   businessId: string,
   person: Contact,
@@ -237,21 +237,29 @@ async function findOrCreateCustomer(
 }
 
 /** Numbers run per business; the lock makes concurrent requests to one business take turns for the next one. */
-async function createJob(
+export async function createJob(
   client: DbClient,
   businessId: string,
   customerId: string,
   person: Contact,
   answers: Answers,
+  source: "public_form" | "phone" = "public_form",
 ): Promise<{ id: string; number: number }> {
   await client.query("select pg_advisory_xact_lock(hashtextextended('kk.job.number:' || $1, 0))", [
     businessId,
   ]);
   const { rows } = await client.query<{ id: string; number: number }>(
     `insert into kk.job (business_id, customer_id, number, source, answers, address, preferred_window)
-     select $1, $2, coalesce(max(number), 0) + 1, 'public_form', $3, $4, $5 from kk.job
+     select $1, $2, coalesce(max(number), 0) + 1, $3, $4, $5, $6 from kk.job
      returning id, number`,
-    [businessId, customerId, JSON.stringify(answers), person.address, person.preferredWindow],
+    [
+      businessId,
+      customerId,
+      source,
+      JSON.stringify(answers),
+      person.address,
+      person.preferredWindow,
+    ],
   );
   const job = rows[0];
   if (!job) throw new Error("intake: the job insert returned no row");
