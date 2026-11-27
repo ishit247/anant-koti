@@ -1,5 +1,5 @@
 "use server";
-import { defineRoute } from "@bodhchakra/tenancy";
+import { defineRoute, listMembers } from "@bodhchakra/tenancy";
 import { redirect } from "next/navigation";
 import { requireMember, requireSession } from "../../../guard.ts";
 import { server } from "../../../server.ts";
@@ -27,6 +27,18 @@ export async function subscribe(_previous: CheckoutState, form: FormData): Promi
   const input = checkoutInput.safeParse({ plan: form.get("plan"), seats: form.get("seats") });
   if (!input.success)
     return { error: "Pick a plan, and for Team the number of people (1 to 100)." };
+  // A plan with fewer seats than the people already here would refuse them at once (D20).
+  const people = await server().db.withTenant(
+    owner.businessId,
+    async (client) => (await listMembers(client)).length,
+  );
+  if (input.data.seats < people)
+    return {
+      error:
+        input.data.plan === "solo"
+          ? `Solo is for one person, and ${people} people are in your business. Pick Team for ${people}.`
+          : `${people} people are in your business, so Team needs at least ${people} seats.`,
+    };
   const answer = await server().billing.checkout({
     tenantId: owner.businessId,
     identityId,

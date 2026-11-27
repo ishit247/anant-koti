@@ -157,8 +157,6 @@ describe("platform config", () => {
   it("stops start-up when only some WhatsApp settings are given, naming the missing ones", () => {
     expect(() =>
       defineConfig(platformConfig, { ...base, WHATSAPP_ACCESS_TOKEN: "t".repeat(30) }),
-    ).toThrow(
-      /WHATSAPP_PHONE_NUMBER_ID.*WHATSAPP_APP_SECRET.*WHATSAPP_VERIFY_TOKEN.*NOTIFY_WHATSAPP_MONTHLY_QUOTA/,
-    );
+    ).toThrow(/WHATSAPP_PHONE_NUMBER_ID.*WHATSAPP_APP_SECRET.*WHATSAPP_VERIFY_TOKEN/);
   });
 });

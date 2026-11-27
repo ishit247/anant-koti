@@ -1,4 +1,4 @@
-import { subscriptionOf } from "@bodhchakra/billing";
+import { limitsOf, subscriptionOf } from "@bodhchakra/billing";
 import { currentBusiness, defineRoute, listMembers } from "@bodhchakra/tenancy";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -114,6 +114,11 @@ export default async function Home() {
 
           <h2>Team</h2>
           <div className="card">
+            {subscription ? (
+              <p className="muted small">
+                {members.length} of {limitsOf(subscription).seats} seats
+              </p>
+            ) : null}
             <ul className="cards">
               {members.map((m) => (
                 <li key={m.memberId} className="row">

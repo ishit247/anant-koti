@@ -10,6 +10,7 @@ import {
   type CheckoutAnswer,
   type CheckoutRequest,
   checkoutRequest,
+  limitsOf,
   PLANS,
   type Plan,
   type Registration,
@@ -70,6 +71,23 @@ interface Row {
 const COLUMNS =
   "s.id, s.product, s.tenant_id, s.plan, s.seats, s.status, s.trial_ends_at, s.paid_through, " +
   "s.provider_subscription_id, s.checkout_url, s.provider_event_at, s.version";
+
+/**
+ * The WhatsApp messages a business may send this month (D18), from its plan and seats, for notify. A business whose
+ * registration has not arrived yet (it travels through the app's outbox, in no set order with its messages) has the
+ * trial's, which is what registration opens.
+ */
+export async function whatsappQuota(
+  client: DbClient,
+  product: string,
+  tenantId: string,
+): Promise<number> {
+  const { rows } = await client.query<Pick<Row, "plan" | "seats" | "status">>(
+    "select plan, seats, status from billing.subscription where product = $1 and tenant_id = $2",
+    [product, tenantId],
+  );
+  return limitsOf(rows[0] ?? { plan: TRIAL_PLAN, seats: 1, status: "trialing" }).whatsapp;
+}
 
 export function createBillingService(deps: BillingDeps): BillingService {
   const { db, log, audit } = deps;

@@ -8,15 +8,19 @@ import { createOutbox, migrations as outboxMigrations } from "@bodhchakra/outbox
 import { signRequest, verifyRequest } from "@bodhchakra/tokens";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+  assertWithin,
   type BillingClient,
   createBillingClient,
   isLive,
+  LimitReached,
+  limitsOf,
   migrations,
   REGISTER_TOPIC,
   STATUS_EVENTS_PATH,
   type StatusChanged,
   type Subscription,
   subscriptionOf,
+  TRIAL_SEATS,
 } from "../src/index.ts";
 
 const SECRET = "test-kaamkoti-service-secret-0123456789abcdefghij";
@@ -309,6 +313,67 @@ describe("billing, app side", () => {
         secret: SECRET,
       });
       expect(await down.checkout(request)).toEqual({ error: { code: "unavailable" } });
+    });
+  });
+
+  describe("limits", () => {
+    const sub = (patch: Partial<Subscription>): Subscription => ({
+      plan: "team",
+      seats: 1,
+      status: "trialing",
+      trialEndsAt: new Date(NOW.getTime() + 14 * DAY),
+      paidThrough: null,
+      version: 1,
+      ...patch,
+    });
+    const refusal = (subscription: Subscription, used: number) => {
+      try {
+        assertWithin(subscription, "seats", used);
+        return null;
+      } catch (error) {
+        if (error instanceof LimitReached) return error.error;
+        throw error;
+      }
+    };
+
+    it("lets the trial seat up to ten people, whatever its row's seats", () => {
+      expect(refusal(sub({}), TRIAL_SEATS - 1)).toBeNull();
+      expect(refusal(sub({}), TRIAL_SEATS)).toEqual({
+        code: "limit",
+        limit: "seats",
+        plan: "team",
+      });
+    });
+
+    it("seats a paid Team plan its own seats", () => {
+      const paid = sub({ status: "active", seats: 3 });
+      expect(refusal(paid, 2)).toBeNull();
+      expect(refusal(paid, 3)).toEqual({ code: "limit", limit: "seats", plan: "team" });
+    });
+
+    it("seats Solo one person", () => {
+      expect(refusal(sub({ plan: "solo", status: "active" }), 1)).toEqual({
+        code: "limit",
+        limit: "seats",
+        plan: "solo",
+      });
+    });
+
+    it("gives Solo 200 WhatsApp messages and Team 500 plus 100 a seat", () => {
+      expect(limitsOf(sub({ plan: "solo", status: "active" })).whatsapp).toBe(200);
+      expect(limitsOf(sub({ status: "active", seats: 3 })).whatsapp).toBe(800);
+    });
+
+    it("holds the copy locked when asked, so a second taker waits", async () => {
+      await app.withTenant(businessB, async (client) => {
+        await subscriptionOf(client, { lock: true });
+        await expect(
+          app.withTenant(businessB, async (other) => {
+            await other.query("set local lock_timeout = '200ms'");
+            return subscriptionOf(other, { lock: true });
+          }),
+        ).rejects.toThrow(/lock timeout/);
+      });
     });
   });
 

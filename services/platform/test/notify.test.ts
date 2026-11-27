@@ -180,7 +180,7 @@ describe("notify", () => {
         send: sendWhatsApp,
         appSecret: APP_SECRET,
         verifyToken: VERIFY_TOKEN,
-        monthlyQuota: QUOTA,
+        quota: async () => QUOTA,
       },
       retry: { retryLimit: RETRY_LIMIT, retryDelay: 1 },
     });

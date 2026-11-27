@@ -482,7 +482,7 @@ configured for (`EVENTS_CLIENT`, `EVENTS_URL`), signed as client `platform` with
   `{{n}}` placeholders, and is sent by name with its parameters. The channel is off until all its settings are
   given (no Meta account in development).
 - The WhatsApp quota (`notify.quota`) counts per (product, business, UTC calendar month) when a message is queued
-  for WhatsApp, with top-ups (5.2); until plans carry it (5.1) it is platform config. Over quota falls back to
+  for WhatsApp. The allowance comes from the business's plan (section 13), with top-ups in 5.2b. Over quota falls back to
   email. If there is no email, the message is `no_channel` and the owner is told by `notify.quota_used`, once per
   business and month (`notify.quota.owner_told`, set under the row's lock), on any channel and not counted
   against the quota. A member's email and phone are used only if verified: an identity made by phone has a
@@ -569,7 +569,7 @@ them in its README.
 | `money`            | `money(minor, cur)`, `lineTotals(lines, cur)`, `formatMoney`, `minorDigits`, `parseDecimal`, `formatDecimal`                                               | —                                                                                | 2.4  |
 | `notify` (client)  | `send(tx, message, key)`, through the outbox; a member is addressed `to: { identityId }` (3.2b)                                                            | — (server tables in platform)                                                    | 3.2  |
 | `payments`         | `connectAccount`, `connectedAccount`, `createPaymentLink`, `cancelLink`, `linksFor`, `paidFor`, `recordManual`, `handleWebhook(db, req, onEvent)` (README) | `payments.account`, `payments.link`, `payments.payment`; dedup in `outbox.inbox` | 4.1  |
-| `billing` (client) | `status(businessId)` → `{ plan, live, limits }`, `assertWithin(limit)`, event handler for status updates                                                   | `billing.status`                                                                 | 5.1  |
+| `billing` (client) | `subscriptionOf`, `isLive`, `limitsOf`, `assertWithin(subscription, limit, used)`, status events receiver                                                  | `billing.status`                                                                 | 5.1  |
 
 Platform-side tables: `identity.*` (from better-auth), `notify.message`, `notify.quota`, `billing.account`,
 `billing.subscription`, `billing.referral`, and the same `tokens`, `outbox` and `audit` modules.
@@ -603,9 +603,16 @@ Dependency direction (checked in 0.2): foundation (`config`, `log`, `money`) ←
 - **Lapsed:** the public page and the customer space show a contact card (name, phone, WhatsApp link) and accept
   no new requests or payments. The owner app goes read-only, apart from billing and export. Data is never
   deleted on lapse.
-- Limits are plan config: seats (owner plus technicians), and the WhatsApp quota (counted in platform). They are
-  checked with `assertWithin` at the edge and refused with one error shape: `{ error: { code: 'limit',
-limit, plan } }`.
+- **Limits (5.2a; D17, D18, D20)** are computed from the subscription by `limitsOf` in the contract, so app and
+  platform agree and nothing is stored: seats (members, owner included) are 10 in the trial, whatever its row's
+  seats, and the plan's seats after (Solo one). There is no free tier. The app checks a seat with
+  `assertSeatFree`, which locks `billing.status` and then counts members, so two joins cannot share the last seat. It
+  runs when an invite is made and again when one is accepted (tenancy's `acceptInvite` `admit` callback), since
+  older links can still be used. A refusal is `LimitReached`, whose one shape is `{ error: { code: 'limit', limit,
+  plan } }`; a full team keeps the link. A checkout with fewer seats than the people already in the business is
+  refused. The WhatsApp quota is Solo 200, Team 500 plus 100 per seat, per month; platform's notify reads it from
+  `billing.subscription` (`whatsappQuota`), with the trial's quota for a business not yet registered. Over the
+  quota, messages go by email instead of being refused. Top-ups are 5.2b.
 - **Reviews (6.1):** ratings of 4 and 5 publish at once. Ratings of 1 to 3 are `held` for the owner, who can
   respond. They then publish, with any response, after 7 days. The owner can delay a low rating but not bury
   it. A review page that hides bad ratings would mislead the customers who read it.

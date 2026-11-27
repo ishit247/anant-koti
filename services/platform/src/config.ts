@@ -45,7 +45,6 @@ const WHATSAPP_KEYS = [
   "WHATSAPP_ACCESS_TOKEN",
   "WHATSAPP_APP_SECRET",
   "WHATSAPP_VERIFY_TOKEN",
-  "NOTIFY_WHATSAPP_MONTHLY_QUOTA",
 ] as const;
 
 const settings = z.object({
@@ -79,8 +78,6 @@ const settings = z.object({
   WHATSAPP_APP_SECRET: z.string().min(16).optional(),
   /** Any random string, given to Meta when the webhook is subscribed. */
   WHATSAPP_VERIFY_TOKEN: z.string().min(16).optional(),
-  /** WhatsApp messages per business per month, until plans carry the quota (5.1). */
-  NOTIFY_WHATSAPP_MONTHLY_QUOTA: z.coerce.number().int().min(1).optional(),
   /** Razorpay's API for subscriptions (D6), on the platform's own account. Development points it at a fake. */
   BILLING_RAZORPAY_API: z
     .url({ protocol: /^https?$/ })
@@ -122,22 +119,19 @@ export const platformConfig = settings.transform((config, ctx) => {
     WHATSAPP_ACCESS_TOKEN,
     WHATSAPP_APP_SECRET,
     WHATSAPP_VERIFY_TOKEN,
-    NOTIFY_WHATSAPP_MONTHLY_QUOTA,
     ...rest
   } = config;
   const whatsapp =
     WHATSAPP_PHONE_NUMBER_ID &&
     WHATSAPP_ACCESS_TOKEN &&
     WHATSAPP_APP_SECRET &&
-    WHATSAPP_VERIFY_TOKEN &&
-    NOTIFY_WHATSAPP_MONTHLY_QUOTA
+    WHATSAPP_VERIFY_TOKEN
       ? {
           apiUrl: WHATSAPP_API_URL,
           phoneNumberId: WHATSAPP_PHONE_NUMBER_ID,
           accessToken: WHATSAPP_ACCESS_TOKEN,
           appSecret: WHATSAPP_APP_SECRET,
           verifyToken: WHATSAPP_VERIFY_TOKEN,
-          monthlyQuota: NOTIFY_WHATSAPP_MONTHLY_QUOTA,
         }
       : undefined;
   return { ...rest, whatsapp };

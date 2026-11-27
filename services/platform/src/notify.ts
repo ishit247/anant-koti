@@ -30,8 +30,8 @@ export interface WhatsAppChannel {
   appSecret: string;
   /** Meta echoes it when the webhook is subscribed. */
   verifyToken: string;
-  /** WhatsApp messages per business per month; over it, messages go by email. Plans carry it from 5.1. */
-  monthlyQuota: number;
+  /** A business's WhatsApp messages this month, from its plan (billing's `whatsappQuota`); over it, email. */
+  quota: (client: DbClient, product: string, businessId: string) => Promise<number>;
 }
 
 /** Until a second language joins, every template is submitted to Meta in English. */
@@ -183,7 +183,15 @@ export function createNotifyService(deps: NotifyDeps): NotifyService {
     const whatsapp = deps.whatsapp;
     const byEmail = to.email ? "email" : null;
     if (!(to.phone && template.whatsapp && whatsapp)) return { channel: byEmail, overQuota: false };
-    if (!counted || (await takeQuota(client, product, businessId, whatsapp.monthlyQuota)))
+    if (
+      !counted ||
+      (await takeQuota(
+        client,
+        product,
+        businessId,
+        await whatsapp.quota(client, product, businessId),
+      ))
+    )
       return { channel: "whatsapp", overQuota: false };
     return { channel: byEmail, overQuota: true };
   }

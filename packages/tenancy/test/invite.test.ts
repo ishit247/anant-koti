@@ -64,6 +64,20 @@ describe("technician invites", () => {
     expect(await inviteSummary(app, secret)).toBeNull();
   });
 
+  it("adds no one when the app's admit check refuses, and keeps the link usable", async () => {
+    const { secret } = await invite();
+    const person = { identityId: "9c000000-0000-4000-8000-00000000000c", displayName: "Kiran" };
+    const full = new Error("no free seat");
+
+    await expect(
+      acceptInvite(app, secret, person, async () => {
+        throw full;
+      }),
+    ).rejects.toBe(full);
+    expect(await app.tx((client) => membershipsOf(client, person.identityId))).toHaveLength(0);
+    expect(await inviteSummary(app, secret)).not.toBeNull();
+  });
+
   it("makes simultaneous taps of one link produce exactly one member", async () => {
     const { secret } = await invite();
     const people = Array.from({ length: 8 }, (_, i) => ({

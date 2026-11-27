@@ -64,14 +64,13 @@ Topics: `notify.send` (below). Bodies over 64 KB are refused (413).
 
 WhatsApp (Meta Cloud API, D7) is off unless all of these are given; some but not all stops start-up:
 
-| Variable                        | Meaning                                                                                     |
-| ------------------------------- | ------------------------------------------------------------------------------------------- |
-| `WHATSAPP_PHONE_NUMBER_ID`      | The sending number's id in WhatsApp Manager.                                                |
-| `WHATSAPP_ACCESS_TOKEN`         | A system user's permanent token with `whatsapp_business_messaging`.                         |
-| `WHATSAPP_APP_SECRET`           | The Meta app's secret; verifies the status webhook at `https://hooks.<tld>/hooks/whatsapp`. |
-| `WHATSAPP_VERIFY_TOKEN`         | A random string, entered in Meta's webhook settings when subscribing (field `messages`).    |
-| `NOTIFY_WHATSAPP_MONTHLY_QUOTA` | WhatsApp messages per business per month, until plans carry it (5.1).                       |
-| `WHATSAPP_API_URL`              | Optional; default `https://graph.facebook.com/v23.0`.                                       |
+| Variable                   | Meaning                                                                                     |
+| -------------------------- | ------------------------------------------------------------------------------------------- |
+| `WHATSAPP_PHONE_NUMBER_ID` | The sending number's id in WhatsApp Manager.                                                |
+| `WHATSAPP_ACCESS_TOKEN`    | A system user's permanent token with `whatsapp_business_messaging`.                         |
+| `WHATSAPP_APP_SECRET`      | The Meta app's secret; verifies the status webhook at `https://hooks.<tld>/hooks/whatsapp`. |
+| `WHATSAPP_VERIFY_TOKEN`    | A random string, entered in Meta's webhook settings when subscribing (field `messages`).    |
+| `WHATSAPP_API_URL`         | Optional; default `https://graph.facebook.com/v23.0`.                                       |
 
 Each template's WhatsApp version (`src/templates/kaamkoti.ts`) must be approved in Meta under its `name`, in
 English (`en`), with its `body` as written there. Sign-in codes need one more: an **Authentication** template

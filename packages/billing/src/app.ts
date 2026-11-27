@@ -11,6 +11,7 @@ import {
   type CheckoutAnswer,
   type CheckoutRequest,
   checkoutAnswer,
+  limitsOf,
   type Plan,
   REGISTER_TOPIC,
   type Registration,
@@ -53,6 +54,30 @@ export function isLive(subscription: Subscription, now: Date): boolean {
   return paid !== null && now.getTime() < paid.getTime() + GRACE_DAYS * DAY_MS;
 }
 
+/** The limits the app refuses at its edge. The WhatsApp quota is platform's, and falls back to email instead. */
+export type Limit = "seats";
+
+/** The one shape a refused limit takes at the edge (docs/architecture.md 13). */
+export interface LimitError {
+  readonly code: "limit";
+  readonly limit: Limit;
+  readonly plan: Plan;
+}
+
+export class LimitReached extends Error {
+  readonly error: LimitError;
+  constructor(limit: Limit, plan: Plan) {
+    super(`billing: ${limit} limit reached on ${plan}`);
+    this.name = "LimitReached";
+    this.error = { code: "limit", limit, plan };
+  }
+}
+
+/** Throws `LimitReached` unless one more fits beside the `used` already taken. */
+export function assertWithin(subscription: Subscription, limit: Limit, used: number): void {
+  if (used + 1 > limitsOf(subscription)[limit]) throw new LimitReached(limit, subscription.plan);
+}
+
 interface Row {
   plan: Plan;
   seats: number;
@@ -70,10 +95,16 @@ const fromRow = (row: Row): Subscription => ({
   version: row.version,
 });
 
-/** The open business's subscription (inside `withTenant`). Every business has one from signup. */
-export async function subscriptionOf(client: DbClient): Promise<Subscription> {
+/**
+ * The open business's subscription (inside `withTenant`). Every business has one from signup. `lock` holds the
+ * row until the transaction ends, so whoever takes against a limit waits for the one before and counts after it.
+ */
+export async function subscriptionOf(
+  client: DbClient,
+  options: { lock?: boolean } = {},
+): Promise<Subscription> {
   const { rows } = await client.query<Row>(
-    "select plan, seats, status, trial_ends_at, paid_through, version from billing.status",
+    `select plan, seats, status, trial_ends_at, paid_through, version from billing.status${options.lock ? " for update" : ""}`,
   );
   if (rows.length !== 1) throw new Error("billing: not inside withTenant of one business");
   return fromRow(rows[0] as Row);

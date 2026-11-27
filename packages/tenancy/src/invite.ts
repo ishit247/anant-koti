@@ -59,12 +59,15 @@ export async function inviteSummary(db: Db, secret: string): Promise<InviteSumma
 
 /**
  * Accepts an invite for a signed-in identity: adds them as a technician and ends the link, in one transaction.
- * The invite row is locked first, so two taps of the same link make one member and one refusal.
+ * The invite row is locked first, so two taps of the same link make one member and one refusal. `admit` runs in
+ * the same transaction just before the member is added, for what the app must check first (a free seat); a throw
+ * from it adds no one and leaves the link usable.
  */
 export async function acceptInvite(
   db: Db,
   secret: string,
   person: { identityId: string; displayName: string },
+  admit?: (client: DbClient) => Promise<unknown>,
 ): Promise<Membership> {
   const link = await db.tx((client) => resolve(client, secret));
   if (link?.purpose !== "invite") throw new InviteRefused("the link is not live");
@@ -79,6 +82,7 @@ export async function acceptInvite(
       [person.identityId, link.businessId],
     );
     if (existing.rowCount) throw new InviteRefused("already a member");
+    await admit?.(client);
     const member = await addMember(client, {
       businessId: link.businessId,
       identityId: person.identityId,

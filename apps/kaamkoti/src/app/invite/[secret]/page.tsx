@@ -7,8 +7,15 @@ import { acceptInviteAction } from "./actions.ts";
 // biome-ignore lint/correctness/noUnusedVariables: read by scanRoutes, which scans the source text
 const route = defineRoute({ scope: "invite-token" });
 
-export default async function InvitePage({ params }: { params: Promise<{ secret: string }> }) {
+export default async function InvitePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ secret: string }>;
+  searchParams: Promise<{ full?: string }>;
+}) {
   const { secret } = await params;
+  const { full } = await searchParams;
   const summary = await inviteSummary(server().db, secret);
   if (!summary) {
     return (
@@ -23,6 +30,12 @@ export default async function InvitePage({ params }: { params: Promise<{ secret:
     <>
       <h1>Join {summary.businessName}</h1>
       <p className="muted">{summary.invitedByName} invited you as a technician.</p>
+      {full ? (
+        <p className="error" role="alert">
+          {summary.businessName} has no free seat just now. Ask {summary.invitedByName} to make
+          room, then try this link again.
+        </p>
+      ) : null}
       {session ? (
         <form action={acceptInviteAction}>
           <input type="hidden" name="secret" value={secret} />

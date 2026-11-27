@@ -10,7 +10,7 @@ import { NOTIFY_TOPIC } from "@bodhchakra/notify";
 import { createOutbox } from "@bodhchakra/outbox";
 import { redisLimiter } from "@bodhchakra/rate-limit";
 import pg from "pg";
-import { createBillingService } from "./billing.ts";
+import { createBillingService, whatsappQuota } from "./billing.ts";
 import { platformConfig } from "./config.ts";
 import { createIdentity, registerClients } from "./identity.ts";
 import { codeMailer, emailSender } from "./mail.ts";
@@ -39,7 +39,7 @@ const notify = createNotifyService({
       send: whatsappSender(config.whatsapp),
       appSecret: config.whatsapp.appSecret,
       verifyToken: config.whatsapp.verifyToken,
-      monthlyQuota: config.whatsapp.monthlyQuota,
+      quota: whatsappQuota,
     },
   }),
 });

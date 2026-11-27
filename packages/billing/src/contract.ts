@@ -10,6 +10,29 @@ export type Plan = (typeof PLANS)[number];
 /** Seats are the owner plus technicians. Solo is one person; Team is billed per seat. */
 export const MAX_SEATS = 100;
 
+/** The trial is Team for up to this many people, whatever its row's seats (D20). */
+export const TRIAL_SEATS = 10;
+
+/** What a plan allows. Both sides compute it from the subscription, so nothing stored can disagree. */
+export interface Limits {
+  /** People in the business: members, owner included. */
+  readonly seats: number;
+  /** WhatsApp messages a month (D18); over it, platform sends by email. */
+  readonly whatsapp: number;
+}
+
+export function limitsOf(subscription: {
+  readonly plan: Plan;
+  readonly seats: number;
+  readonly status: Status;
+}): Limits {
+  const { plan, seats, status } = subscription;
+  return {
+    seats: status === "trialing" ? TRIAL_SEATS : seats,
+    whatsapp: plan === "solo" ? 200 : 500 + 100 * seats,
+  };
+}
+
 /** App → platform, through the outbox: a new business starts its trial; platform opens the subscription. */
 export const REGISTER_TOPIC = "billing.register";
 export const registration = z.object({

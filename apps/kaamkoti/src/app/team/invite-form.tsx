@@ -13,6 +13,11 @@ export function InviteForm({ businessName }: { businessName: string }) {
           {pending ? "Making link…" : "Invite a technician"}
         </button>
       </form>
+      {state.error ? (
+        <p className="error" role="alert">
+          {state.error} <a href="/settings/billing">Billing</a>
+        </p>
+      ) : null}
       {link ? (
         <div>
           <p className="muted small">

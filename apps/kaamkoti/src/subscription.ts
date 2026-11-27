@@ -1,7 +1,17 @@
 // What the owner reads about their subscription (docs/architecture.md 13), and the checkout form's input. The
 // state itself is the billing module's copy; live is computed from it at request time.
-import { isLive, MAX_SEATS, type Plan, type Subscription } from "@bodhchakra/billing";
+import {
+  assertWithin,
+  isLive,
+  type LimitError,
+  MAX_SEATS,
+  type Plan,
+  type Subscription,
+  subscriptionOf,
+} from "@bodhchakra/billing";
+import type { DbClient } from "@bodhchakra/db";
 import { type Money, money } from "@bodhchakra/money";
+import { listMembers } from "@bodhchakra/tenancy";
 import { z } from "zod";
 import { formatDay } from "./job-labels.ts";
 
@@ -73,6 +83,22 @@ export function subscriptionView(subscription: Subscription, now: Date): Subscri
       : `Cancelled. Your page stays open until your trial ends on ${formatDay(trialEndsAt)}.`,
     canSubscribe: true,
   };
+}
+
+/**
+ * Refuses (`LimitReached`) one more person beyond the plan's seats (D20), inside `withTenant` of the business. The
+ * copy is locked before the members are counted, so two people joining at once cannot share the last seat.
+ */
+export async function assertSeatFree(client: DbClient): Promise<void> {
+  const subscription = await subscriptionOf(client, { lock: true });
+  assertWithin(subscription, "seats", (await listMembers(client)).length);
+}
+
+/** What the owner reads when a seat limit refuses them. */
+export function seatRefusal(error: LimitError): string {
+  return error.plan === "solo"
+    ? "Solo is for one person. Technicians can join on the Team plan."
+    : "Every seat on your plan is taken.";
 }
 
 /** The checkout form. Solo is one person, so its seats are always one. */

@@ -15,7 +15,8 @@
 // same stand-in and webhook (4.4). The seeded technician checks in on today's job, ticks the checklist, adds a photo, records extra
 // work found and completes it (4.2, 4.3). Last, the owner subscribes from the trial: Team for two through the
 // stand-in's subscription page, paid only once Razorpay's signed webhook reaches platform and platform's event the
-// app; a lapsed status from platform then reads as closed (5.1b).
+// app; a technician joins and fills the second seat, after which a new invite and an older link are refused
+// (5.2a); a lapsed status from platform then reads as closed (5.1b).
 // Each page is screenshotted at phone and desktop width into .validation/browser/; the run fails on a console
 // error, a page wider than the viewport, or a cookie on the public page.
 import { createHmac } from "node:crypto";
@@ -1227,6 +1228,63 @@ try {
     else if (!(await page.getByText("Team · 2 people").count()))
       problems.push("the paid plan does not show two people");
     await shoot(page, "18b-billing-paid");
+
+    // Seats (5.2a): Team for two has room for one technician. Two links are made while a seat is free; the first
+    // fills it, then the owner's next invite and the second link are both refused, and the link stays usable.
+    await page.goto(`${APP}/`);
+    if (!(await page.getByText("1 of 2 seats").count()))
+      problems.push("home does not show one of two seats taken");
+    const makeLink = async () => {
+      await page.goto(`${APP}/`);
+      await page.getByRole("button", { name: "Invite a technician" }).click();
+      const field = page.getByLabel("Invite link");
+      await field.waitFor();
+      return field.inputValue();
+    };
+    const [firstLink, secondLink] = [await makeLink(), await makeLink()];
+    const crew = await browser.newContext({ viewport: WIDTHS.phone });
+    const joiner = await crew.newPage();
+    watchConsole(joiner, "technician joining");
+    await joiner.goto(firstLink);
+    await joiner.getByRole("link", { name: "Sign in to join" }).click();
+    await signInAs(joiner, `crew-${run}@example.com`);
+    await joiner.waitForURL(/\/invite\//);
+    await joiner.getByLabel("Your name").fill("Ravi Crew");
+    await joiner.getByRole("button", { name: "Join" }).click();
+    await joiner.waitForURL(`${APP}/`);
+    await page.goto(`${APP}/`);
+    if (!(await page.getByText("2 of 2 seats").count()))
+      problems.push("home does not show both seats taken after the technician joined");
+    await page.getByRole("button", { name: "Invite a technician" }).click();
+    // The form's own alert: Next's route announcer is an alert too.
+    const refusal = page.locator("p.error[role=alert]");
+    await refusal.waitFor();
+    if (!(await refusal.textContent())?.includes("Every seat on your plan is taken"))
+      problems.push("an invite beyond the paid seats was not refused");
+    if (await page.getByLabel("Invite link").count())
+      problems.push("a link was made with every seat taken");
+    await shoot(page, "18d-seats-full");
+    // A second person with the older link is told the team is full; nothing is added.
+    const late = await browser.newContext({ viewport: WIDTHS.phone });
+    const latePage = await late.newPage();
+    watchConsole(latePage, "technician refused a seat");
+    await latePage.goto(secondLink);
+    await latePage.getByRole("link", { name: "Sign in to join" }).click();
+    await signInAs(latePage, `late-${run}@example.com`);
+    await latePage.waitForURL(/\/invite\//);
+    await latePage.getByLabel("Your name").fill("Late Crew");
+    await latePage.getByRole("button", { name: "Join" }).click();
+    await latePage.waitForURL(/\/invite\/[^?]+\?full=1$/);
+    if (!(await latePage.getByText(/has no free seat just now/).count()))
+      problems.push("joining a full team does not say so");
+    if (!(await latePage.getByRole("button", { name: "Join" }).count()))
+      problems.push("a refused link is no longer usable");
+    await shoot(latePage, "18e-invite-full");
+    await page.goto(`${APP}/`);
+    if (!(await page.getByText("2 of 2 seats").count()))
+      problems.push("a refused join changed the seats taken");
+    await crew.close();
+    await late.close();
   }
   // Platform's event says the subscription ended and its paid time is over. One not signed by platform is refused.
   const lapsedAt = new Date(Date.now() - 4 * 86_400_000).toISOString();

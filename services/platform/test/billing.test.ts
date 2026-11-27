@@ -9,7 +9,7 @@ import { createLogger } from "@bodhchakra/log";
 import { createOutbox } from "@bodhchakra/outbox";
 import { signRequest } from "@bodhchakra/tokens";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { createBillingService } from "../src/billing.ts";
+import { createBillingService, whatsappQuota } from "../src/billing.ts";
 import { migrations, RUNTIME_ROLE } from "../src/index.ts";
 import { sign } from "../src/razorpay.ts";
 import { createHandler } from "../src/server.ts";
@@ -462,6 +462,37 @@ describe("billing", () => {
         client.query("select 1 from outbox.inbox where idempotency_key = $1", [key]),
       );
       expect(inbox.rowCount).toBe(0);
+    });
+  });
+
+  describe("the WhatsApp quota", () => {
+    const quota = (tenantId: string) =>
+      platform.tx((client) => whatsappQuota(client, "kaamkoti", tenantId));
+
+    it("is the trial's for a business not yet registered and for one in its trial", async () => {
+      expect(await quota(randomUUID())).toBe(600);
+      expect(await quota((await business()).tenantId)).toBe(600);
+    });
+
+    it("follows the plan and seats a verified webhook moves the subscription to", async () => {
+      const { tenantId, providerId } = await checkedOut();
+      const charged = (planId: string, quantity: number, minutes: number) =>
+        hook(
+          hookBody(
+            "subscription.charged",
+            providerId,
+            new Date(clock.getTime() + minutes * 60_000),
+            {
+              plan_id: planId,
+              quantity,
+              current_end: Math.floor((clock.getTime() + 30 * DAY) / 1000),
+            },
+          ),
+        );
+      await charged(PLANS.team, 3, 1);
+      expect(await quota(tenantId)).toBe(800);
+      await charged(PLANS.solo, 1, 2);
+      expect(await quota(tenantId)).toBe(200);
     });
   });
 
