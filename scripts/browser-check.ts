@@ -13,19 +13,27 @@
 // She asks for more work after accepting; the owner prices it in change orders, one approved and one turned
 // down (4.3). The owner completes the work, the bill goes out less the deposit, and she pays it through the
 // same stand-in and webhook (4.4). The seeded technician checks in on today's job, ticks the checklist, adds a photo, records extra
-// work found and completes it (4.2, 4.3).
+// work found and completes it (4.2, 4.3). Last, the owner subscribes from the trial: Team for two through the
+// stand-in's subscription page, paid only once Razorpay's signed webhook reaches platform and platform's event the
+// app; a lapsed status from platform then reads as closed (5.1b).
 // Each page is screenshotted at phone and desktop width into .validation/browser/; the run fails on a console
 // error, a page wider than the viewport, or a cookie on the public page.
 import { createHmac } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
+import { signRequest } from "@bodhchakra/tokens";
 import { type BrowserContext, chromium, type Page } from "playwright";
 
 const APP = "http://127.0.0.1:45450";
 /** The same dev server as the bare domain (PUBLIC_ORIGIN): customers' host. */
 const PUBLIC = "http://localhost:45450";
 const MAILPIT = "http://127.0.0.1:45446";
+/** The platform container; its Razorpay webhook is `/hooks/razorpay` on any host. */
+const PLATFORM = "http://127.0.0.1:45443";
+/** DEV values, public in the repository: platform's billing webhook secret and the app's service secret. */
+const BILLING_WEBHOOK_SECRET = "dev-only-billing-webhook-secret-public-in-repo";
+const SERVICE_SECRET = "dev-only-kaamkoti-service-secret-public-in-repo";
 const OUT = fileURLToPath(new URL("../.validation/browser/", import.meta.url));
 /** Paise as the app shows them (formatMoney's format), to compare a Razorpay link with the page. */
 const rupees = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" });
@@ -52,12 +60,23 @@ const webhookSecret = `whsec-check-${run}`;
 const razorpay = {
   links: [] as { id: string; amount: number; callbackUrl: string }[],
   cancelled: [] as string[],
+  /** Platform's own account (5.1b): the subscriptions owners authorise. */
+  subscriptions: [] as { id: string; planId: string; quantity: number }[],
 };
 const razorpayApi = createServer(async (request, response) => {
   let text = "";
   for await (const chunk of request) text += chunk;
-  const cancel = /^\/v1\/payment_links\/(plink_\w+)\/cancel$/.exec(request.url ?? "");
-  if (request.url === "/v1/payment_links") {
+  const cancel = /^\/v1\/(?:payment_links|subscriptions)\/((?:plink|sub)_\w+)\/cancel$/.exec(
+    request.url ?? "",
+  );
+  if (request.url === "/v1/subscriptions") {
+    const asked = JSON.parse(text) as { plan_id: string; quantity: number };
+    const id = `sub_Check${run}${razorpay.subscriptions.length}`;
+    razorpay.subscriptions.push({ id, planId: asked.plan_id, quantity: asked.quantity });
+    response
+      .writeHead(200, { "content-type": "application/json" })
+      .end(JSON.stringify({ id, short_url: `https://rzp.io/i/${id}` }));
+  } else if (request.url === "/v1/payment_links") {
     const asked = JSON.parse(text) as { amount: number; callback_url: string };
     const id = `plink_Check${run}${razorpay.links.length}`;
     razorpay.links.push({ id, amount: asked.amount, callbackUrl: asked.callback_url });
@@ -1132,6 +1151,126 @@ try {
   if ((await field.locator(`a.card[href="/work/${SCHEDULED_JOB}"]`).count()) !== 0)
     problems.push("the completed job is still on the technician's list");
   await imran.close();
+
+  // The subscription (5.1b). The new business is in its Team trial. The owner picks Team for two people and is
+  // sent to Razorpay's page (answered here); the page reads paid only once Razorpay's signed webhook reaches
+  // platform and platform's signed event reaches the app. Last, a lapsed status from platform reads as closed.
+  const businessId = webhook.slice(-36);
+  await page.goto(`${APP}/`);
+  await page.getByRole("link", { name: /Your page is open/ }).click();
+  await page.waitForURL(/\/settings\/billing$/);
+  if (!(await page.getByText("Free trial", { exact: true }).count()))
+    problems.push("a new business does not show its free trial");
+  await shoot(page, "18a-billing-trial");
+  let authorised: (typeof razorpay.subscriptions)[number] | undefined;
+  await page.route("https://rzp.io/i/sub_*", async (route) => {
+    authorised = razorpay.subscriptions.find((s) => route.request().url().endsWith(s.id));
+    await route.fulfill({
+      contentType: "text/html",
+      body: '<meta charset="utf-8"><title>Razorpay</title><p>Razorpay stand-in: subscription authorised.</p>',
+    });
+  });
+  await page.getByRole("radio", { name: /^Team/ }).check();
+  await page.getByLabel("People on Team").fill("2");
+  // Platform hears of the business from the worker's outbox; until then checkout asks to try again.
+  for (let tries = 0; tries < 10 && !authorised; tries++) {
+    await page.getByRole("button", { name: "Continue to payment" }).click();
+    await Promise.race([
+      page.waitForURL(/rzp\.io/, { timeout: 5000 }),
+      page.getByRole("alert").waitFor({ timeout: 5000 }),
+    ]).catch(() => {});
+    if (!authorised) await page.waitForTimeout(1000);
+  }
+  if (!authorised || authorised.quantity !== 2) {
+    problems.push("checkout did not make a Razorpay subscription for two people");
+  } else {
+    const subscriptionEvent = (event: string, secret: string) => {
+      const body = JSON.stringify({
+        event,
+        created_at: Math.floor(Date.now() / 1000),
+        payload: {
+          subscription: {
+            entity: {
+              id: authorised?.id,
+              plan_id: authorised?.planId,
+              quantity: 2,
+              current_end: Math.floor(Date.now() / 1000) + 30 * 86_400,
+            },
+          },
+        },
+      });
+      return fetch(`${PLATFORM}/hooks/razorpay`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-razorpay-signature": createHmac("sha256", secret).update(body).digest("hex"),
+        },
+        body,
+      });
+    };
+    // A forged webhook is refused and changes nothing; the real one moves the page to paid.
+    if ((await subscriptionEvent("subscription.charged", "not-the-secret")).status !== 401)
+      problems.push("platform accepted a forged subscription webhook");
+    await page.goto(`${APP}/settings/billing`);
+    if (await page.getByText("Paid", { exact: true }).count())
+      problems.push("the page read paid before any webhook");
+    const charged = await subscriptionEvent("subscription.charged", BILLING_WEBHOOK_SECRET);
+    if (charged.status !== 200)
+      problems.push(`the subscription webhook answered ${charged.status}`);
+    let paid = false;
+    for (let tries = 0; tries < 20 && !paid; tries++) {
+      await page.goto(`${APP}/settings/billing`);
+      paid = (await page.getByText("Paid", { exact: true }).count()) > 0;
+      if (!paid) await page.waitForTimeout(1000);
+    }
+    if (!paid) problems.push("the billing page did not show paid after the webhook");
+    else if (!(await page.getByText("Team · 2 people").count()))
+      problems.push("the paid plan does not show two people");
+    await shoot(page, "18b-billing-paid");
+  }
+  // Platform's event says the subscription ended and its paid time is over. One not signed by platform is refused.
+  const lapsedAt = new Date(Date.now() - 4 * 86_400_000).toISOString();
+  const statusBody = JSON.stringify({
+    key: `check-lapse-${run}`,
+    payload: {
+      tenantId: businessId,
+      plan: "team",
+      seats: 2,
+      status: "cancelled",
+      trialEndsAt: lapsedAt,
+      paidThrough: lapsedAt,
+      version: 1000,
+    },
+  });
+  const statusPath = "/internal/v1/billing.status_changed";
+  const sendStatus = (client: string) =>
+    fetch(`${APP}${statusPath}`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...signRequest({
+          client,
+          secret: SERVICE_SECRET,
+          method: "POST",
+          path: statusPath,
+          body: statusBody,
+        }),
+      },
+      body: statusBody,
+    });
+  if ((await sendStatus("kaamkoti")).status !== 401)
+    problems.push("the app took a billing event not signed by platform");
+  const lapsed = await sendStatus("platform");
+  if (lapsed.status !== 200) problems.push(`platform's billing event answered ${lapsed.status}`);
+  await page.goto(`${APP}/settings/billing`);
+  if (!(await page.getByText("Lapsed", { exact: true }).count()))
+    problems.push("a lapsed subscription does not read as lapsed");
+  if (!(await page.getByRole("button", { name: "Continue to payment" }).count()))
+    problems.push("a lapsed business cannot subscribe again");
+  await shoot(page, "18c-billing-lapsed");
+  await page.goto(`${APP}/`);
+  if (!(await page.getByText("Your page is closed").count()))
+    problems.push("home does not say a lapsed business's page is closed");
 } finally {
   await owner?.close();
   await browser.close();

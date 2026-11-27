@@ -84,6 +84,23 @@ describe("tenancy", () => {
         ),
       ).rejects.toMatchObject({ code: "23505" });
     });
+
+    it("leaves no business when the app's set-up fails", async () => {
+      await expect(
+        createBusiness(
+          app,
+          { slug: "set-up-fails", name: "Fails", phone: "+919000000304", city: "Pune" },
+          { identityId: VIJAY, displayName: "Vijay" },
+          async () => {
+            throw new Error("trial not written");
+          },
+        ),
+      ).rejects.toThrow("trial not written");
+      const { rows } = await database
+        .connect("kaamkoti_owner")
+        .tx((client) => client.query("select 1 from tenancy.business where slug = 'set-up-fails'"));
+      expect(rows).toEqual([]);
+    });
   });
 
   describe("row-level security for the runtime role", () => {

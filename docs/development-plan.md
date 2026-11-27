@@ -4,7 +4,22 @@ What we are building: [product-brief.md](product-brief.md). Shared modules:
 [platform-modules.md](platform-modules.md). The design is in [architecture.md](architecture.md);
 its first table says which sections each step reads.
 
-**Current position:** 5.1a done (2026-11-28): platform billing. D6 and D9 answered (Razorpay Subscriptions on
+**Current position:** 5.1b done (2026-11-28): Kaam Koti's side of billing. `@bodhchakra/billing` now holds the
+app's side too (`src/app.ts`; the contract moved to `src/contract.ts`): `billing.status`, the local copy
+(`migrations/0001_status.sql`, RLS, no delete), written by `startTrial` in the signup transaction (a `setUp`
+callback on tenancy's `createBusiness`) with `billing.register` queued beside it, at version 1 like platform's
+opening row; `receiveStatus` at `/internal/v1/billing.status_changed` (scope `service`; only client `platform`,
+each key once, newer version only); `checkout`, the signed call, `unavailable` when platform is down; `isLive`,
+which counts the trial whatever the status (subscribing in the trial is `active` with no `paid_through` until the
+first charge; architecture 13 corrected). The web process now reads `SERVICE_SECRET`. The owner's page is
+`/settings/billing` (plan, status chip, plan choice, Razorpay redirect), with a card on home; display prices in
+`src/subscription.ts`. Seeds: Sharma trialing, Kaveri paying Team for two, in both databases. Verified: billing
+22 (new), tenancy 26 (1 new), kaamkoti 248, platform 83, `validate standard`; `up:fresh` 52.6 s; `check:browser`
+passed (trial → Team for two at 375 px → forged webhook refused → paid only after platform's webhook and event →
+app refuses an event not signed by platform → lapsed reads closed, on billing and home); 7 mutants killed (signer
+is platform, version check, inbox, grace, trial regardless of status, RLS, delete revoked). Not yet: the lapsed
+public page and owner read-only (5.3), limits (5.2). **Next: 5.2 (HIGH), in a fresh session.**
+Before it, 5.1a done (2026-11-28): platform billing. D6 and D9 answered (Razorpay Subscriptions on
 the platform's account; 14-day Team trial, Solo ₹399, Team ₹1,199/seat). 5.1 split into 5.1a and 5.1b. The
 contract is `@bodhchakra/billing` (`packages/billing/README.md`); the server side is
 `services/platform/src/billing.ts` with `migrations/billing/0001_billing.sql`. `billing.register` (outbox) opens a
@@ -16,8 +31,7 @@ change is one `billing.status_changed` in platform's own outbox (delivered as cl
 and one strict audit row. Verified: platform 83 (19 new), `validate standard`; mutants killed: signature, stale
 order, paid time back, payer, already subscribed, old checkout cancelled, dedup, authorising is not paying;
 two equivalent (the unknown-plan throw is backed by NOT NULL; the DELETE revoke has no default grant to undo, and
-the test proves the effective right). No browser check: no UI yet. Not yet: platform seed rows for the seeded
-owners, and the app side. **Next: 5.1b (HIGH), in a fresh session.**
+the test proves the effective right). No browser check: no UI yet.
 Before it, Phase 4 done (2026-11-28, tag `phase-4-done`): `validate full` green; every step's "Done when" met.
 Before it, 4.4 done (2026-11-28): the invoice and cash. Marking the work complete issues the
 invoice (`bill`, `src/invoice.ts`), unless a change order is still waiting for the customer; then it follows their
@@ -425,7 +439,7 @@ also write the module's README, and their tests run through the module's public 
 | Id   | Step                                                                                                                                                                                                                                                                                                                                                                          | Size | Model    | Status | Done when                                                                                                  |
 | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | -------- | ------ | ---------------------------------------------------------------------------------------------------------- |
 | 5.1a | Platform billing (split from 5.1, 2026-11-28): `billing.account` and `billing.subscription` in `platform` (one bill across products), `billing.register` from the app, a Razorpay Subscriptions checkout (D6), the verified webhook moving status, and signed `billing.status_changed` events to the app through platform's outbox; the wire contract in `[module]` `billing` | M    | HIGH     | done   | Trial → paid → lapsed lifecycle tested against real Postgres; forged and replayed webhooks change nothing  |
-| 5.1b | Kaam Koti side: `billing` client with the local `billing.status` copy (applied only when newer), the events receiver (`service` scope), `live` computed at request time, the 14-day Team trial at sign-up (D9), the owner's billing page and checkout; seeds                                                                                                                  | M    | HIGH     | todo   | An owner subscribes at 375 px and the page shows paid after the webhook; a lapsed status reads as not live |
+| 5.1b | Kaam Koti side: `billing` client with the local `billing.status` copy (applied only when newer), the events receiver (`service` scope), `live` computed at request time, the 14-day Team trial at sign-up (D9), the owner's billing page and checkout; seeds                                                                                                                  | M    | HIGH     | done   | An owner subscribes at 375 px and the page shows paid after the webhook; a lapsed status reads as not live |
 | 5.2  | `[module]` `billing` usage limits: seats, jobs on the free tier, WhatsApp quota, top-ups                                                                                                                                                                                                                                                                                      | M    | HIGH     | todo   | Each limit is refused at the edge with one error shape                                                     |
 | 5.3  | Lapsed business: public page and customer links degrade gracefully, never break                                                                                                                                                                                                                                                                                               | S    | STANDARD | todo   | Lapsed page shows a contact card                                                                           |
 

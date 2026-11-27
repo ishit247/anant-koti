@@ -17,6 +17,7 @@
   "dependencies": {
     "@bodhchakra/audit": "workspace:*",
     "@bodhchakra/auth": "workspace:*",
+    "@bodhchakra/billing": "workspace:*",
     "@bodhchakra/config": "workspace:*",
     "@bodhchakra/db": "workspace:*",
     "@bodhchakra/jobs": "workspace:*",

@@ -21,6 +21,7 @@
     "@biomejs/biome": "^2.6.8",
     "@bodhchakra/db": "workspace:*",
     "@bodhchakra/log": "workspace:*",
+    "@bodhchakra/tokens": "workspace:*",
     "@types/node": "^26.6.6",
     "kaamkoti": "workspace:*",
     "platform": "workspace:*",

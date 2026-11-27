@@ -19,11 +19,13 @@ export interface Owner {
 /**
  * Creates the business and its owner in one transaction, inside `withTenant` of the new id: RLS lets the
  * runtime role insert only the business it is working in. A taken slug rejects with Postgres code 23505.
+ * `setUp` runs last in the same transaction, for what the app must write with every new business (its trial).
  */
 export async function createBusiness(
   db: Db,
   business: NewBusiness,
   owner: Owner,
+  setUp?: (client: DbClient, owner: Membership) => Promise<unknown>,
 ): Promise<Membership> {
   const businessId = randomUUID();
   return db.withTenant(businessId, async (client) => {
@@ -31,7 +33,9 @@ export async function createBusiness(
       "insert into tenancy.business (id, slug, name, phone, city) values ($1, $2, $3, $4, $5)",
       [businessId, business.slug, business.name, business.phone, business.city],
     );
-    return addMember(client, { businessId, ...owner, role: "owner" });
+    const membership = await addMember(client, { businessId, ...owner, role: "owner" });
+    await setUp?.(client, membership);
+    return membership;
   });
 }
 

@@ -115,7 +115,7 @@ export function createBillingService(deps: BillingDeps): BillingService {
         "insert into billing.account (identity_id) values ($1) on conflict (identity_id) do nothing",
         [message.identityId],
       );
-      // The app wrote its own copy at version 0 with this trial, so the opening row needs no event.
+      // The app wrote its own copy of this trial at version 1, this row's, so the opening row needs no event.
       await client.query(
         `insert into billing.subscription (account_id, product, tenant_id, plan, seats, status, trial_ends_at)
          select id, $2, $3, $4, 1, 'trialing', $5 from billing.account where identity_id = $1

@@ -24,6 +24,11 @@ export const webConfig = z.object({
   PLATFORM_INTERNAL_URL: origin(/^https?$/),
   /** Must match the secret in platform's SIGN_IN_CLIENTS. */
   SIGN_IN_CLIENT_SECRET: z.string().min(MIN_SECRET_LENGTH),
+  /**
+   * `kaamkoti` in platform's SERVICE_CLIENTS: signs the owner's checkout call, and checks platform's billing
+   * events, which platform signs with it as client `platform`.
+   */
+  SERVICE_SECRET: z.string().min(MIN_SECRET_LENGTH),
   /** Rate-limit counters for the public request form and customer links. */
   REDIS_URL: z.url({ protocol: /^rediss?$/ }),
   /** Reverse geocoding for a picked location (D16); a test points it at a stub. */
@@ -50,5 +55,5 @@ export const workerConfig = z.object({
   /** Platform as this app reaches it on the internal network; outbox messages go to its internal API. */
   PLATFORM_INTERNAL_URL: origin(/^https?$/),
   /** Signs outbox deliveries; must match `kaamkoti` in platform's SERVICE_CLIENTS. */
-  SERVICE_SECRET: z.string().min(MIN_SECRET_LENGTH),
+  SERVICE_SECRET: webConfig.shape.SERVICE_SECRET,
 });

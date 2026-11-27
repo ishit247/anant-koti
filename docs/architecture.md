@@ -591,10 +591,15 @@ Dependency direction (checked in 0.2): foundation (`config`, `log`, `money`) ←
   `hooks.…/hooks/razorpay` maps `activated`/`charged` → `active` (plan and seats from the event, `paid_through`
   from its period end, never moved back), `pending`/`halted` → `past_due`, `cancelled`/`completed` →
   `cancelled`. Events older than the last applied are ignored. The rules are in `packages/billing/README.md`.
-- **In the app:** `billing.status` is a local copy, updated by signed `billing.status_changed` events. It is
-  applied only if its `version` is newer, so an old event can never undo a new one.
-- **Live is computed at request time:** `live = (trialing and now < trial_ends_at) or now < paid_through + 3
-days grace`. Nothing is stored that can go stale, and a platform outage changes nothing.
+- **In the app (5.1b):** `billing.status` is a local copy, written with the trial at signup (in the signup
+  transaction, which also queues `billing.register`) at version 1, platform's opening row. Signed
+  `billing.status_changed` events at `/internal/v1/billing.status_changed` (scope `service`, signed as client
+  `platform`) move it, each once (the inbox), and only if its `version` is newer, so an old event can never undo
+  a new one. The owner's page is `/settings/billing`.
+- **Live is computed at request time:** `live = now < trial_ends_at or now < paid_through + 3 days grace`,
+  whatever the status: subscribing during the trial makes it `active` with no `paid_through` until the first
+  charge at the trial's end, and a cancellation or a failed charge does not take back time already paid for.
+  Nothing is stored that can go stale, and a platform outage changes nothing.
 - **Lapsed:** the public page and the customer space show a contact card (name, phone, WhatsApp link) and accept
   no new requests or payments. The owner app goes read-only, apart from billing and export. Data is never
   deleted on lapse.

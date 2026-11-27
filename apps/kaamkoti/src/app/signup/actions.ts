@@ -34,12 +34,19 @@ export async function signup(_previous: SignupState, form: FormData): Promise<Si
   }
   const { yourName, businessName, city, phone } = parsed.data;
 
+  const { db, billing } = server();
   for (let attempt = 0; attempt < SLUG_TRIES; attempt++) {
     try {
+      // The 14-day Team trial (D9) is written with the business, and platform hears of it through the outbox.
       await createBusiness(
-        server().db,
+        db,
         { slug: slugFor(businessName, attempt), name: businessName, phone, city },
         { identityId: session.identityId, displayName: yourName },
+        (client, owner) =>
+          billing.startTrial(client, {
+            businessId: owner.businessId,
+            identityId: session.identityId,
+          }),
       );
     } catch (error) {
       if ((error as { code?: string }).code !== UNIQUE_VIOLATION) throw error;

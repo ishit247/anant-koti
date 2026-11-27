@@ -175,6 +175,9 @@ importers:
       '@bodhchakra/log':
         specifier: workspace:*
         version: link:packages/log
+      '@bodhchakra/tokens':
+        specifier: workspace:*
+        version: link:packages/tokens
       '@types/node':
         specifier: ^26.6.6
         version: 26.6.6
@@ -205,6 +208,9 @@ importers:
       '@bodhchakra/auth':
         specifier: workspace:*
         version: link:../../packages/auth
+      '@bodhchakra/billing':
+        specifier: workspace:*
+        version: link:../../packages/billing
       '@bodhchakra/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -306,9 +312,25 @@ importers:
 
   packages/billing:
     dependencies:
+      '@bodhchakra/db':
+        specifier: workspace:*
+        version: link:../db
+      '@bodhchakra/log':
+        specifier: workspace:*
+        version: link:../log
+      '@bodhchakra/outbox':
+        specifier: workspace:*
+        version: link:../outbox
+      '@bodhchakra/tokens':
+        specifier: workspace:*
+        version: link:../tokens
       zod:
         specifier: ^4.6.7
         version: 4.6.7
+    devDependencies:
+      '@bodhchakra/jobs':
+        specifier: workspace:*
+        version: link:../jobs
 
   packages/config:
     dependencies:

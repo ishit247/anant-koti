@@ -3,6 +3,7 @@
 // leak a pool each time.
 import { type Audit, createAudit } from "@bodhchakra/audit";
 import { type Auth, createAuth } from "@bodhchakra/auth";
+import { type BillingClient, createBillingClient } from "@bodhchakra/billing";
 import { defineConfig } from "@bodhchakra/config";
 import { createPool, type Db } from "@bodhchakra/db";
 import { createJobs } from "@bodhchakra/jobs";
@@ -32,6 +33,8 @@ export interface Server {
   readonly notices: Notices;
   /** Each business's own Razorpay account: deposit links, and money known only from its webhook. */
   readonly payments: Payments;
+  /** What the business pays us: its trial, its local subscription copy, platform's events and the checkout. */
+  readonly billing: BillingClient;
   /** Where browsers reach this app: the base of every link sent to a customer. */
   readonly origin: string;
   /** The bare domain: public pages and the customer space. */
@@ -107,6 +110,14 @@ function build(): Server {
       audit,
       log,
       razorpayApi: config.RAZORPAY_API,
+    }),
+    billing: createBillingClient({
+      db,
+      log,
+      outbox,
+      platformUrl: config.PLATFORM_INTERNAL_URL,
+      client: "kaamkoti",
+      secret: config.SERVICE_SECRET,
     }),
     geocode: nominatim(config.GEOCODER_URL, log),
     notices,

@@ -1,3 +1,4 @@
+import { subscriptionOf } from "@bodhchakra/billing";
 import { currentBusiness, defineRoute, listMembers } from "@bodhchakra/tenancy";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -6,6 +7,7 @@ import { requireMember } from "../guard.ts";
 import { countNewRequests } from "../inbox.ts";
 import { formatWhen, STATUS_LABEL, statusTone } from "../job-labels.ts";
 import { server } from "../server.ts";
+import { subscriptionView } from "../subscription.ts";
 import { myWork } from "../work.ts";
 import { OwnerNav } from "./owner-nav.tsx";
 import { ShareLink } from "./share-link.tsx";
@@ -35,19 +37,19 @@ export default async function Home() {
   }
   const me = await requireMember(route);
   const { db, payments } = server();
-  const { business, members, profile, newRequests, paymentsConnected, work } = await db.withTenant(
-    me.businessId,
-    async (client) => ({
+  const { business, members, profile, newRequests, paymentsConnected, work, subscription } =
+    await db.withTenant(me.businessId, async (client) => ({
       business: await currentBusiness(client),
+      subscription: me.role === "owner" ? await subscriptionOf(client) : null,
       members: await listMembers(client),
       profile: await businessProfile(client),
       newRequests: me.role === "owner" ? await countNewRequests(client) : 0,
       paymentsConnected:
         me.role === "owner" && (await payments.connectedAccount(client, me.businessId)) !== null,
       work: me.role === "technician" ? await myWork(client, me.memberId) : [],
-    }),
-  );
+    }));
   if (me.role === "owner" && !profile) redirect("/onboarding");
+  const plan = subscription ? subscriptionView(subscription, new Date()) : null;
   const publicLink = `${server().publicOrigin}/b/${encodeURIComponent(business.slug)}`;
   return (
     <>
@@ -96,6 +98,19 @@ export default async function Home() {
               </span>
             </span>
           </a>
+
+          {plan ? (
+            <>
+              <h2>Subscription</h2>
+              <a className="card" href="/settings/billing">
+                <span className="row">
+                  <strong>{plan.live ? "Your page is open" : "Your page is closed"}</strong>
+                  <span className={`chip ${plan.tone}`}>{plan.label}</span>
+                </span>
+                <span className="muted small">{plan.line}</span>
+              </a>
+            </>
+          ) : null}
 
           <h2>Team</h2>
           <div className="card">

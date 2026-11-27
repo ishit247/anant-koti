@@ -4,8 +4,20 @@ What a business pays the platform, by subscription (docs/architecture.md 13; D6,
 server side lives in `services/platform/src/billing.ts`: the billing account (one per identity, so one bill
 across products), one subscription per product tenant, a Razorpay Subscriptions checkout on the platform's own
 account, and the verified webhook, which is the only thing that moves the status. The app keeps a local copy,
-sent to it as signed events. 5.1b adds the app's side here: that copy, `live` computed at request time, and
-the checkout call.
+sent to it as signed events; that side lives here (`src/app.ts`, `migrations/0001_status.sql`), and
+`src/contract.ts` is what both sides parse.
+
+## The app's side
+
+| Export                                    | What it is                                                                                                                                                                  |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `migrations`                              | `billing.status`, one row per business, RLS by business, never deleted by the runtime role. List it after `outbox`.                                                         |
+| `createBillingClient`                     | `{ db, log, outbox, platformUrl, client, secret }`. The secret is the app's entry in platform's `SERVICE_CLIENTS`: it signs the checkout call and checks platform's events. |
+| `.startTrial(client, ids)`                | In the signup transaction (inside `withTenant`): writes the copy (Team, one seat, `TRIAL_DAYS` = 14, version 1) and queues `billing.register` with the same trial end.      |
+| `.checkout(request)`                      | The answered call: `{ url }`, platform's `{ error }`, or `{ error: { code: "unavailable" } }` when platform is down or answers anything else.                               |
+| `.receiveStatus(request)`                 | Mount at `STATUS_EVENTS_PATH`. 401 unless signed as client `platform`; each delivery key once; applied only if its version is newer.                                        |
+| `subscriptionOf(client)`, `Subscription`  | The open business's copy. Throws if there is none: every business has one from signup.                                                                                      |
+| `isLive(subscription, now)`, `GRACE_DAYS` | `now < trialEndsAt or now < paidThrough + 3 days`, whatever the status (architecture 13).                                                                                   |
 
 ## The contract
 

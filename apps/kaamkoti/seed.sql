@@ -215,3 +215,11 @@ insert into kk.appointment (id, business_id, job_id, kind, technician_member_id,
    date_trunc('day', now()) + interval '9 hours', date_trunc('day', now()) + interval '11 hours');
 update kk.job set status = 'scheduled', accepted_quote_id = '10000000-0000-4000-8000-000000100002'
   where id = '10000000-0000-4000-8000-0000000e0003';
+
+-- Billing's copy (docs/architecture.md 13), matching the subscriptions in services/platform/seed.sql: Sharma is in
+-- its Team trial, as signup leaves a business; Kaveri pays for Team with two people, after its trial ended.
+insert into billing.status (business_id, plan, seats, status, trial_ends_at, paid_through, version) values
+  ('10000000-0000-4000-8000-000000000001', 'team', 1, 'trialing', date_trunc('day', now()) + interval '10 days',
+   null, 1),
+  ('20000000-0000-4000-8000-000000000002', 'team', 2, 'active', date_trunc('day', now()) - interval '10 days',
+   date_trunc('day', now()) + interval '20 days', 2);
