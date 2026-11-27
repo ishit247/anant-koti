@@ -376,6 +376,27 @@ importers:
         specifier: ^4.6.7
         version: 4.6.7
 
+  packages/payments:
+    dependencies:
+      '@bodhchakra/audit':
+        specifier: workspace:*
+        version: link:../audit
+      '@bodhchakra/db':
+        specifier: workspace:*
+        version: link:../db
+      '@bodhchakra/log':
+        specifier: workspace:*
+        version: link:../log
+      '@bodhchakra/money':
+        specifier: workspace:*
+        version: link:../money
+      '@bodhchakra/outbox':
+        specifier: workspace:*
+        version: link:../outbox
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
+
   packages/rate-limit:
     dependencies:
       '@bodhchakra/log':

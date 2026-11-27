@@ -1,0 +1,24 @@
+{
+  "name": "@bodhchakra/payments",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bodhchakra": {
+    "layer": "domain"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@bodhchakra/audit": "workspace:*",
+    "@bodhchakra/db": "workspace:*",
+    "@bodhchakra/log": "workspace:*",
+    "@bodhchakra/money": "workspace:*",
+    "@bodhchakra/outbox": "workspace:*",
+    "zod": "^4.6.7"
+  }
+}
