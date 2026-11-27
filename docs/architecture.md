@@ -270,7 +270,7 @@ requested ──send quote──▶ quoted ──customer accepts──▶ accep
 | —                       | request created    | `requested`   | customer (signed in) or owner (phone) | customer found or created; notify owner and customer (a customer's request only; 9.2)              |
 | `requested`             | quote sent         | `quoted`      | owner                                 | quote `draft → sent`; expiry job at `valid_until`; notify customer                                 |
 | `requested`             | decline            | `declined`    | owner                                 | notify customer                                                                                    |
-| `quoted`                | accept             | `accepted`    | customer                              | quote → `accepted`, `job.accepted_quote_id` set; deposit link if `deposit_minor > 0`; notify owner |
+| `quoted`                | accept             | `accepted`    | customer                              | quote → `accepted`, `job.accepted_quote_id` set; notify owner (the deposit link is made on Pay, 8) |
 | `quoted`                | reject or counter  | `quoted`      | customer                              | quote → `rejected` or `countered`; notify owner                                                    |
 | `quoted`                | revise             | `quoted`      | owner                                 | new version `sent`, previous → `superseded`                                                        |
 | `quoted`                | close as lost      | `lost`        | owner                                 | —                                                                                                  |
@@ -280,7 +280,7 @@ requested ──send quote──▶ quoted ──customer accepts──▶ accep
 | `accepted`              | time confirmed     | `scheduled`   | customer, or owner for them (phone)   | appointment `planned`; notify customer and (if the customer confirmed) owner; reminder jobs        |
 | `scheduled`             | check in           | `in_progress` | assigned technician or owner          | `job_visit.checked_in_at`                                                                          |
 | `in_progress`           | complete           | `completed`   | assigned technician or owner          | invoice issued with pay link; notify customer                                                      |
-| `requested`…`scheduled` | cancel             | `cancelled`   | owner, or the customer                | appointments cancelled; open payment links cancelled                                               |
+| `requested`…`scheduled` | cancel             | `cancelled`   | owner, or the customer                | appointments cancelled; open payment links cancelled (`cancelJob`, `src/cancel.ts`)                |
 
 - **Quote expiry is computed at request time.** A `sent` quote with `valid_until < now()` is treated as
   expired: accepting it is refused and the customer sees "ask for a new quote". The pg-boss job at
@@ -383,6 +383,18 @@ that path, the `job` token purpose and the owner's "send a new link".)
 - Money goes straight to the business, never through us (no commission). So each business connects its own
   payment-provider account. Its API keys and webhook secret are stored encrypted (AES-256-GCM, key from config)
   in `payments.account`, and its webhook URL carries the business id. This is part of D5 (4.1).
+- **Wiring in Kaam Koti (4.1b).** The owner connects Razorpay at `/settings/payments` (key id, key secret,
+  webhook secret; only the key id is shown back) and is given the webhook address,
+  `PUBLIC_ORIGIN/hooks/razorpay/<businessId>` (scope `provider-webhook`: 401 unless the body's signature verifies
+  under that business's secret). `PAYMENTS_SEALING_KEY` seals the secrets; `RAZORPAY_API` points development at
+  a local stand-in. The **deposit** (`src/deposit.ts`) is the accepted quote's `deposit_minor`, less what was
+  received for the job. The customer's job page shows it while the job is `accepted`, `scheduled` or
+  `in_progress`; "Pay" posts to `…/requests/<jobId>/pay` (scope `customer`, the job under that customer), which
+  makes the link then, or reuses the open one, and answers a 303 to Razorpay. Razorpay returns the customer to
+  the page with `?pay=back`, which proves nothing. The link is made on Pay, not inside the acceptance, so a
+  Razorpay outage never blocks accepting a quote. A business without Razorpay gets no link; its customer pays
+  directly. The webhook queues `payment.received` to the owner in the recording transaction. Cancelling a job
+  cancels its open links at Razorpay first; if Razorpay refuses, the cancellation rolls back.
 
 ## 9. Notifications and app ↔ platform calls
 
@@ -452,7 +464,7 @@ receiver code handles provider webhooks, with the provider's signature in place 
 | `appointment.response`                                                    | owner                                           | the customer confirms it or asks for another     |
 | `appointment.confirmed`, `appointment.reminder`, `appointment.on_the_way` | customer                                        | planned; 24 h before (3.3b); tapped by the owner |
 | `change_order.proposed`                                                   | customer                                        | technician or owner proposes                     |
-| `invoice.issued`, `payment.received`                                      | customer; owner                                 | complete; payment recorded                       |
+| `invoice.issued`, `payment.received`                                      | customer; owner                                 | complete (4.3); a payment recorded by webhook    |
 | `review.request`, `review.held`                                           | customer; owner                                 | invoice paid; low rating                         |
 
 Sign-in OTPs go straight from identity to its own channel, inside platform, not through the outbox. Technician
@@ -517,7 +529,7 @@ them in its README.
 | `rate-limit`       | `redisLimiter(url, log)` → `limit(key, rule)`, `close()`                                                                                                 | — (Redis)                                                                        | 2.2  |
 | `money`            | `money(minor, cur)`, `lineTotals(lines, cur)`, `formatMoney`, `minorDigits`, `parseDecimal`, `formatDecimal`                                             | —                                                                                | 2.4  |
 | `notify` (client)  | `send(tx, message, key)`, through the outbox; a member is addressed `to: { identityId }` (3.2b)                                                          | — (server tables in platform)                                                    | 3.2  |
-| `payments`         | `connectAccount`, `createPaymentLink`, `cancelLink`, `linksFor`, `paidFor`, `recordManual`, `handleWebhook(db, req, onEvent)` (README)                   | `payments.account`, `payments.link`, `payments.payment`; dedup in `outbox.inbox` | 4.1  |
+| `payments`         | `connectAccount`, `connectedAccount`, `createPaymentLink`, `cancelLink`, `linksFor`, `paidFor`, `recordManual`, `handleWebhook(db, req, onEvent)` (README) | `payments.account`, `payments.link`, `payments.payment`; dedup in `outbox.inbox` | 4.1  |
 | `billing` (client) | `status(businessId)` → `{ plan, live, limits }`, `assertWithin(limit)`, event handler for status updates                                                 | `billing.status`                                                                 | 5.1  |
 
 Platform-side tables: `identity.*` (from better-auth), `notify.message`, `notify.quota`, `billing.account`,

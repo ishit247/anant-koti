@@ -4,7 +4,22 @@ What we are building: [product-brief.md](product-brief.md). Shared modules:
 [platform-modules.md](platform-modules.md). The design is in [architecture.md](architecture.md);
 its first table says which sections each step reads.
 
-**Current position:** 4.1a done (2026-11-27): `@bodhchakra/payments` (D5 answered: Razorpay). 4.1 was split
+**Current position:** 4.1b done (2026-11-27): Kaam Koti takes deposits through the owner's own Razorpay.
+`/settings/payments` connects it (only the key id is shown back) and gives the webhook address,
+`/hooks/razorpay/<businessId>` (scope `provider-webhook`), which records money and queues `payment.received`
+to the owner (new platform template). The customer's job page has a Deposit panel; Pay (`…/requests/<jobId>/pay`,
+scope `customer`) makes the link then, not inside the acceptance, so a Razorpay outage never blocks accepting.
+The owner's job page shows the deposit and has "Cancel this request" (`cancelJob`): visits and open links are
+cancelled, Razorpay first, all or nothing. The customer's own cancel button is still to come (same `cancelJob`).
+`handleWebhook` now returns `refused` instead of throwing `WebhookRefused`: the browser check found the route's
+`instanceof` failing under Next (the server object on `globalThis` holds another copy of the module), so a
+forged webhook got a 500. Config: `PAYMENTS_SEALING_KEY`, `RAZORPAY_API` (dev: the browser check's stand-in on
+45451). Verified: kaamkoti 202 (10 new), payments 23 (2 new), platform 64, typecheck; 3 mutants killed (customer
+scope on Pay, links cancelled with the job, Pay refused on a closed job); `check:browser` passed on a fresh
+stack (connect, pay ₹100 by signed webhook, forged webhook 401, pay-route 403/404, cancel cancels the open link).
+Lint: changed files clean; the repo-wide lint still fails on the existing `globals.css` and
+`trade-template.test.ts` findings. **Next: 4.2 (STANDARD)** in a fresh session.
+Before it, 4.1a done (2026-11-27): `@bodhchakra/payments` (D5 answered: Razorpay). 4.1 was split
 into 4.1a (the module) and 4.1b (Kaam Koti wiring). Webhook dedup reuses `outbox.inbox` keyed by the SHA-256 of
 the signed body, because Razorpay's event-id header is unsigned; a payment is also unique by its Razorpay id.
 That replaces the planned `payments.webhook_event` table. 21 tests on real Postgres with a local Razorpay
@@ -351,7 +366,7 @@ also write the module's README, and their tests run through the module's public 
 | Id   | Step                                                                                                                                                                                                                                                          | Size | Model    | Status | Done when                                                                                                              |
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | -------- | ------ | ---------------------------------------------------------------------------------------------------------------------- |
 | 4.1a | `[module]` `payments` (D5, split from 4.1 2026-11-27): tables, encrypted account, Razorpay adapter (payment link create and cancel, webhook signature), `handleWebhook` verified and deduplicated, idempotent recording, part-payments summed, `recordManual` | M    | HIGH     | done   | Replayed and forged webhooks are rejected; paid state comes only from the webhook (real Postgres, local fake provider) |
-| 4.1b | Kaam Koti wiring: owner connects Razorpay in settings, webhook route (`provider-webhook` scope), deposit link on accept, customer pays from their space, open links cancelled with the job, `payment.received` notify                                         | M    | HIGH     | todo   | A deposit paid through a webhook shows on the job at 375 px; cancelling a job cancels its open link                    |
+| 4.1b | Kaam Koti wiring: owner connects Razorpay in settings, webhook route (`provider-webhook` scope), deposit link on accept, customer pays from their space, open links cancelled with the job, `payment.received` notify                                         | M    | HIGH     | done   | A deposit paid through a webhook shows on the job at 375 px; cancelling a job cancels its open link                    |
 | 4.2  | Job execution (basic): check-in, checklist, photos, mark complete                                                                                                                                                                                             | M    | STANDARD | todo   | Technician completes a job at 375 px                                                                                   |
 | 4.3  | Change orders: extra work found on site or tasks the customer adds after acceptance; business prices, customer re-approves                                                                                                                                    | M    | HIGH     | todo   | Invoice includes only approved change orders                                                                           |
 | 4.4  | Invoice from accepted quote plus change orders; cash payment recorded by the owner                                                                                                                                                                            | M    | HIGH     | todo   | Invoice totals match the tests; a paid invoice is immutable                                                            |

@@ -288,6 +288,26 @@ export const kaamkoti = {
     },
   }),
   /**
+   * To the owner: money reached their Razorpay account for a request, known from Razorpay's verified webhook.
+   * `what` names it ("the deposit"); `amount` is this payment, which may be one part of several.
+   */
+  "payment.received": defineTemplate({
+    vars: z.object({ customerName: text, number, amount: text, what: text, link }),
+    email: (v) => ({
+      subject: `${v.customerName} paid ${v.amount} (${v.number})`,
+      text:
+        `${v.customerName} has paid ${v.amount} towards ${v.what} on request ${v.number}. ` +
+        `It is in your Razorpay account.\n\n${v.link}`,
+    }),
+    whatsapp: {
+      name: "kaamkoti_payment_received",
+      body:
+        "Payment received: {{1}} paid {{2}} towards {{3}} on request {{4}}. It is in your Razorpay account.\n\n" +
+        `Open it: {{5}}\n\n${WA_OWNER_END}`,
+      params: (v) => [v.customerName, v.amount, v.what, v.number, v.link],
+    },
+  }),
+  /**
    * To the owner, from platform itself: this month's WhatsApp messages ran out and a customer with no email got
    * nothing (architecture 9.2). `resumes` is the first day of next month ("1 December").
    */

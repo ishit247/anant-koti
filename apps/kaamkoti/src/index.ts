@@ -5,6 +5,7 @@ import { createPool, type MigrationFolder } from "@bodhchakra/db";
 import { migrations as jobs } from "@bodhchakra/jobs";
 import type { Logger } from "@bodhchakra/log";
 import { migrations as outbox } from "@bodhchakra/outbox";
+import { migrations as payments } from "@bodhchakra/payments";
 import { migrations as storage } from "@bodhchakra/storage";
 import { migrations as tenancy } from "@bodhchakra/tenancy";
 import { migrations as tokens } from "@bodhchakra/tokens";
@@ -29,6 +30,7 @@ export {
   saveCatalogue,
   startFromTemplate,
 } from "./business-profile.ts";
+export { cancelJob } from "./cancel.ts";
 export { PRIVATE_BUCKET } from "./config.ts";
 export {
   type CustomerJobRow,
@@ -40,6 +42,14 @@ export {
   type SpaceCustomer,
   updateOwnDetails,
 } from "./customer-space.ts";
+export {
+  DEPOSIT,
+  type Deposit,
+  depositPayable,
+  jobDeposit,
+  type PayDepositResult,
+  payDeposit,
+} from "./deposit.ts";
 export { type Geocoder, nominatim, type Point, point } from "./geocode.ts";
 export {
   countNewRequests,
@@ -149,6 +159,7 @@ export const migrations: readonly MigrationFolder[] = [
   storage,
   tenancy,
   auth,
+  payments,
   { name: "kaamkoti", dir: new URL("../migrations/", import.meta.url) },
 ];
 

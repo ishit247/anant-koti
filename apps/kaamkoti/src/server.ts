@@ -9,6 +9,7 @@ import { createJobs } from "@bodhchakra/jobs";
 import { createLogger, type Logger } from "@bodhchakra/log";
 import { createNotify } from "@bodhchakra/notify";
 import { createOutbox } from "@bodhchakra/outbox";
+import { createPayments, type Payments } from "@bodhchakra/payments";
 import { type Limiter, redisLimiter } from "@bodhchakra/rate-limit";
 import { createStorage, type Storage } from "@bodhchakra/storage";
 import { PRIVATE_BUCKET, webConfig } from "./config.ts";
@@ -29,6 +30,8 @@ export interface Server {
   readonly geocode: Geocoder;
   /** Messages to customers and owners, through the outbox; the worker delivers them to platform. */
   readonly notices: Notices;
+  /** Each business's own Razorpay account: deposit links, and money known only from its webhook. */
+  readonly payments: Payments;
   /** Where browsers reach this app: the base of every link sent to a customer. */
   readonly origin: string;
   /** The bare domain: public pages and the customer space. */
@@ -90,6 +93,7 @@ function build(): Server {
   jobs
     .start([...outbox.jobTypes, ...notices.jobTypes])
     .catch((error: unknown) => log.error("jobs start failed", { error }));
+  const audit = createAudit(log);
   return {
     db,
     auth,
@@ -97,7 +101,13 @@ function build(): Server {
     log,
     storage,
     limiter: redisLimiter(config.REDIS_URL, log),
-    audit: createAudit(log),
+    audit,
+    payments: createPayments({
+      sealingKey: config.PAYMENTS_SEALING_KEY,
+      audit,
+      log,
+      razorpayApi: config.RAZORPAY_API,
+    }),
     geocode: nominatim(config.GEOCODER_URL, log),
     notices,
     origin: config.APP_ORIGIN,

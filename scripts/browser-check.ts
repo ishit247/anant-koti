@@ -6,11 +6,15 @@
 // new customer signs in on the bare domain to send a request with a photo, lands on their work list, and finds
 // the form filled in next time; the send route refuses another origin and sends a post without a session to
 // sign-in. She then asks the new business for work, and the quote is negotiated and accepted on her request
-// page, which refuses another site's post and answers 404 for another customer's or business's job. A seeded
+// page, which refuses another site's post and answers 404 for another customer's or business's job. The owner
+// connects Razorpay (a local stand-in on 45451, and the browser answers its pages); she pays the deposit, which
+// shows as paid only once the signed webhook arrives, and cancelling a second job cancels its open link. A seeded
 // customer signs in on the bare domain and sees only her own request; intake answers 429 past its per-IP limit.
 // Each page is screenshotted at phone and desktop width into .validation/browser/; the run fails on a console
 // error, a page wider than the viewport, or a cookie on the public page.
+import { createHmac } from "node:crypto";
 import { mkdirSync } from "node:fs";
+import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
 import { type BrowserContext, chromium, type Page } from "playwright";
 
@@ -30,6 +34,65 @@ const customerEmail = `customer-${run}@example.test`;
 const businessName = `Check Cooling ${run}`;
 const slug = businessName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 const problems: string[] = [];
+/** What the owner types into the payment settings, and what the stand-in signs its webhooks with. */
+const razorpayKeyId = `rzp_test_CheckKey${run}`;
+const webhookSecret = `whsec-check-${run}`;
+
+/**
+ * Razorpay's API for the dev server (RAZORPAY_API in apps/kaamkoti/.env.development): it makes payment links and
+ * cancels them, and remembers both. Its pages (https://rzp.io/…) are answered by the customer's browser context.
+ */
+const razorpay = {
+  links: [] as { id: string; amount: number; callbackUrl: string }[],
+  cancelled: [] as string[],
+};
+const razorpayApi = createServer(async (request, response) => {
+  let text = "";
+  for await (const chunk of request) text += chunk;
+  const cancel = /^\/v1\/payment_links\/(plink_\w+)\/cancel$/.exec(request.url ?? "");
+  if (request.url === "/v1/payment_links") {
+    const asked = JSON.parse(text) as { amount: number; callback_url: string };
+    const id = `plink_Check${run}${razorpay.links.length}`;
+    razorpay.links.push({ id, amount: asked.amount, callbackUrl: asked.callback_url });
+    response
+      .writeHead(200, { "content-type": "application/json" })
+      .end(JSON.stringify({ id, short_url: `https://rzp.io/i/${id}` }));
+  } else if (cancel?.[1]) {
+    razorpay.cancelled.push(cancel[1]);
+    response.writeHead(200, { "content-type": "application/json" }).end("{}");
+  } else response.writeHead(404).end();
+});
+await new Promise<void>((done) => razorpayApi.listen(45451, "127.0.0.1", done));
+
+/** What Razorpay does once a link is paid in full: posts the signed event to the business's webhook. */
+async function razorpayPaid(
+  webhook: string,
+  link: { id: string; amount: number },
+  secret = webhookSecret,
+) {
+  const body = JSON.stringify({
+    event: "payment_link.paid",
+    payload: {
+      payment_link: { entity: { id: link.id, currency: "INR" } },
+      payment: {
+        entity: {
+          id: `pay_${link.id.slice(6)}`,
+          amount: link.amount,
+          currency: "INR",
+          status: "captured",
+          method: "upi",
+        },
+      },
+    },
+  });
+  const signature = createHmac("sha256", secret).update(body).digest("hex");
+  return fetch(webhook, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-razorpay-signature": signature },
+    body,
+  });
+}
+
 /** A valid 1×1 PNG, the photo the customer sends. */
 const ONE_PIXEL_PNG =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
@@ -470,8 +533,32 @@ try {
   if (!(await page.getByText("offered ₹400.00").count()))
     problems.push("the owner does not see the counter-offer");
   await shoot(page, "13g-job-countered");
+  // The owner connects their own Razorpay account (4.1b) before revising with a ₹100 deposit. The settings give
+  // the webhook address, which names the business.
+  await page.goto(`${APP}/`);
+  await page.getByRole("link", { name: /Take deposits online/ }).click();
+  await page.waitForURL(/\/settings\/payments$/);
+  await shoot(page, "13g1-payment-settings");
+  await page.getByLabel("Key id").fill(razorpayKeyId);
+  await page.getByLabel("Key secret").fill(`key-secret-${run}`);
+  await page.getByLabel("Webhook secret").fill(webhookSecret);
+  await page.getByRole("button", { name: "Connect Razorpay" }).click();
+  await page
+    .getByRole("status")
+    .filter({ hasText: "Customers can now pay deposits online" })
+    .waitFor();
+  if (!(await page.getByText(razorpayKeyId).count()))
+    problems.push("the connected Razorpay key id is not shown");
+  if (await page.getByText(`key-secret-${run}`).count())
+    problems.push("the payment settings show the key secret");
+  await shoot(page, "13g2-payment-settings-connected");
+  const webhook = await page.getByLabel("Webhook address").inputValue();
+  if (!/\/hooks\/razorpay\/[0-9a-f-]{36}$/.test(webhook))
+    problems.push(`the webhook address is ${webhook}`);
+  await page.goto(jobUrl);
   await page.getByRole("button", { name: "Revise the quote" }).click();
   await page.waitForURL(/\/quote$/);
+  await page.fill("input[name=deposit]", "100");
   await page.getByRole("button", { name: "Send quote" }).click();
   await page.getByRole("status").filter({ hasText: "is sent" }).waitFor();
   await form.goto(requestPage);
@@ -559,6 +646,115 @@ try {
   if (!(await page.getByText("Scheduled").count()))
     problems.push("the job is not scheduled once the customer confirmed");
   await shoot(page, "13m-job-scheduled");
+
+  // The deposit (4.1b). Pay sends her to the business's Razorpay page. Here that page "takes" the money: Razorpay
+  // posts the signed event to the webhook, then sends her back. The deposit shows as paid only from that event.
+  // A request that follows a redirect is not routed, so the pay route's own answer is taken here instead, and its
+  // 303 to https://rzp.io/… is played out as Razorpay would.
+  let payOnOpen = true;
+  await customer.route(/\/requests\/[0-9a-f-]{36}\/pay$/, async (route) => {
+    // An intercepted request loses Sec-Fetch-Site (and Origin is null under no-referrer), so the click, a
+    // same-origin form post, says so here; the cross-site refusal above is tested without interception.
+    const answer = await route.fetch({
+      maxRedirects: 0,
+      headers: { ...(await route.request().allHeaders()), "sec-fetch-site": "same-origin" },
+    });
+    const location = answer.headers().location ?? "";
+    const link = razorpay.links.find((l) => location === `https://rzp.io/i/${l.id}`);
+    if (!link) return route.fulfill({ response: answer });
+    if (!payOnOpen)
+      return route.fulfill({
+        contentType: "text/html",
+        body: '<meta charset="utf-8"><title>Razorpay</title><p>Razorpay stand-in: not paid.</p>',
+      });
+    const hooked = await razorpayPaid(webhook, link);
+    if (hooked.status !== 200) problems.push(`Razorpay's signed webhook answered ${hooked.status}`);
+    return route.fulfill({ status: 302, headers: { location: link.callbackUrl } });
+  });
+  await form.goto(requestPage);
+  if (!(await form.getByRole("heading", { name: "Deposit" }).count()))
+    problems.push("the accepted request does not show its deposit");
+  await shoot(form, "13n-customer-deposit-due");
+  // The pay route's guards: another site's post is refused; another business's or customer's job is a 404.
+  const payTo = (s: string, id: string) => `${PUBLIC}/b/${s}/requests/${id}/pay`;
+  const crossSitePay = await customer.request.post(payTo(slug, jobId), {
+    headers: { "sec-fetch-site": "cross-site", origin: PUBLIC },
+    maxRedirects: 0,
+  });
+  if (crossSitePay.status() !== 403)
+    problems.push(`a cross-site deposit payment answered ${crossSitePay.status()}`);
+  for (const [whose, s, id] of [
+    ["another business's", "sharma-cooling", jobId],
+    ["another customer's", "sharma-cooling", SHARMA_2],
+  ] as const) {
+    const paid = await customer.request.post(payTo(s, id), {
+      headers: { "sec-fetch-site": "same-origin" },
+      maxRedirects: 0,
+    });
+    if (paid.status() !== 404) problems.push(`paying ${whose} deposit answered ${paid.status()}`);
+  }
+  if (razorpay.links.length > 0) problems.push("a refused payment made a Razorpay link");
+  // A forged event for her link is refused and records nothing.
+  await form.getByRole("button", { name: "Pay ₹100.00" }).click();
+  await form.waitForURL(/\?pay=back$/);
+  const [depositLink] = razorpay.links;
+  if (depositLink?.amount !== 10_000)
+    problems.push(`the deposit link asks for ${depositLink?.amount} paise`);
+  if (depositLink && (await razorpayPaid(webhook, depositLink, "not-the-secret")).status !== 401)
+    problems.push("a webhook with a forged signature was not refused");
+  if (!(await form.locator(".chip.go", { hasText: "Paid" }).count()))
+    problems.push("the paid deposit does not show as paid on her request");
+  if (await form.getByRole("button", { name: /^Pay / }).count())
+    problems.push("a paid deposit still offers Pay");
+  await shoot(form, "13o-customer-deposit-paid");
+  await expectMail(email, /^Quote Check paid ₹100\.00 \(#\d+\)$/, "the owner's payment notice");
+  await page.goto(jobUrl);
+  if (!(await page.locator(".chip.go", { hasText: "Paid" }).count()))
+    problems.push("the owner's job does not show the deposit paid");
+  await shoot(page, "13p-job-deposit-paid");
+
+  // Cancelling a job cancels its open link (4.1b): a second request, quoted with a ₹200 deposit and accepted;
+  // she opens the Razorpay page but does not pay, and the owner cancels the request.
+  payOnOpen = false;
+  await form.goto(`${PUBLIC}/b/${slug}/request`);
+  await form.getByRole("button", { name: "Add work item" }).click();
+  await editor().getByLabel("What needs doing?").fill("Geyser not heating");
+  await form.getByRole("button", { name: "Save" }).click();
+  await form.getByRole("button", { name: "Send request" }).click();
+  await form.waitForURL(`${PUBLIC}/b/${slug}/requests`);
+  await form.locator(".cards a").first().click();
+  await form.waitForURL(/\/requests\/[0-9a-f-]{36}$/);
+  const secondPage = form.url();
+  const secondJob = `${APP}/jobs/${secondPage.slice(secondPage.lastIndexOf("/") + 1)}`;
+  await page.goto(secondJob);
+  await page.getByRole("button", { name: "Write a quote" }).click();
+  await page.waitForURL(/\/quote$/);
+  await page.locator("button.tile").first().click();
+  await page.locator("input[name=price]").first().fill("900");
+  await page.getByRole("button", { name: "Done" }).click();
+  await page.fill("input[name=deposit]", "200");
+  await page.getByRole("button", { name: "Send quote" }).click();
+  await page.getByRole("status").filter({ hasText: "is sent" }).waitFor();
+  await form.goto(secondPage);
+  await form.getByRole("button", { name: /Accept quote/ }).click();
+  await form.getByRole("status").filter({ hasText: "has your acceptance" }).waitFor();
+  await form.getByRole("button", { name: "Pay ₹200.00" }).click();
+  await form.getByText("Razorpay stand-in: not paid.").waitFor();
+  const openLink = razorpay.links[1];
+  await page.goto(secondJob);
+  await page.getByText("Cancel this request").click();
+  if (!(await page.getByText("payment link stops working").count()))
+    problems.push("cancelling does not warn that the open payment link stops working");
+  await shoot(page, "13q-job-cancel");
+  await page.getByRole("button", { name: "Yes, cancel it" }).click();
+  await page.locator(".chip", { hasText: "Cancelled" }).waitFor();
+  if (!openLink || !razorpay.cancelled.includes(openLink.id))
+    problems.push("cancelling the job did not cancel its open link at Razorpay");
+  await shoot(page, "13r-job-cancelled");
+  await form.goto(secondPage);
+  if (await form.getByRole("button", { name: /^Pay / }).count())
+    problems.push("a cancelled request still offers Pay");
+  await shoot(form, "13s-customer-cancelled");
   await customer.close();
 
   // A signed-in customer (D15): seeded Anita opens "My requests" on the bare domain, signs in there, and sees
@@ -733,6 +929,7 @@ try {
 } finally {
   await owner?.close();
   await browser.close();
+  razorpayApi.close();
 }
 
 console.log(`screenshots in ${OUT}`);

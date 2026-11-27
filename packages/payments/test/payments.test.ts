@@ -13,7 +13,6 @@ import {
   type PaymentEvent,
   type Payments,
   signRazorpayWebhook,
-  WebhookRefused,
 } from "../src/index.ts";
 
 interface Asked {
@@ -186,6 +185,35 @@ describe("payments", () => {
       });
     });
 
+    it("sends the payer back to the return URL by a plain GET", async () => {
+      await app.withTenant(businessA, (client) =>
+        payments.createPaymentLink(client, {
+          businessId: businessA,
+          subjectId: randomUUID(),
+          purpose: "deposit",
+          amount: money(10_000, "INR"),
+          acceptPartial: false,
+          description: "Deposit",
+          returnUrl: "https://kaamkoti.example/b/sharma/requests/1",
+        }),
+      );
+
+      expect(asked[0]?.body).toMatchObject({
+        callback_url: "https://kaamkoti.example/b/sharma/requests/1",
+        callback_method: "get",
+      });
+    });
+
+    it("tells a connected business's key id, and nothing for one without an account", async () => {
+      const connected = await app.withTenant(businessA, (c) =>
+        payments.connectedAccount(c, businessA),
+      );
+      const none = randomUUID();
+      const missing = await app.withTenant(none, (c) => payments.connectedAccount(c, none));
+
+      expect([connected, missing]).toEqual([{ keyId: "rzp_test_AbCdEf123456" }, null]);
+    });
+
     it("returns the open link for the same subject and purpose instead of making a second", async () => {
       const subjectId = randomUUID();
       const first = await newLink(subjectId);
@@ -269,7 +297,7 @@ describe("payments", () => {
         { secret: "guessed-secret" },
       );
 
-      await expect(outcome).rejects.toBeInstanceOf(WebhookRefused);
+      expect(await outcome).toBe("refused");
       expect(events).toHaveLength(0);
       expect((await paid(link.subjectId)).minor).toBe(0);
     });
@@ -283,7 +311,7 @@ describe("payments", () => {
         },
       );
 
-      await expect(outcome).rejects.toBeInstanceOf(WebhookRefused);
+      expect(await outcome).toBe("refused");
     });
 
     it("refuses a body signed by another business, sent to this business's URL", async () => {
@@ -295,7 +323,7 @@ describe("payments", () => {
         },
       );
 
-      await expect(outcome).rejects.toBeInstanceOf(WebhookRefused);
+      expect(await outcome).toBe("refused");
       expect((await paid(link.subjectId)).minor).toBe(0);
     });
 

@@ -34,6 +34,10 @@ export const webConfig = z.object({
   S3_REGION: z.string().min(1),
   S3_ACCESS_KEY_ID: z.string().regex(/^GK[0-9a-f]{24}$/),
   S3_SECRET_ACCESS_KEY: z.string().regex(/^[0-9a-f]{64}$/),
+  /** Seals each business's Razorpay secrets (architecture 8): 32 random bytes, base64. */
+  PAYMENTS_SEALING_KEY: z.string().regex(/^[A-Za-z0-9+/]{43}=$/),
+  /** Razorpay's API; development and the browser check point it at a local stand-in. */
+  RAZORPAY_API: origin(/^https?$/).default("https://api.razorpay.com"),
 });
 
 /** What the worker process reads: it runs the jobs and delivers the outbox to platform. */

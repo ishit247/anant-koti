@@ -2,6 +2,7 @@ import { formatMoney } from "@bodhchakra/money";
 import { defineRoute } from "@bodhchakra/tenancy";
 import { notFound } from "next/navigation";
 import { z } from "zod";
+import { depositPayable, jobDeposit } from "../../../deposit.ts";
 import { requireMember } from "../../../guard.ts";
 import { ownerJob } from "../../../inbox.ts";
 import {
@@ -20,6 +21,7 @@ import { server } from "../../../server.ts";
 import { OwnerNav } from "../../owner-nav.tsx";
 import { QuoteSummary } from "../../quote-summary.tsx";
 import { WorkItems } from "../../work-items.tsx";
+import { CancelJob } from "./cancel-job.tsx";
 import { ConfirmForCustomer, OnTheWay, PlanVisit } from "./plan-visit.tsx";
 import { StartQuote } from "./start-quote.tsx";
 
@@ -34,8 +36,8 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const id = z.uuid().safeParse((await params).id);
   if (!id.success) notFound();
   const owner = await requireMember(route, `/jobs/${id.data}`);
-  const { db, storage } = server();
-  const { job, quotes, visits, work, team } = await db.withTenant(
+  const { db, storage, payments } = server();
+  const { job, quotes, visits, work, team, deposit, linkOpen } = await db.withTenant(
     owner.businessId,
     async (client) => ({
       job: await ownerJob(client, id.data),
@@ -43,9 +45,14 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
       visits: await plannedVisits(client, new Date(0), id.data),
       work: await workTime(client, id.data),
       team: await assignableMembers(client),
+      deposit: await jobDeposit(client, payments, owner.businessId, id.data),
+      linkOpen: (await payments.linksFor(client, id.data)).some(
+        (link) => link.status === "created" || link.status === "partially_paid",
+      ),
     }),
   );
   if (!job) notFound();
+  const cancellable = ["requested", "quoted", "accepted", "scheduled"].includes(job.status);
   // The same states the planner accepts: the work needs `accepted`, a site visit any open state.
   const visitable = ["requested", "quoted", "accepted", "scheduled"].includes(job.status);
   const now = Date.now();
@@ -124,6 +131,23 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                 </p>
               ) : null}
               <QuoteSummary quote={current} />
+              {deposit && (depositPayable(job.status) || deposit.paid.minor > 0) ? (
+                <p className="row" role="status">
+                  <span>
+                    Deposit {formatMoney(deposit.amount)}
+                    {deposit.due.minor > 0 && deposit.paid.minor > 0
+                      ? ` · ${formatMoney(deposit.paid)} received`
+                      : ""}
+                  </span>
+                  {deposit.due.minor === 0 ? (
+                    <span className="chip go">Paid</span>
+                  ) : (
+                    <span className="chip wait">
+                      {deposit.online ? "Not paid yet" : "Not paid · collect it yourself"}
+                    </span>
+                  )}
+                </p>
+              ) : null}
             </>
           ) : draft ? null : (
             <p className="empty">
@@ -205,6 +229,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             </a>
           ) : null}
         </section>
+        {cancellable ? <CancelJob jobId={job.id} linkOpen={linkOpen} /> : null}
       </div>
       <OwnerNav current="/jobs" />
     </>

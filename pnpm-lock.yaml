@@ -226,6 +226,9 @@ importers:
       '@bodhchakra/outbox':
         specifier: workspace:*
         version: link:../../packages/outbox
+      '@bodhchakra/payments':
+        specifier: workspace:*
+        version: link:../../packages/payments
       '@bodhchakra/rate-limit':
         specifier: workspace:*
         version: link:../../packages/rate-limit

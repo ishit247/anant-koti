@@ -24,6 +24,7 @@
     "@bodhchakra/money": "workspace:*",
     "@bodhchakra/notify": "workspace:*",
     "@bodhchakra/outbox": "workspace:*",
+    "@bodhchakra/payments": "workspace:*",
     "@bodhchakra/rate-limit": "workspace:*",
     "@bodhchakra/storage": "workspace:*",
     "@bodhchakra/tenancy": "workspace:*",

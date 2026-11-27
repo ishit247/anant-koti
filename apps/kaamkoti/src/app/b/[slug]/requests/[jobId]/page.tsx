@@ -3,6 +3,7 @@ import { defineRoute } from "@bodhchakra/tenancy";
 import { notFound } from "next/navigation";
 import { addressBook, MAX_ADDRESS, MAX_ADDRESSES, MAX_LABEL } from "../../../../../address-book.ts";
 import { customerContact } from "../../../../../customer-space.ts";
+import { depositPayable, jobDeposit } from "../../../../../deposit.ts";
 import { withCustomer } from "../../../../../guard.ts";
 import {
   MAX_ITEM_DETAILS,
@@ -20,11 +21,12 @@ import { BusinessHeader } from "../../../../business-header.tsx";
 import { CustomerNav } from "../../../../customer-nav.tsx";
 import { WorkItems } from "../../../../work-items.tsx";
 import { RequestForm } from "../../request/request-form.tsx";
+import { DepositPay } from "./deposit-pay.tsx";
 import { QuoteAnswer } from "./quote-answer.tsx";
 import { VisitAnswer } from "./visit-answer.tsx";
 
 // One of the signed-in customer's own requests (D15): the work's time once proposed (posting to ./visit), the
-// quote with its answer forms (posting to ./answer), and
+// quote with its answer forms (posting to ./answer), the deposit once accepted (posting to ./pay), and
 // the new-request screens over its work items until a quote is accepted (posting to ./edit); after that, the
 // items with their photos. Another customer's or business's id answers 404.
 // biome-ignore lint/correctness/noUnusedVariables: read by scanRoutes, which scans the source text
@@ -57,22 +59,29 @@ export default async function RequestDetail({
     error?: string;
     answer?: string | string[];
     visit?: string | string[];
+    pay?: string | string[];
   }>;
 }) {
   const { slug, jobId } = await params;
-  const { result, error, answer, visit } = await searchParams;
+  const { result, error, answer, visit, pay } = await searchParams;
   const space = `/b/${encodeURIComponent(slug)}`;
-  const { job, own, book } = await withCustomer(
+  const { db, storage, payments } = server();
+  const { job, own, book, deposit } = await withCustomer(
     slug,
     `${space}/requests/${jobId}`,
-    async (client, customer) => ({
-      job: customer ? await customerRequest(client, customer, jobId) : null,
-      own: customer ? await customerContact(client, customer) : null,
-      book: customer ? await addressBook(client, customer) : [],
-    }),
+    async (client, customer) => {
+      const job = customer ? await customerRequest(client, customer, jobId) : null;
+      if (!customer || !job) return { job: null, own: null, book: [], deposit: null };
+      return {
+        job,
+        own: await customerContact(client, customer),
+        book: await addressBook(client, customer),
+        // Only after the job was found under this customer.
+        deposit: await jobDeposit(client, payments, customer.businessId, job.id),
+      };
+    },
   );
   if (!job) notFound();
-  const { db, storage } = server();
   const page = await publicPage(db, slug);
   if (!page) notFound();
   const done = result && result in RESULTS ? RESULTS[result as keyof typeof RESULTS] : null;
@@ -110,6 +119,15 @@ export default async function RequestDetail({
           businessName={page.name}
           action={`${space}/requests/${job.id}/answer`}
           said={typeof answer === "string" ? answer : undefined}
+        />
+      ) : null}
+      {deposit && (depositPayable(job.status) || deposit.paid.minor > 0) ? (
+        <DepositPay
+          deposit={deposit}
+          payable={depositPayable(job.status)}
+          businessName={page.name}
+          action={`${space}/requests/${job.id}/pay`}
+          said={typeof pay === "string" ? pay : undefined}
         />
       ) : null}
       {job.editable ? (

@@ -20,6 +20,8 @@ export interface LinkRequest {
   customer?: { name: string; email?: string; phone?: string };
   /** Unix seconds; Razorpay's default is six months. */
   expireBy?: number;
+  /** Where Razorpay sends the payer back afterwards. What it appends there is never read as payment. */
+  callbackUrl?: string;
   notes: Record<string, string>;
 }
 
@@ -76,6 +78,7 @@ export async function createLink(
           }
         : {}),
       ...(link.expireBy ? { expire_by: link.expireBy } : {}),
+      ...(link.callbackUrl ? { callback_url: link.callbackUrl, callback_method: "get" } : {}),
       // Our notify sends the link, in the business's name; Razorpay's own SMS and email would be a second copy.
       notify: { sms: false, email: false },
       reminder_enable: false,

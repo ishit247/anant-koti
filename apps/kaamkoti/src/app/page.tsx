@@ -32,13 +32,16 @@ export default async function Home() {
     );
   }
   const me = await requireMember(route);
-  const { business, members, profile, newRequests } = await server().db.withTenant(
+  const { db, payments } = server();
+  const { business, members, profile, newRequests, paymentsConnected } = await db.withTenant(
     me.businessId,
     async (client) => ({
       business: await currentBusiness(client),
       members: await listMembers(client),
       profile: await businessProfile(client),
       newRequests: me.role === "owner" ? await countNewRequests(client) : 0,
+      paymentsConnected:
+        me.role === "owner" && (await payments.connectedAccount(client, me.businessId)) !== null,
     }),
   );
   if (me.role === "owner" && !profile) redirect("/onboarding");
@@ -79,6 +82,17 @@ export default async function Home() {
             />
             <a href={`/b/${encodeURIComponent(business.slug)}`}>Open the page</a>
           </div>
+
+          <h2>Online payments</h2>
+          <a className="card stat" href="/settings/payments">
+            <span>
+              <strong>{paymentsConnected ? "Razorpay connected" : "Take deposits online"}</strong>
+              <br />
+              <span className="small">
+                {paymentsConnected ? "Change the keys" : "Connect your Razorpay account"}
+              </span>
+            </span>
+          </a>
 
           <h2>Team</h2>
           <div className="card">

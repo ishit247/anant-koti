@@ -2,6 +2,7 @@
 import { defineRoute } from "@bodhchakra/tenancy";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { cancelJob } from "../../../cancel.ts";
 import { requireMember } from "../../../guard.ts";
 import { openDraft } from "../../../quote.ts";
 import {
@@ -104,6 +105,36 @@ export async function onTheWayAction(
     return true;
   });
   return found ? { sent: true } : { error: CONFIRM_ERROR.not_found };
+}
+
+export interface CancelJobState {
+  readonly error?: string;
+}
+
+/** The owner cancels the request: its visits and any open payment link go with it (architecture 6). */
+export async function cancelJobAction(
+  _previous: CancelJobState,
+  form: FormData,
+): Promise<CancelJobState> {
+  const jobId = z.uuid().safeParse(form.get("jobId"));
+  if (!jobId.success) return { error: "That request was not found." };
+  const owner = await requireMember(route, `/jobs/${jobId.data}`);
+  const { db, audit, payments } = server();
+  const result = await db.withTenant(owner.businessId, (client) =>
+    cancelJob(client, audit, payments, owner.businessId, jobId.data, {
+      role: "owner",
+      memberId: owner.memberId,
+    }),
+  );
+  if (!result.ok) {
+    return {
+      error:
+        result.error === "refused"
+          ? "This request has moved on too far to be cancelled."
+          : "That request was not found.",
+    };
+  }
+  redirect(`/jobs/${jobId.data}`);
 }
 
 export interface StartQuoteState {

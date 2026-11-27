@@ -8,8 +8,10 @@ import type { Db, DbClient } from "@bodhchakra/db";
 import { defineJob, type Jobs, type JobType } from "@bodhchakra/jobs";
 import { formatMoney, money } from "@bodhchakra/money";
 import type { Notify, NotifyMessage } from "@bodhchakra/notify";
+import type { Payment, PaymentLink } from "@bodhchakra/payments";
 import { z } from "zod";
 import { requestPageUrl } from "./customer-space.ts";
+import { DEPOSIT } from "./deposit.ts";
 import { formatDay, formatWhen } from "./job-labels.ts";
 
 export interface Notices {
@@ -31,6 +33,8 @@ export interface Notices {
   visitProposed(client: DbClient, appointmentId: string): Promise<void>;
   /** The customer confirmed the proposed time or asked for another: the owner is told. */
   visitAnswered(client: DbClient, appointmentId: string): Promise<void>;
+  /** Razorpay's verified webhook recorded money for a job: the owner is told, once per payment. */
+  paymentReceived(client: DbClient, payment: Payment, link: PaymentLink): Promise<void>;
   /** Worker only: runs the expiry notices and the visit reminders. Call after `jobs.start`. */
   startWorking(db: Db): Promise<void>;
 }
@@ -379,6 +383,26 @@ export function createNotices(deps: NoticesDeps): Notices {
                 },
         },
         `appointment.response:${appointmentId}`,
+      );
+    },
+
+    async paymentReceived(client, payment, link) {
+      const job = await jobFacts(client, link.subjectId);
+      await notify.send(
+        client,
+        {
+          businessId: job.business_id,
+          template: "payment.received",
+          to: await ownerTo(client),
+          vars: {
+            customerName: job.customer_name,
+            number: `#${job.number}`,
+            amount: formatMoney(payment.amount),
+            what: link.purpose === DEPOSIT ? "the deposit" : "the bill",
+            link: ownerLink(job.job_id),
+          },
+        },
+        `payment.received:${payment.id}`,
       );
     },
 

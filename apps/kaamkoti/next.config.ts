@@ -8,6 +8,7 @@ const config: NextConfig = {
     "@bodhchakra/config",
     "@bodhchakra/db",
     "@bodhchakra/log",
+    "@bodhchakra/payments",
     "@bodhchakra/rate-limit",
     "@bodhchakra/storage",
     "@bodhchakra/tenancy",

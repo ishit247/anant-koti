@@ -41,10 +41,12 @@ export type PaymentEvent =
   | { kind: "payment.received"; payment: Payment; link: PaymentLink }
   | { kind: "link.closed"; link: PaymentLink };
 
-export type WebhookOutcome = "applied" | "duplicate" | "ignored";
-
-/** A webhook whose signature does not verify, or for a business with no account: answer 401, do nothing. */
-export class WebhookRefused extends Error {}
+/**
+ * `refused`: the signature does not verify, or the business has no account; answer 401, nothing was done. An
+ * outcome rather than an exception, because forged requests are expected input, and because an app's bundler
+ * may load this module twice, where `instanceof` on an exception class would quietly fail.
+ */
+export type WebhookOutcome = "applied" | "duplicate" | "ignored" | "refused";
 
 export interface PaymentsConfig {
   /** 32 bytes, base64, from the app's config. */
@@ -84,8 +86,12 @@ export interface Payments {
       description: string;
       customer?: { name: string; email?: string; phone?: string };
       expiresAt?: Date;
+      /** Where the payer lands after paying; arriving there proves nothing. */
+      returnUrl?: string;
     },
   ): Promise<PaymentLink>;
+  /** Inside `withTenant`. The connected account's key id (never a secret), or null if none is connected. */
+  connectedAccount(client: DbClient, businessId: string): Promise<{ keyId: string } | null>;
   /** Inside `withTenant`. Cancels an open link at Razorpay, then here. A link already closed is left alone. */
   cancelLink(client: DbClient, input: { businessId: string; linkId: string }): Promise<void>;
   /** Inside `withTenant`. A subject's links, newest first. */
@@ -345,6 +351,7 @@ export function createPayments(config: PaymentsConfig): Payments {
           description: input.description,
           ...(input.customer ? { customer: input.customer } : {}),
           ...(input.expiresAt ? { expireBy: Math.floor(input.expiresAt.getTime() / 1000) } : {}),
+          ...(input.returnUrl ? { callbackUrl: input.returnUrl } : {}),
           notes: { subject_id: input.subjectId, purpose: input.purpose },
         },
       );
@@ -366,6 +373,11 @@ export function createPayments(config: PaymentsConfig): Payments {
         ],
       );
       return toLink(rows[0] as LinkRow);
+    },
+
+    async connectedAccount(client, businessId) {
+      const credentials = await account(client, businessId);
+      return credentials ? { keyId: credentials.keyId } : null;
     },
 
     async cancelLink(client, { businessId, linkId }) {
@@ -442,7 +454,7 @@ export function createPayments(config: PaymentsConfig): Payments {
           request.signature === null ||
           !razorpay.signatureValid(request.rawBody, request.signature, credentials.webhookSecret())
         ) {
-          throw new WebhookRefused("payments: webhook signature does not verify");
+          return "refused";
         }
         // Signed from here on, so a body that does not parse is Razorpay's bug or ours: fail loudly and let it retry.
         const raw: unknown = JSON.parse(request.rawBody);
