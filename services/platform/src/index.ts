@@ -24,8 +24,21 @@ const notify: MigrationFolder = {
   dir: new URL("../migrations/notify/", import.meta.url),
 };
 
+/** billing.account and billing.subscription (src/billing.ts); after identity, which an account belongs to. */
+const billing: MigrationFolder = {
+  name: "billing",
+  dir: new URL("../migrations/billing/", import.meta.url),
+};
+
 /** Every migration folder the platform database needs, in dependency order. */
-export const migrations: readonly MigrationFolder[] = [audit, jobs, outbox, identity, notify];
+export const migrations: readonly MigrationFolder[] = [
+  audit,
+  jobs,
+  outbox,
+  identity,
+  notify,
+  billing,
+];
 
 /** Loads the development seed. `url` connects as the database's owner role. */
 export async function seed(url: string, log: Logger): Promise<void> {

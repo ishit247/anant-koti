@@ -1,6 +1,6 @@
 // Platform's HTTP surface. The handler speaks Web-standard Request and Response, so it can be mounted elsewhere
 // later. `listen` puts it on node:http. Routes now: the health check, the internal API apps call with signed
-// requests (docs/architecture.md 1 and 9.1), identity's sign-in routes (3), and providers' webhooks at
+// requests (docs/architecture.md 1 and 9.1: queued topics and answered calls), identity's sign-in routes (3), and providers' webhooks at
 // `/hooks/<name>` (reached on `hooks.`), each verifying its own provider's signature.
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { Db, DbClient } from "@bodhchakra/db";
@@ -21,6 +21,15 @@ export interface Topic<P> {
   handle(client: DbClient, payload: P, source: string): Promise<void>;
 }
 
+/**
+ * A request an app needs answered now, e.g. a checkout page to send the owner to. It is signed like a topic but
+ * not queued: if platform is down the app says so and the person tries again. Each call is safe to repeat.
+ */
+export interface Call<P> {
+  readonly payload: z.ZodType<P>;
+  handle(payload: P, source: string): Promise<Response>;
+}
+
 export interface PlatformDeps {
   /** Connects as platform_app. */
   db: Db;
@@ -29,6 +38,9 @@ export interface PlatformDeps {
   clients: Readonly<Record<string, string>>;
   // biome-ignore lint/suspicious/noExplicitAny: each topic's payload type is checked by its own schema.
   topics: Readonly<Record<string, Topic<any>>>;
+  /** Answered calls, on the same paths as topics; a name is one or the other. */
+  // biome-ignore lint/suspicious/noExplicitAny: each call's payload type is checked by its own schema.
+  calls: Readonly<Record<string, Call<any>>>;
   identity: Identity;
   /** Provider webhooks by name; each checks its provider's signature itself. */
   hooks: Readonly<Record<string, (request: Request) => Promise<Response>>>;
@@ -57,15 +69,21 @@ export function createHandler(deps: PlatformDeps): (request: Request) => Promise
       });
       return json(401, { error: "unauthorized" });
     }
-    const topic = Object.hasOwn(deps.topics, topicName) ? deps.topics[topicName] : undefined;
-    if (!topic) return json(404, { error: "unknown_topic" });
-
     let parsedBody: unknown;
     try {
       parsedBody = JSON.parse(body);
     } catch {
       return json(400, { error: "invalid_body" });
     }
+    const call = Object.hasOwn(deps.calls, topicName) ? deps.calls[topicName] : undefined;
+    if (call) {
+      const payload = call.payload.safeParse(parsedBody);
+      if (!payload.success) return json(400, { error: "invalid_body" });
+      return call.handle(payload.data, verified.client);
+    }
+    const topic = Object.hasOwn(deps.topics, topicName) ? deps.topics[topicName] : undefined;
+    if (!topic) return json(404, { error: "unknown_topic" });
+
     const message = delivery.safeParse(parsedBody);
     const payload = message.success ? topic.payload.safeParse(message.data.payload) : undefined;
     if (!message.success || !payload?.success) return json(400, { error: "invalid_body" });

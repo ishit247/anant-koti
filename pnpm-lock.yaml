@@ -304,6 +304,12 @@ importers:
         specifier: workspace:*
         version: link:../tokens
 
+  packages/billing:
+    dependencies:
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
+
   packages/config:
     dependencies:
       zod:
@@ -441,6 +447,9 @@ importers:
       '@bodhchakra/audit':
         specifier: workspace:*
         version: link:../../packages/audit
+      '@bodhchakra/billing':
+        specifier: workspace:*
+        version: link:../../packages/billing
       '@bodhchakra/config':
         specifier: workspace:*
         version: link:../../packages/config

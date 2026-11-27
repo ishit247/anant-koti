@@ -75,6 +75,7 @@ describe("signing in to Kaam Koti through platform", () => {
       log,
       clients: {},
       topics: {},
+      calls: {},
       hooks: {},
       identity: platform.createIdentity(
         {

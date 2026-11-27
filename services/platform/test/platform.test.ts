@@ -79,6 +79,7 @@ describe("platform", () => {
       // Sign-in has its own test (identity.test.ts); here no path belongs to it.
       identity: { handle: () => null },
       hooks: {},
+      calls: {},
       topics: {
         "test.ping": {
           payload: z.object({ ref: z.string(), n: z.number().int() }),

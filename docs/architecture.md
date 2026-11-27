@@ -447,6 +447,13 @@ idempotencyKey)` inserts into `outbox.message` and sends a pg-boss job in the sa
 If platform is down, messages wait in the outbox and the app carries on (0.5's "Done when"). The same
 receiver code handles provider webhooks, with the provider's signature in place of ours.
 
+One exception is needed, and only for a person waiting on a page: an **answered call** (`billing.checkout`,
+5.1a) is signed the same way on the same path, `/internal/v1/<name>`, but not queued. Platform answers it at once
+(a checkout page to send the owner to); if platform is down the app says so and the person tries again. Each
+call is safe to repeat. Platform → app messages go through platform's own outbox to the one product app it is
+configured for (`EVENTS_CLIENT`, `EVENTS_URL`), signed as client `platform` with that app's shared secret, at
+`/internal/v1/<topic>`.
+
 ### 9.2 Notify (platform)
 
 - The app sends `notify.send` with `{ businessId, template, to: { identityId?, phone?, email? }, vars }`
@@ -577,6 +584,13 @@ Dependency direction (checked in 0.2): foundation (`config`, `log`, `money`) ←
   (D12). An account has one `billing.subscription` per product tenant: `product`, `tenant_id` (the business),
   `plan`, `seats`, `status` (`trialing`, `active`, `past_due`, `cancelled`), `trial_ends_at`,
   `paid_through`. Status changes only from a verified provider webhook (D6, 5.1).
+- **Trial and checkout (5.1a):** the app registers a new business (`billing.register`, outbox), which opens a
+  Team trial (D9) on the owner's account. The owner's checkout (`billing.checkout`, an answered call) makes a
+  Razorpay subscription on the platform's account for the plan and seats, first charged at the trial's end, and
+  returns its authorisation page; a new checkout cancels one never authorised. Razorpay's webhook at
+  `hooks.…/hooks/razorpay` maps `activated`/`charged` → `active` (plan and seats from the event, `paid_through`
+  from its period end, never moved back), `pending`/`halted` → `past_due`, `cancelled`/`completed` →
+  `cancelled`. Events older than the last applied are ignored. The rules are in `packages/billing/README.md`.
 - **In the app:** `billing.status` is a local copy, updated by signed `billing.status_changed` events. It is
   applied only if its `version` is newer, so an old event can never undo a new one.
 - **Live is computed at request time:** `live = (trialing and now < trial_ends_at) or now < paid_through + 3

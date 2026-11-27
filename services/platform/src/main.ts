@@ -1,13 +1,16 @@
 // The platform container's entry point. Migrations are run by the deploy (and by `pnpm run up` in development),
 // as platform_owner; this process connects only as platform_app.
 import { createAudit } from "@bodhchakra/audit";
+import { REGISTER_TOPIC } from "@bodhchakra/billing";
 import { defineConfig } from "@bodhchakra/config";
 import { createPool } from "@bodhchakra/db";
 import { createJobs } from "@bodhchakra/jobs";
 import { createLogger } from "@bodhchakra/log";
 import { NOTIFY_TOPIC } from "@bodhchakra/notify";
+import { createOutbox } from "@bodhchakra/outbox";
 import { redisLimiter } from "@bodhchakra/rate-limit";
 import pg from "pg";
+import { createBillingService } from "./billing.ts";
 import { platformConfig } from "./config.ts";
 import { createIdentity, registerClients } from "./identity.ts";
 import { codeMailer, emailSender } from "./mail.ts";
@@ -42,8 +45,29 @@ const notify = createNotifyService({
 });
 // Development has no Meta account (D7): the channel is off until its settings are given.
 log.info("notify channels", { whatsapp: config.whatsapp !== undefined });
-await jobs.start(notify.jobTypes);
+// Billing's status events go to the one product app through platform's own outbox (docs/architecture.md 13).
+const outbox = createOutbox({ jobs, log });
+const billing = createBillingService({
+  db,
+  log,
+  audit: createAudit(log),
+  outbox,
+  razorpay: {
+    api: config.BILLING_RAZORPAY_API,
+    keyId: config.BILLING_RAZORPAY_KEY_ID,
+    keySecret: config.BILLING_RAZORPAY_KEY_SECRET,
+    webhookSecret: config.BILLING_RAZORPAY_WEBHOOK_SECRET,
+    plans: config.BILLING_RAZORPAY_PLANS,
+  },
+  product: config.EVENTS_CLIENT,
+});
+await jobs.start([...notify.jobTypes, ...outbox.jobTypes]);
 await notify.startSending();
+await outbox.startDelivery(db, {
+  url: config.EVENTS_URL,
+  client: "platform",
+  secret: config.SERVICE_CLIENTS[config.EVENTS_CLIENT] as string,
+});
 
 await registerClients(identityPool, config.SIGN_IN_CLIENTS);
 const identity = createIdentity(
@@ -64,9 +88,10 @@ const server = await listen(
     db,
     log,
     clients: config.SERVICE_CLIENTS,
-    topics: { [NOTIFY_TOPIC]: notify.topic },
+    topics: { [NOTIFY_TOPIC]: notify.topic, [REGISTER_TOPIC]: billing.topic },
+    calls: billing.calls,
     identity,
-    hooks: notify.hooks,
+    hooks: { ...notify.hooks, ...billing.hooks },
   }),
   log,
   config.PORT,

@@ -192,6 +192,7 @@ describe("notify", () => {
       log,
       clients: { kaamkoti: SECRET },
       topics: { [NOTIFY_TOPIC]: notify.topic },
+      calls: {},
       identity: { handle: () => null },
       hooks: notify.hooks,
     });

@@ -88,6 +88,7 @@ describe("identity", () => {
       log,
       clients: {},
       topics: {},
+      calls: {},
       hooks: {},
       identity,
     });

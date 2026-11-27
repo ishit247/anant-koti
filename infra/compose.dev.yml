@@ -49,6 +49,17 @@ services:
       SMTP_URL: smtp://mailpit:1025
       EMAIL_FROM: Bodhchakra <sign-in@localhost>
       NOTIFY_EMAIL_FROM: Kaam Koti <messages@localhost>
+      # Subscriptions (D6) go to the browser check's fake Razorpay on the host; its webhook is signed with this.
+      BILLING_RAZORPAY_API: http://host.docker.internal:45451
+      BILLING_RAZORPAY_KEY_ID: rzp_test_DevPlatform01
+      BILLING_RAZORPAY_KEY_SECRET: dev-only-billing-key-secret-public-in-repo
+      BILLING_RAZORPAY_WEBHOOK_SECRET: dev-only-billing-webhook-secret-public-in-repo
+      BILLING_RAZORPAY_PLANS: '{"solo":"plan_DevSolo001","team":"plan_DevTeam001"}'
+      # Status events go to Kaam Koti's dev server on the host.
+      EVENTS_CLIENT: kaamkoti
+      EVENTS_URL: http://host.docker.internal:45450
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:45443:3000"
     networks: [internal]

@@ -126,7 +126,29 @@ describe("platform config", () => {
     SMTP_URL: "smtp://localhost:1025",
     EMAIL_FROM: "id@localhost",
     NOTIFY_EMAIL_FROM: "messages@localhost",
+    BILLING_RAZORPAY_KEY_ID: "rzp_test_Platform01",
+    BILLING_RAZORPAY_KEY_SECRET: "k".repeat(24),
+    BILLING_RAZORPAY_WEBHOOK_SECRET: "w".repeat(24),
+    BILLING_RAZORPAY_PLANS: JSON.stringify({ solo: "plan_Solo000001", team: "plan_Team000001" }),
+    EVENTS_CLIENT: "kaamkoti",
+    EVENTS_URL: "http://localhost:45450",
   };
+
+  it("reads billing's plans, and stops start-up when a plan has no Razorpay plan", () => {
+    expect(defineConfig(platformConfig, base).BILLING_RAZORPAY_PLANS.team).toBe("plan_Team000001");
+    expect(() =>
+      defineConfig(platformConfig, {
+        ...base,
+        BILLING_RAZORPAY_PLANS: JSON.stringify({ team: "plan_Team000001" }),
+      }),
+    ).toThrow(/BILLING_RAZORPAY_PLANS/);
+  });
+
+  it("stops start-up when the events app is not a service client", () => {
+    expect(() => defineConfig(platformConfig, { ...base, EVENTS_CLIENT: "pos" })).toThrow(
+      /EVENTS_CLIENT/,
+    );
+  });
 
   it("leaves WhatsApp off when none of its settings is given", () => {
     expect(defineConfig(platformConfig, base).whatsapp).toBeUndefined();

@@ -14,6 +14,7 @@
   "dependencies": {
     "@better-auth/oauth-provider": "~1.7.26",
     "@bodhchakra/audit": "workspace:*",
+    "@bodhchakra/billing": "workspace:*",
     "@bodhchakra/config": "workspace:*",
     "@bodhchakra/db": "workspace:*",
     "@bodhchakra/jobs": "workspace:*",
