@@ -2,6 +2,7 @@ import { formatMoney } from "@bodhchakra/money";
 import { defineRoute } from "@bodhchakra/tenancy";
 import { notFound } from "next/navigation";
 import { z } from "zod";
+import { agreedWork, CHANGEABLE, changeOrders } from "../../../change-order.ts";
 import { depositPayable, jobDeposit } from "../../../deposit.ts";
 import { requireMember } from "../../../guard.ts";
 import { ownerJob } from "../../../inbox.ts";
@@ -18,9 +19,11 @@ import {
 import { ownerQuotes } from "../../../quote.ts";
 import { assignableMembers, plannedVisits, workTime } from "../../../schedule.ts";
 import { server } from "../../../server.ts";
+import { ChangeOrders } from "../../change-orders.tsx";
 import { OwnerNav } from "../../owner-nav.tsx";
 import { QuoteSummary } from "../../quote-summary.tsx";
 import { WorkItems } from "../../work-items.tsx";
+import { startChange, startQuote } from "./actions.ts";
 import { CancelJob } from "./cancel-job.tsx";
 import { ConfirmForCustomer, OnTheWay, PlanVisit } from "./plan-visit.tsx";
 import { StartQuote } from "./start-quote.tsx";
@@ -37,11 +40,12 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   if (!id.success) notFound();
   const owner = await requireMember(route, `/jobs/${id.data}`);
   const { db, storage, payments } = server();
-  const { job, quotes, visits, work, team, deposit, linkOpen } = await db.withTenant(
-    owner.businessId,
-    async (client) => ({
+  const { job, quotes, orders, agreed, visits, work, team, deposit, linkOpen } =
+    await db.withTenant(owner.businessId, async (client) => ({
       job: await ownerJob(client, id.data),
       quotes: await ownerQuotes(client, id.data),
+      orders: await changeOrders(client, id.data, false),
+      agreed: await agreedWork(client, id.data),
       visits: await plannedVisits(client, new Date(0), id.data),
       work: await workTime(client, id.data),
       team: await assignableMembers(client),
@@ -49,8 +53,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
       linkOpen: (await payments.linksFor(client, id.data)).some(
         (link) => link.status === "created" || link.status === "partially_paid",
       ),
-    }),
-  );
+    }));
   if (!job) notFound();
   const cancellable = ["requested", "quoted", "accepted", "scheduled"].includes(job.status);
   // The same states the planner accepts: the work needs `accepted`, a site visit any open state.
@@ -59,6 +62,9 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const draft = quotes.find((q) => q.status === "draft");
   const [current, ...earlier] = quotes.filter((q) => q.status !== "draft");
   const quotable = job.status === "requested" || job.status === "quoted";
+  const changeable = CHANGEABLE.includes(job.status);
+  const changeDraft = orders.find((o) => o.status === "draft");
+  const unpriced = job.items.filter((item) => item.status === "requested").length;
   // Calls go to the person at the address, who may not be the customer who asked.
   const digits = job.contactPhone.replace(/\D/g, "");
   const forSomeoneElse = job.contactPhone !== job.customerPhone;
@@ -101,6 +107,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             items={job.items}
             sign={(photo) => storage.signedUrl(photo)}
             photoAlt="Sent with the request"
+            accepted={agreed !== null}
           />
         </section>
 
@@ -161,7 +168,11 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
               </a>
             </p>
           ) : quotable ? (
-            <StartQuote jobId={job.id} label={current ? "Revise the quote" : "Write a quote"} />
+            <StartQuote
+              jobId={job.id}
+              label={current ? "Revise the quote" : "Write a quote"}
+              start={startQuote}
+            />
           ) : null}
           {earlier.length > 0 ? (
             <p className="muted small">
@@ -172,6 +183,37 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             </p>
           ) : null}
         </section>
+
+        {changeable || orders.length > 0 ? (
+          <section className="panel" aria-labelledby="extra-title">
+            <h2 id="extra-title">Extra work</h2>
+            {unpriced > 0 && changeable ? (
+              <p className="notice" role="status">
+                {unpriced === 1 ? "1 work item was" : `${unpriced} work items were`} added since the
+                quote was accepted. Price {unpriced === 1 ? "it" : "them"} for the customer to
+                approve.
+              </p>
+            ) : orders.length === 0 ? (
+              <p className="empty">
+                Work found on site or asked for after acceptance is priced here, and added to the
+                bill only once the customer approves.
+              </p>
+            ) : null}
+            <ChangeOrders orders={orders.filter((o) => o.status !== "draft")} agreed={agreed} />
+            {changeable && changeDraft ? (
+              <a className="button" href={`/jobs/${job.id}/change`}>
+                Continue extra work {changeDraft.number}
+              </a>
+            ) : changeable ? (
+              <StartQuote
+                jobId={job.id}
+                label="Price extra work"
+                start={startChange}
+                quiet={unpriced === 0}
+              />
+            ) : null}
+          </section>
+        ) : null}
 
         <section className="panel" aria-labelledby="visits-title">
           <h2 id="visits-title">Visits</h2>

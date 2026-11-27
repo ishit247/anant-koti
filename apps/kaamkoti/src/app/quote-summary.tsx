@@ -1,9 +1,14 @@
-// A quote's lines and totals, the same for the owner and the customer. Server-rendered: no client JavaScript.
-import { formatDecimal, formatMoney, money } from "@bodhchakra/money";
+// A quote's lines and totals, the same for the owner and the customer; also a change order's (4.3), which has no
+// deposit. Server-rendered: no client JavaScript.
+import { formatDecimal, formatMoney, type Money, money } from "@bodhchakra/money";
 import { formatPrice } from "../price.ts";
 import type { Quote } from "../quote.ts";
 
-export function QuoteSummary({ quote }: { quote: Quote }) {
+export function QuoteSummary({
+  quote,
+}: {
+  quote: Pick<Quote, "lines" | "net" | "tax" | "total"> & { readonly deposit?: Money };
+}) {
   const { currency } = quote.total;
   return (
     <div className="card">
@@ -42,7 +47,7 @@ export function QuoteSummary({ quote }: { quote: Quote }) {
         <span>Total</span>
         <span className="amount">{formatMoney(quote.total)}</span>
       </div>
-      {quote.deposit.minor > 0 ? (
+      {quote.deposit && quote.deposit.minor > 0 ? (
         <div className="row">
           <span>Deposit to book</span>
           <span className="amount">{formatMoney(quote.deposit)}</span>

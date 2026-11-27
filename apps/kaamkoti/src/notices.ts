@@ -25,6 +25,8 @@ export interface Notices {
   quoteSent(client: DbClient, quoteId: string): Promise<void>;
   /** The customer accepted, rejected or countered the quote: the owner is told. */
   quoteAnswered(client: DbClient, quoteId: string): Promise<void>;
+  /** The owner put a change order to the customer: they are asked to approve or reject it (4.3). */
+  changeOrderProposed(client: DbClient, changeOrderId: string): Promise<void>;
   /** A visit was planned (a site visit, or the work once its time is confirmed) or moved: the customer is told when. */
   visitPlanned(client: DbClient, appointmentId: string): Promise<void>;
   /** The owner set out for a planned visit: the customer is told. */
@@ -284,6 +286,37 @@ export function createNotices(deps: NoticesDeps): Notices {
           vars,
         },
         `quote.response:${quoteId}`,
+      );
+    },
+
+    async changeOrderProposed(client, changeOrderId) {
+      const { rows } = await client.query<
+        JobFacts & { currency: string; change_number: number; total_minor: string }
+      >(
+        `select ${JOB_COLUMNS}, b.currency, o.number as change_number, o.total_minor
+         from kk.change_order o
+         join kk.job j on j.business_id = o.business_id and j.id = o.job_id
+         ${JOB_JOINS}
+         where o.id = $1 and o.status = 'proposed'`,
+        [changeOrderId],
+      );
+      const order = rows[0];
+      if (!order) throw new Error(`notices: change order ${changeOrderId} is not proposed here`);
+      await notify.send(
+        client,
+        {
+          businessId: order.business_id,
+          template: "change_order.proposed",
+          ...(await forCustomer(client, order)),
+          vars: {
+            customerName: order.customer_name,
+            businessName: order.business_name,
+            number: `#${order.number}`,
+            total: formatMoney(money(Number(order.total_minor), order.currency)),
+            link: customerLink(order),
+          },
+        },
+        `change_order.proposed:${changeOrderId}`,
       );
     },
 

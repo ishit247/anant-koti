@@ -1,4 +1,5 @@
 // How the owner's pages name a job's state and source, and show when it arrived.
+import type { ChangeOrderStatus } from "./change-order.ts";
 import type { JobSource } from "./inbox.ts";
 import type { JobStatus } from "./job.ts";
 import type { Quote, QuoteStatus } from "./quote.ts";
@@ -44,6 +45,15 @@ export function quoteTone(quote: Pick<Quote, "status" | "expired">): "go" | "wai
     ? "wait"
     : "";
 }
+
+/** A change order's chip (4.3): its label and colour. */
+export const CHANGE_LABEL: Record<ChangeOrderStatus, { label: string; tone: "go" | "wait" | "" }> =
+  {
+    draft: { label: "Draft, not sent", tone: "" },
+    proposed: { label: "Waiting for approval", tone: "wait" },
+    approved: { label: "Approved", tone: "go" },
+    rejected: { label: "Turned down", tone: "" },
+  };
 
 const QUOTE_LABEL: Record<QuoteStatus, string> = {
   draft: "Draft",

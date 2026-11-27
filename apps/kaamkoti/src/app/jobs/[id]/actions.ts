@@ -3,6 +3,7 @@ import { defineRoute } from "@bodhchakra/tenancy";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { cancelJob } from "../../../cancel.ts";
+import { openChangeDraft } from "../../../change-order.ts";
 import { requireMember } from "../../../guard.ts";
 import { openDraft } from "../../../quote.ts";
 import {
@@ -161,4 +162,26 @@ export async function startQuote(
     };
   }
   redirect(`/jobs/${jobId.data}/quote`);
+}
+
+/** Opens the job's change-order draft (a new one if none is open) and goes to the editor (4.3). */
+export async function startChange(
+  _previous: StartQuoteState,
+  form: FormData,
+): Promise<StartQuoteState> {
+  const jobId = z.uuid().safeParse(form.get("jobId"));
+  if (!jobId.success) return { error: "That request was not found." };
+  const owner = await requireMember(route, `/jobs/${jobId.data}`);
+  const result = await server().db.withTenant(owner.businessId, (client) =>
+    openChangeDraft(client, owner, jobId.data),
+  );
+  if (!result.ok) {
+    return {
+      error:
+        result.error === "closed"
+          ? "Extra work can be priced only between acceptance and completion."
+          : "That request was not found.",
+    };
+  }
+  redirect(`/jobs/${jobId.data}/change`);
 }

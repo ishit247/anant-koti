@@ -1,7 +1,13 @@
 "use client";
 import { useActionState, useState, useTransition } from "react";
 import type { ChecklistResult } from "../../../work.ts";
-import { checkInAction, completeAction, tickAction, type WorkState } from "./actions.ts";
+import {
+  checkInAction,
+  completeAction,
+  foundWorkAction,
+  tickAction,
+  type WorkState,
+} from "./actions.ts";
 
 function Refusal({ state }: { state: WorkState }) {
   return state.error ? (
@@ -82,6 +88,39 @@ export function Checklist({
         </p>
       ) : null}
     </form>
+  );
+}
+
+/**
+ * Extra work found on site (4.3). It is not to be done yet: the owner prices it and the customer approves it
+ * first. Behind a tap, so the sheet stays short.
+ */
+export function FoundWork({ jobId }: { jobId: string }) {
+  const [state, action, pending] = useActionState<WorkState, FormData>(foundWorkAction, {});
+  return (
+    <details className="card">
+      <summary>Found more work?</summary>
+      <form action={action} className="stack">
+        <input type="hidden" name="jobId" value={jobId} />
+        <label>
+          What needs doing
+          <input name="title" required maxLength={120} autoComplete="off" />
+        </label>
+        <label>
+          Details (optional)
+          <textarea name="details" maxLength={1000} rows={3} />
+        </label>
+        <Refusal state={state} />
+        {state.saved ? (
+          <p className="muted small" role="status">
+            Added. The office prices it for the customer to approve; wait for that before doing it.
+          </p>
+        ) : null}
+        <button type="submit" className="quiet" disabled={pending}>
+          {pending ? "Adding…" : "Add for approval"}
+        </button>
+      </form>
+    </details>
   );
 }
 

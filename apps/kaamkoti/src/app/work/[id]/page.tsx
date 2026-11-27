@@ -6,7 +6,7 @@ import { formatTime, formatWhen, STATUS_LABEL, statusTone } from "../../../job-l
 import { server } from "../../../server.ts";
 import { MAX_WORK_PHOTOS, workSheet } from "../../../work.ts";
 import { OwnerNav } from "../../owner-nav.tsx";
-import { CheckIn, Checklist, Complete } from "./work-forms.tsx";
+import { CheckIn, Checklist, Complete, FoundWork } from "./work-forms.tsx";
 
 // The job sheet: what the person doing the work needs on site. The id in the path is only a lookup key: the job
 // is read inside the member's own business and, for a technician, only on a work visit given to them
@@ -87,6 +87,9 @@ export default async function WorkSheetPage({
             {sheet.items.map((item) => (
               <li key={item.id} className="card">
                 <strong>{item.title}</strong>
+                {item.status === "requested" || item.status === "quoted" ? (
+                  <span className="chip wait">Extra · not approved yet, do not start</span>
+                ) : null}
                 {item.details ? <span>{item.details}</span> : null}
                 {item.photos.length > 0 ? (
                   <div className="photos">
@@ -104,6 +107,7 @@ export default async function WorkSheetPage({
               </li>
             ))}
           </ul>
+          {underWay ? <FoundWork jobId={sheet.jobId} /> : null}
         </section>
 
         {sheet.checklist.length > 0 ? (

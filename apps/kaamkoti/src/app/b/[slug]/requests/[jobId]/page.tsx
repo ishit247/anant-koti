@@ -2,6 +2,12 @@ import { IMAGE_TYPES } from "@bodhchakra/storage";
 import { defineRoute } from "@bodhchakra/tenancy";
 import { notFound } from "next/navigation";
 import { addressBook, MAX_ADDRESS, MAX_ADDRESSES, MAX_LABEL } from "../../../../../address-book.ts";
+import {
+  agreedWork,
+  CHANGEABLE,
+  changeOrders,
+  OPEN_FOR_WORK,
+} from "../../../../../change-order.ts";
 import { customerContact } from "../../../../../customer-space.ts";
 import { depositPayable, jobDeposit } from "../../../../../deposit.ts";
 import { withCustomer } from "../../../../../guard.ts";
@@ -21,12 +27,14 @@ import { BusinessHeader } from "../../../../business-header.tsx";
 import { CustomerNav } from "../../../../customer-nav.tsx";
 import { WorkItems } from "../../../../work-items.tsx";
 import { RequestForm } from "../../request/request-form.tsx";
+import { ChangeAnswer } from "./change-answer.tsx";
 import { DepositPay } from "./deposit-pay.tsx";
 import { QuoteAnswer } from "./quote-answer.tsx";
 import { VisitAnswer } from "./visit-answer.tsx";
 
 // One of the signed-in customer's own requests (D15): the work's time once proposed (posting to ./visit), the
-// quote with its answer forms (posting to ./answer), the deposit once accepted (posting to ./pay), and
+// quote with its answer forms (posting to ./answer), the deposit once accepted (posting to ./pay), extra work
+// once accepted (approving a change order posts to ./change, asking for more to ./more; 4.3), and
 // the new-request screens over its work items until a quote is accepted (posting to ./edit); after that, the
 // items with their photos. Another customer's or business's id answers 404.
 // biome-ignore lint/correctness/noUnusedVariables: read by scanRoutes, which scans the source text
@@ -60,24 +68,29 @@ export default async function RequestDetail({
     answer?: string | string[];
     visit?: string | string[];
     pay?: string | string[];
+    change?: string | string[];
+    more?: string | string[];
   }>;
 }) {
   const { slug, jobId } = await params;
-  const { result, error, answer, visit, pay } = await searchParams;
+  const { result, error, answer, visit, pay, change, more } = await searchParams;
   const space = `/b/${encodeURIComponent(slug)}`;
   const { db, storage, payments } = server();
-  const { job, own, book, deposit } = await withCustomer(
+  const { job, own, book, deposit, orders, agreed } = await withCustomer(
     slug,
     `${space}/requests/${jobId}`,
     async (client, customer) => {
       const job = customer ? await customerRequest(client, customer, jobId) : null;
-      if (!customer || !job) return { job: null, own: null, book: [], deposit: null };
+      if (!customer || !job)
+        return { job: null, own: null, book: [], deposit: null, orders: [], agreed: null };
       return {
         job,
         own: await customerContact(client, customer),
         book: await addressBook(client, customer),
         // Only after the job was found under this customer.
         deposit: await jobDeposit(client, payments, customer.businessId, job.id),
+        orders: await changeOrders(client, job.id, true),
+        agreed: await agreedWork(client, job.id),
       };
     },
   );
@@ -128,6 +141,18 @@ export default async function RequestDetail({
           businessName={page.name}
           action={`${space}/requests/${job.id}/pay`}
           said={typeof pay === "string" ? pay : undefined}
+        />
+      ) : null}
+      {agreed && job.status !== "cancelled" ? (
+        <ChangeAnswer
+          orders={orders}
+          agreed={agreed}
+          answerable={CHANGEABLE.includes(job.status)}
+          askable={OPEN_FOR_WORK.includes(job.status)}
+          businessName={page.name}
+          changeAction={`${space}/requests/${job.id}/change`}
+          moreAction={`${space}/requests/${job.id}/more`}
+          said={typeof change === "string" ? change : typeof more === "string" ? more : undefined}
         />
       ) : null}
       {job.editable ? (
@@ -205,6 +230,7 @@ export default async function RequestDetail({
               items={job.items}
               sign={(photo) => storage.signedUrl(photo)}
               photoAlt="Sent with your request"
+              accepted={agreed !== null}
             />
           </section>
         </div>

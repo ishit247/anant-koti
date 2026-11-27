@@ -115,6 +115,26 @@ export const kaamkoti = {
       params: (v) => [v.customerName, v.businessName, v.total, v.validUntil, v.link],
     },
   }),
+  /** To the customer: the business priced work added after the quote was accepted, for them to approve (4.3). */
+  "change_order.proposed": defineTemplate({
+    vars: z.object({ customerName: text, businessName: text, number, total: text, link }),
+    email: (v) => ({
+      subject: `Extra work on request ${v.number}: ${v.total}`,
+      text:
+        `Hello ${v.customerName},\n\n` +
+        `${v.businessName} has priced extra work on request ${v.number} at ${v.total}. ` +
+        `Nothing is added to your bill unless you approve it.\n\n` +
+        `See the details and answer here:\n${v.link}\n\n${SIGN_IN}`,
+    }),
+    whatsapp: {
+      name: "kaamkoti_change_order_proposed",
+      body:
+        "Hello {{1}}, {{2}} has priced extra work on request {{3}} at {{4}}. " +
+        "Nothing is added to your bill unless you approve it.\n\n" +
+        `See the details and answer here: {{5}}\n\n${WA_SIGN_IN}`,
+      params: (v) => [v.customerName, v.businessName, v.number, v.total, v.link],
+    },
+  }),
   /** To the owner: the customer's answer to a quote. A counter carries the price they offered. */
   "quote.response": defineTemplate({
     vars: z.discriminatedUnion("answer", [

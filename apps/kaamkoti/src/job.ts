@@ -154,6 +154,8 @@ export interface WorkItem {
   readonly details: string | null;
   /** From the price list, so priced at its price; otherwise the business proposes one. */
   readonly listed: boolean;
+  /** Where it stands: after acceptance, `requested` or `quoted` work is not agreed yet (a change order, 4.3). */
+  readonly status: "requested" | "quoted" | "approved" | "done";
   /** Storage keys; the page signs a URL for each. */
   readonly photos: readonly { readonly key: string }[];
 }
@@ -165,8 +167,9 @@ export async function workItems(client: DbClient, jobId: string): Promise<WorkIt
     title: string;
     details: string | null;
     listed: boolean;
+    status: WorkItem["status"];
   }>(
-    `select id, title, details, catalogue_item_id is not null as listed from kk.job_task
+    `select id, title, details, catalogue_item_id is not null as listed, status from kk.job_task
      where job_id = $1 and status <> 'dropped' order by added_at, id`,
     [jobId],
   );

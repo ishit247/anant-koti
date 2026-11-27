@@ -31,6 +31,17 @@ export {
   startFromTemplate,
 } from "./business-profile.ts";
 export { cancelJob } from "./cancel.ts";
+export {
+  type AgreedWork,
+  agreedWork,
+  answerChangeOrder,
+  askForMoreWork,
+  type ChangeOrder,
+  changeOrders,
+  openChangeDraft,
+  proposeChangeOrder,
+  saveChangeDraft,
+} from "./change-order.ts";
 export { PRIVATE_BUCKET } from "./config.ts";
 export {
   type CustomerJobRow,
@@ -147,6 +158,7 @@ export {
   type TradeTemplate,
 } from "./trade-template.ts";
 export {
+  addFoundWork,
   addWorkPhotos,
   type ChecklistResult,
   checkIn,

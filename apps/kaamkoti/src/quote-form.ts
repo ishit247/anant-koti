@@ -1,6 +1,7 @@
 // The quote editor sends parallel fields (task, item, description, unit, quantity, price, tax), one value per
 // line, plus the deposit, the validity and which button was pressed. This is the edge: it turns them into
-// lines for saveDraft, or one plain message for the owner. Amounts are typed in rupees and percent.
+// lines for saveDraft (or saveChangeDraft), or one plain message for the owner. Amounts are typed in rupees and
+// percent.
 import { minorDigits, parseDecimal } from "@bodhchakra/money";
 import { z } from "zod";
 import {
@@ -45,22 +46,23 @@ const decimal = (places: number, min: number, max: number) =>
     return value;
   });
 
-export function readQuoteForm(form: FormData, currency: string): QuoteForm {
+type Row = TypedQuote["rows"][number];
+
+/**
+ * The editor's lines, as typed and as lines; a change order (4.3) has only these. `error` is one message for the
+ * owner naming the first line that is not usable.
+ */
+export function readLines(
+  form: FormData,
+  currency: string,
+):
+  | { readonly ok: true; readonly rows: Row[]; readonly lines: QuoteLineInput[] }
+  | { readonly ok: false; readonly rows: Row[]; readonly error: string } {
   const columns = FIELDS.map((field) => form.getAll(field).map(String));
   const rows = (columns[0] ?? []).map(
-    (_, i) =>
-      Object.fromEntries(FIELDS.map((field, c) => [field, columns[c]?.[i] ?? ""])) as Record<
-        (typeof FIELDS)[number],
-        string
-      >,
+    (_, i) => Object.fromEntries(FIELDS.map((field, c) => [field, columns[c]?.[i] ?? ""])) as Row,
   );
-  const typed: TypedQuote = {
-    rows,
-    deposit: String(form.get("deposit") ?? ""),
-    valid: String(form.get("valid") ?? ""),
-  };
-  const refuse = (error: string) => ({ ok: false as const, error, typed });
-
+  const refuse = (error: string) => ({ ok: false as const, rows, error });
   const places = minorDigits(currency);
   const line = z.strictObject({
     task: optionalId,
@@ -95,6 +97,20 @@ export function readQuoteForm(form: FormData, currency: string): QuoteForm {
       taxRateBp: tax,
     });
   }
+  return { ok: true, rows, lines };
+}
+
+export function readQuoteForm(form: FormData, currency: string): QuoteForm {
+  const read = readLines(form, currency);
+  const typed: TypedQuote = {
+    rows: read.rows,
+    deposit: String(form.get("deposit") ?? ""),
+    valid: String(form.get("valid") ?? ""),
+  };
+  const refuse = (error: string) => ({ ok: false as const, error, typed });
+  if (!read.ok) return refuse(read.error);
+  const { lines } = read;
+  const places = minorDigits(currency);
   const deposit = decimal(places, 0, 100_000_000_000).safeParse(typed.deposit.trim() || "0");
   if (!deposit.success) return refuse("The deposit must be an amount like 500, or left empty.");
   const valid = z.coerce

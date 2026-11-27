@@ -8,6 +8,7 @@ import { jobTasks } from "../../../../job.ts";
 import { ownerQuotes, QUOTE_VALID_DAYS } from "../../../../quote.ts";
 import { server } from "../../../../server.ts";
 import { OwnerNav } from "../../../owner-nav.tsx";
+import { saveQuoteAction } from "./actions.ts";
 import { type Draft, QuoteEditor } from "./quote-editor.tsx";
 
 // The id in the path is only a lookup key: the job, its draft and the price list are read inside withTenant of
@@ -68,6 +69,8 @@ export default async function QuotePage({ params }: { params: Promise<{ id: stri
         Prices are before tax. Lines for the whole request are charges or discounts.
       </p>
       <QuoteEditor
+        kind="quote"
+        save={saveQuoteAction}
         jobId={id.data}
         jobNumber={data.number}
         businessName={data.business.name}

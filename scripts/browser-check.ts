@@ -10,7 +10,9 @@
 // connects Razorpay (a local stand-in on 45451, and the browser answers its pages); she pays the deposit, which
 // shows as paid only once the signed webhook arrives, and cancelling a second job cancels its open link. A seeded
 // customer signs in on the bare domain and sees only her own request; intake answers 429 past its per-IP limit.
-// The seeded technician checks in on today's job, ticks the checklist, adds a photo and completes it (4.2).
+// She asks for more work after accepting; the owner prices it in change orders, one approved and one turned
+// down (4.3). The seeded technician checks in on today's job, ticks the checklist, adds a photo, records extra
+// work found and completes it (4.2, 4.3).
 // Each page is screenshotted at phone and desktop width into .validation/browser/; the run fails on a console
 // error, a page wider than the viewport, or a cookie on the public page.
 import { createHmac } from "node:crypto";
@@ -714,6 +716,79 @@ try {
     problems.push("the owner's job does not show the deposit paid");
   await shoot(page, "13p-job-deposit-paid");
 
+  // Extra work (4.3). She asks for more on her accepted request; the owner is told, prices it in a change order
+  // and sends it; her approval adds it to what is agreed. A second one, a custom line, she turns down, and the
+  // agreed total stays. The answer route refuses another site's post and another customer's or business's job.
+  await form.goto(requestPage);
+  await form.getByText("Ask for more work").click();
+  await form.fill("input[name=title]", "Fix the dripping tap");
+  await form.getByRole("button", { name: /^Send to / }).click();
+  await form.getByRole("status").filter({ hasText: "will price it" }).waitFor();
+  await expectMail(email, /changed request #\d+$/, "the owner's notice of added work");
+  await page.goto(jobUrl);
+  if (!(await page.getByText("waiting for a price").count()))
+    problems.push("the owner's job does not mark the added work as waiting for a price");
+  await shoot(page, "13p1-job-extra-work-asked");
+  await page.getByRole("button", { name: "Price extra work" }).click();
+  await page.waitForURL(/\/change$/);
+  await page.locator("button.tile", { hasText: "Fix the dripping tap" }).click();
+  await page.locator(".sheet:not([hidden]) input[name=price]").fill("500");
+  await page.getByRole("button", { name: "Done" }).click();
+  await shoot(page, "13p2-change-order-editor");
+  await page.getByRole("button", { name: "Send for approval" }).click();
+  await page.getByRole("status").filter({ hasText: "is sent" }).waitFor();
+  await expectMail(customerEmail, /^Extra work on request #\d+: ₹500\.00$/, "the change order");
+  await form.goto(requestPage);
+  const changeOrder = await form.locator("input[name=changeOrder]").first().inputValue();
+  await shoot(form, "13p3-customer-change-order");
+  const changeTo = (s: string, id: string) => `${PUBLIC}/b/${s}/requests/${id}/change`;
+  const crossSiteChange = await customer.request.post(changeTo(slug, jobId), {
+    headers: { "sec-fetch-site": "cross-site", origin: PUBLIC },
+    form: { changeOrder, answer: "approve" },
+    maxRedirects: 0,
+  });
+  if (crossSiteChange.status() !== 403)
+    problems.push(`a cross-site answer to a change order answered ${crossSiteChange.status()}`);
+  for (const [whose, s, id] of [
+    ["another business's", "sharma-cooling", jobId],
+    ["another customer's", "sharma-cooling", SHARMA_2],
+  ] as const) {
+    const answered = await customer.request.post(changeTo(s, id), {
+      headers: { "sec-fetch-site": "same-origin" },
+      form: { changeOrder, answer: "approve" },
+      maxRedirects: 0,
+    });
+    if (answered.status() !== 404)
+      problems.push(`an answer to ${whose} change order answered ${answered.status()}`);
+  }
+  await form.getByRole("button", { name: "Approve · ₹500.00" }).click();
+  await form.getByRole("status").filter({ hasText: "Approved." }).waitFor();
+  const agreedText = await form.locator("p.row.total", { hasText: "Agreed in all" }).textContent();
+  if (!agreedText?.includes("extra work 1"))
+    problems.push(`after approval the request shows ${JSON.stringify(agreedText)} as agreed`);
+  await shoot(form, "13p4-customer-change-approved");
+  await page.goto(jobUrl);
+  await page.getByRole("button", { name: "Price extra work" }).click();
+  await page.waitForURL(/\/change$/);
+  await page.getByRole("button", { name: "Custom line" }).click();
+  await page.locator(".sheet:not([hidden]) input[name=description]").fill("Replace the valve");
+  await page.locator(".sheet:not([hidden]) input[name=price]").fill("1200");
+  await page.getByRole("button", { name: "Done" }).click();
+  await page.getByRole("button", { name: "Send for approval" }).click();
+  await page.getByRole("status").filter({ hasText: "is sent" }).waitFor();
+  await form.goto(requestPage);
+  await form.getByText("Turn this down").click();
+  await form.getByRole("button", { name: "Yes, turn it down" }).click();
+  await form.getByRole("status").filter({ hasText: "will not charge" }).waitFor();
+  if (
+    (await form.locator("p.row.total", { hasText: "Agreed in all" }).textContent()) !== agreedText
+  )
+    problems.push("a turned-down change order changed what is agreed");
+  await page.goto(jobUrl);
+  if (!(await page.getByText("Turned down").count()))
+    problems.push("the owner's job does not show the turned-down change order");
+  await shoot(page, "13p5-job-change-orders");
+
   // Cancelling a job cancels its open link (4.1b): a second request, quoted with a ₹200 deposit and accepted;
   // she opens the Razorpay page but does not pay, and the owner cancels the request.
   payOnOpen = false;
@@ -966,9 +1041,16 @@ try {
   });
   await field.getByRole("button", { name: "Add photos" }).click();
   await field.locator("img[alt='Before the work']").waitFor();
+  // Extra work found on site (4.3): it waits for the owner's price and the customer's approval.
+  await field.getByText("Found more work?").click();
+  await field.fill("input[name=title]", "Drain pipe cracked");
+  await field.getByRole("button", { name: "Add for approval" }).click();
+  await field.getByRole("status").filter({ hasText: "wait for that" }).waitFor();
   await field.reload();
   if ((await field.locator("input[name=done]:checked").count()) !== 2)
     problems.push("the job sheet did not keep the checklist ticks");
+  if (!(await field.getByText("not approved yet").count()))
+    problems.push("the job sheet does not mark found work as not approved");
   await shoot(field, "17c-job-sheet-under-way");
   const forged = await imran.request.post(`${APP}/work/${QUOTED_JOB}/photos`, {
     headers: { "sec-fetch-site": "same-origin" },

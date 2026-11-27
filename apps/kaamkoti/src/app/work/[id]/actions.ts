@@ -1,10 +1,18 @@
 "use server";
 import { defineRoute } from "@bodhchakra/tenancy";
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { extraWorkInput } from "../../../change-order.ts";
 import { requireMember } from "../../../guard.ts";
 import { server } from "../../../server.ts";
-import { checkIn, completeWork, tickChecklist, type WorkError } from "../../../work.ts";
+import {
+  addFoundWork,
+  checkIn,
+  completeWork,
+  tickChecklist,
+  type WorkError,
+} from "../../../work.ts";
 
 // The job id comes from the form and is only a lookup key: work.ts finds the job inside the member's own
 // business and, for a technician, only on a work visit given to them (architecture 4.3).
@@ -48,6 +56,29 @@ export async function tickAction(_previous: WorkState, form: FormData): Promise<
     tickChecklist(client, found.member, found.jobId, done),
   );
   return result.ok ? { saved: true } : { error: WORK_ERROR[result.error] };
+}
+
+/** Extra work found on site, for the owner to price and the customer to approve (4.3). */
+export async function foundWorkAction(_previous: WorkState, form: FormData): Promise<WorkState> {
+  const found = await worker(form);
+  if (!found) return { error: WORK_ERROR.not_found };
+  const work = extraWorkInput.safeParse({
+    title: String(form.get("title") ?? ""),
+    details: String(form.get("details") ?? ""),
+  });
+  if (!work.success) return { error: "Say what the extra work is, in a few words." };
+  const result = await server().db.withTenant(found.member.businessId, (client) =>
+    addFoundWork(client, found.member, found.jobId, work.data),
+  );
+  if (!result.ok)
+    return {
+      error:
+        result.error === "items"
+          ? "This job has as many work items as it can take."
+          : WORK_ERROR[result.error],
+    };
+  revalidatePath(`/work/${found.jobId}`);
+  return { saved: true };
 }
 
 /** The work is done: the job is complete, with the technician's note for the owner. */

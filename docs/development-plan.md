@@ -4,7 +4,18 @@ What we are building: [product-brief.md](product-brief.md). Shared modules:
 [platform-modules.md](platform-modules.md). The design is in [architecture.md](architecture.md);
 its first table says which sections each step reads.
 
-**Current position:** 4.2 done (2026-11-27): job execution. A technician's home lists the work given to them;
+**Current position:** 4.3 done (2026-11-27): change orders. Work added after acceptance — asked for by the
+customer on their job page (`…/more`, until complete) or found on site on the job sheet ("Found more work?",
+while `in_progress`) — is a task waiting for a price, marked "do not start" on the sheet. Only the owner prices it:
+`/jobs/<id>/change` (the quote editor, no deposit or validity) makes a change order (`0010_change_order.sql`,
+frozen once proposed by triggers, one waiting at a time) and `change_order.proposed` goes to the customer, who
+approves or turns it down on their page (`…/change`, scope `customer`); a turned-down one drops its tasks.
+`agreedWork` (`src/change-order.ts`) is the accepted quote plus approved change orders only: 4.4's invoice copies
+it. Verified: kaamkoti 229 (13 new), platform 64, typecheck, biome clean on the changed files; 5 mutants killed
+(agreed counting unapproved, answer without the customer check, proposed not frozen, found work outside
+`in_progress`, more work on another customer's job); `check:browser` passed on a fresh stack. **Next: 4.4
+(HIGH)** in a fresh session.
+Before it, 4.2 done (2026-11-27): job execution. A technician's home lists the work given to them;
 the job sheet `/work/<jobId>` (scope `member`, owner and technician; `src/work.ts`, whose one query applies the
 "assigned to me" rule, so another technician's job is a 404) checks in (`scheduled → in_progress`, new table
 `kk.job_visit` with the business's checklist copied), saves each tick, takes before/after photos
@@ -379,7 +390,7 @@ also write the module's README, and their tests run through the module's public 
 | 4.1a | `[module]` `payments` (D5, split from 4.1 2026-11-27): tables, encrypted account, Razorpay adapter (payment link create and cancel, webhook signature), `handleWebhook` verified and deduplicated, idempotent recording, part-payments summed, `recordManual` | M    | HIGH     | done   | Replayed and forged webhooks are rejected; paid state comes only from the webhook (real Postgres, local fake provider) |
 | 4.1b | Kaam Koti wiring: owner connects Razorpay in settings, webhook route (`provider-webhook` scope), deposit link on accept, customer pays from their space, open links cancelled with the job, `payment.received` notify                                         | M    | HIGH     | done   | A deposit paid through a webhook shows on the job at 375 px; cancelling a job cancels its open link                    |
 | 4.2  | Job execution (basic): check-in, checklist, photos, mark complete                                                                                                                                                                                             | M    | STANDARD | done   | Technician completes a job at 375 px                                                                                   |
-| 4.3  | Change orders: extra work found on site or tasks the customer adds after acceptance; business prices, customer re-approves                                                                                                                                    | M    | HIGH     | todo   | Invoice includes only approved change orders                                                                           |
+| 4.3  | Change orders: extra work found on site or tasks the customer adds after acceptance; business prices, customer re-approves                                                                                                                                    | M    | HIGH     | done   | Invoice includes only approved change orders                                                                           |
 | 4.4  | Invoice from accepted quote plus change orders; cash payment recorded by the owner                                                                                                                                                                            | M    | HIGH     | todo   | Invoice totals match the tests; a paid invoice is immutable                                                            |
 
 ## Phase 5: Subscription for tradespeople

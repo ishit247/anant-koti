@@ -3,7 +3,7 @@ import { useActionState, useRef, useState } from "react";
 import { UNITS } from "../../../../trade-template.ts";
 import { Icon } from "../../../icons.tsx";
 import { ShareLink } from "../../../share-link.tsx";
-import { type QuoteEditorState, saveQuoteAction } from "./actions.ts";
+import type { QuoteEditorState } from "./actions.ts";
 
 /** One line as form text: rupees and percent as the owner types them. */
 export interface LineRow {
@@ -50,7 +50,13 @@ const custom = (rows: readonly LineRow[]): LineRow => ({
   tax: rows[0]?.tax ?? "0",
 });
 
+/**
+ * The lines editor of a quote draft, or of a change order's (4.3), which has only lines: no deposit and no
+ * validity. `save` is the server action that saves, and sends if asked.
+ */
 export function QuoteEditor({
+  kind,
+  save,
   jobId,
   jobNumber,
   businessName,
@@ -59,6 +65,8 @@ export function QuoteEditor({
   items,
   validDays,
 }: {
+  kind: "quote" | "change";
+  save: (previous: QuoteEditorState, form: FormData) => Promise<QuoteEditorState>;
   /** The validity choices, in days (QUOTE_VALID_DAYS; passed in so this file imports no server module). */
   validDays: readonly number[];
   jobId: string;
@@ -69,7 +77,8 @@ export function QuoteEditor({
   tasks: readonly { readonly id: string; readonly title: string }[];
   items: readonly PriceListItem[];
 }) {
-  const [state, action, pending] = useActionState<QuoteEditorState, FormData>(saveQuoteAction, {});
+  const [state, action, pending] = useActionState<QuoteEditorState, FormData>(save, {});
+  const quote = kind === "quote";
   const [rows, setRows] = useState(() => keyed(draft?.rows ?? []));
   const [pick, setPick] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
@@ -93,12 +102,17 @@ export function QuoteEditor({
     return (
       <>
         <p role="status">
-          Version {state.sent.version} is sent. The customer sees it on their request page:
+          {quote ? `Version ${state.sent.version}` : `Extra work ${state.sent.version}`} is sent.
+          The customer sees it on their request page:
         </p>
         <ShareLink
           link={state.sent.link}
           label="Customer link"
-          message={`${businessName}: your quote for request #${jobNumber}:`}
+          message={
+            quote
+              ? `${businessName}: your quote for request #${jobNumber}:`
+              : `${businessName}: extra work on request #${jobNumber}, for your approval:`
+          }
         />
         <p>
           <a href={`/jobs/${jobId}`}>← Back to the request</a>
@@ -109,8 +123,8 @@ export function QuoteEditor({
   if (!draft) {
     return (
       <p className="empty">
-        No draft is open. <a href={`/jobs/${jobId}`}>Go back to the request</a> to write or revise
-        the quote.
+        No draft is open. <a href={`/jobs/${jobId}`}>Go back to the request</a> to{" "}
+        {quote ? "write or revise the quote" : "price extra work"}.
       </p>
     );
   }
@@ -163,7 +177,7 @@ export function QuoteEditor({
   return (
     <form action={action} key={round}>
       <input type="hidden" name="jobId" value={jobId} />
-      <input type="hidden" name="quoteId" value={draft.id} />
+      <input type="hidden" name={quote ? "quoteId" : "changeOrderId"} value={draft.id} />
       <div className="stack" hidden={editing !== null}>
         <section className="panel" aria-labelledby="lines-title">
           <h2 id="lines-title">
@@ -210,25 +224,29 @@ export function QuoteEditor({
         </section>
 
         <section className="panel" aria-labelledby="terms-title">
-          <h2 id="terms-title">Terms</h2>
-          <label>
-            Deposit to book (₹), optional
-            <input
-              name="deposit"
-              defaultValue={typed?.deposit ?? draft.deposit}
-              inputMode="decimal"
-            />
-          </label>
-          <label>
-            Valid for
-            <select name="valid" defaultValue={typed?.valid || "7"}>
-              {validDays.map((days) => (
-                <option key={days} value={days}>
-                  {days} days
-                </option>
-              ))}
-            </select>
-          </label>
+          <h2 id="terms-title">{quote ? "Terms" : "Total"}</h2>
+          {quote ? (
+            <>
+              <label>
+                Deposit to book (₹), optional
+                <input
+                  name="deposit"
+                  defaultValue={typed?.deposit ?? draft.deposit}
+                  inputMode="decimal"
+                />
+              </label>
+              <label>
+                Valid for
+                <select name="valid" defaultValue={typed?.valid || "7"}>
+                  {validDays.map((days) => (
+                    <option key={days} value={days}>
+                      {days} days
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          ) : null}
           <dl className="facts">
             <div>
               <dt>Saved total</dt>
@@ -241,7 +259,8 @@ export function QuoteEditor({
             </div>
           </dl>
           <p className="hint">
-            Save to update the total. The customer sees nothing until you send.
+            Save to update the total. The customer sees nothing until you send
+            {quote ? "." : ", and pays for it only if they approve."}
           </p>
         </section>
 
@@ -256,7 +275,7 @@ export function QuoteEditor({
             {pending ? "Saving…" : "Save draft"}
           </button>
           <button type="submit" name="intent" value="send" disabled={pending}>
-            {pending ? "Sending…" : "Send quote"}
+            {pending ? "Sending…" : quote ? "Send quote" : "Send for approval"}
           </button>
         </div>
       </div>

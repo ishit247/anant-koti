@@ -164,13 +164,13 @@ There is one owner per business in the MVP. More roles (manager, branch) arrive 
 
 A permission answers _what_ the role may do. Scope answers _whose_ row it is. Both are checked.
 
-| Action                                                           | Owner | Technician                                     |
-| ---------------------------------------------------------------- | ----- | ---------------------------------------------- |
-| Business settings, catalogue, members, billing                   | yes   | no                                             |
-| Requests, quotes, change-order pricing, invoices, cash payments  | yes   | no                                             |
-| Schedule and assign                                              | yes   | no                                             |
-| View a job                                                       | all   | only jobs with an appointment assigned to them |
-| Check in, checklist, photos, propose change order, mark complete | yes   | assigned jobs only                             |
+| Action                                                              | Owner | Technician                                     |
+| ------------------------------------------------------------------- | ----- | ---------------------------------------------- |
+| Business settings, catalogue, members, billing                      | yes   | no                                             |
+| Requests, quotes, change-order pricing, invoices, cash payments     | yes   | no                                             |
+| Schedule and assign                                                 | yes   | no                                             |
+| View a job                                                          | all   | only jobs with an appointment assigned to them |
+| Check in, checklist, photos, record extra work found, mark complete | yes   | assigned jobs only                             |
 
 - RLS gives business scope. The technician rule ("assigned to me") is an explicit check in the job query helper,
   and it is tested.
@@ -218,8 +218,8 @@ Each module's own section in 12 lists its tables. Section 4.1 covers tenancy.
 | `quote_line`        | `job_id`, `quote_id`, `position`, `job_task_id` (nullable: null = request-level charge), `catalogue_item_id` (nullable), `description`, `unit`, `quantity_milli`, `unit_price_minor`, `tax_rate_bp`, `net_minor`, `tax_minor`. Composite keys carry `job_id`, so a line prices only a task of its own quote's job                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `appointment`       | `job_id`, `kind` (`site_visit`, `work`), `technician_member_id`, `starts_at`, `ends_at`, `status` (`proposed`, `planned`, `declined`, `done`, `cancelled`), `customer_note`, `answered_at`, `on_the_way_at`. A site visit is `planned` at once; the work's time is `proposed` by the owner and `planned` once the customer confirms it, or `declined` with their note (3.1b). A proposed time holds the technician's slot like a planned one; a newer proposal cancels an unanswered one                                                                                                                                                                                                                                                                                                                      |
 | `job_visit`         | The work on site (4.2), one per job: `job_id`, `appointment_id` (the planned work visit), `checked_in_at`, `checklist` (the business's items copied at check-in, each with `done`), `completed_at`, `note`. Who checked in and completed is in the audit. Found through `work.ts`, whose one query also applies the technician's "assigned to me" rule (4.3). Ticks and photos only while the job is `in_progress`; at most 12 before and after photos per job                                                                                                                                                                                                                                                                                                                                                |
-| `change_order`      | `job_id`, `number`, `status` (`proposed`, `approved`, `rejected`), totals, `decided_at`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `change_order_line` | Same shape as `quote_line`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `change_order`      | Work priced after acceptance (4.3, `src/change-order.ts`): `job_id`, `number` (1, 2, … per job), `status` (`draft`, `proposed`, `approved`, `rejected`), totals (`net_minor`, `tax_minor`, `total_minor`, at least 0), `proposed_at`, `decided_at`. At most one `draft` and one `proposed` per job. Never deleted                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `change_order_line` | Same shape and `CHECK`s as `quote_line`, with `change_order_id`; composite keys carry `job_id`, so a line prices only a task of its own job                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `invoice`           | `job_id` (unique while not void), `number` (per business, gap-free sequence row), `status` (`issued`, `paid`, `void`), totals, `issued_at`, `paid_at`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `invoice_line`      | Snapshot of the accepted quote's lines plus approved change-order lines                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `job_photo`         | `job_id`, `object_id` → `storage.object`, `kind` (`request`, `before`, `after`), `job_task_id` (the work item it shows; required for `request`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
@@ -229,19 +229,22 @@ Rules the database enforces, not just the code:
 
 - **Sent quotes are immutable** (`kk.quote_guard`, `kk.quote_line_guard`, 2.4). A quote is born a `draft`. Lines
   may be inserted, changed or deleted only while their quote is a draft (the line trigger locks the quote `FOR
-  SHARE`, so a line write and a send wait for each other). Leaving `draft` needs at least one line, and stored
+SHARE`, so a line write and a send wait for each other). Leaving `draft` needs at least one line, and stored
   totals equal to the sums of the lines. After that only `status` moves, forward (2.5): `sent → accepted |
-  rejected | countered` is the customer's answer, the only write of `decided_at` and the counter columns, and
+rejected | countered` is the customer's answer, the only write of `decided_at` and the counter columns, and
   is refused once `valid_until` has passed; `sent | rejected | countered → superseded` is the owner's next
   version, status only. **An accepted quote is locked**: nothing on it or its lines changes again. A counter
   names a total (`counter_total_minor`); its note is optional. The runtime role cannot delete a quote. Partial
   unique indexes allow at most one `draft` and one `sent` quote per job.
+- **Proposed change orders are immutable** (`kk.change_order_guard`, `kk.change_order_line_guard`, 4.3), as sent
+  quotes are: born a `draft`, lines only while a draft, proposing needs lines whose sums are the stored totals,
+  then only `proposed → approved | rejected` (status and `decided_at`). The runtime role cannot delete one.
 - **The accepted quote belongs to its job.** `job.accepted_quote_id` (added in `0007`) has a composite key to
   `quote (business_id, job_id, id)`; a job from `accepted` to `completed` has one, a job before acceptance none.
 - **Line amounts are restated.** `CHECK`s on `quote_line` recompute net and tax with `round(numeric)`, the same
   rule as `lineTotals` (section 8), so a line with wrong arithmetic cannot be stored.
 - **No double booking.** `EXCLUDE USING gist (technician_member_id WITH =, tstzrange(starts_at, ends_at) WITH &&)
-  WHERE (status = 'planned')` (extension `btree_gist`).
+WHERE (status = 'planned')` (extension `btree_gist`).
 - **Paid invoices are immutable.** A trigger refuses changes to an invoice and its lines once `status = 'paid'`,
   except `void` by the owner, which writes an audit event.
 - Invoice lines are copied, not referenced, because an invoice is a document that must not change if anything
@@ -302,9 +305,18 @@ requested ──send quote──▶ quoted ──customer accepts──▶ accep
 - **The customer's list (D15)** groups jobs by state: **Active** is `requested`, `quoted`, `accepted`,
   `scheduled` and `in_progress` (from phase 4 also `completed` with an unpaid invoice); **Completed** is
   `completed`; **Cancelled** is `cancelled`, `declined` and `lost`. Active is the default.
-- A proposed change order needs the customer's approval in their space. It can be approved only while the job is
-  `in_progress` or `completed` and the invoice is not yet issued. The invoice includes only `approved` change
-  orders (4.3).
+- **Change orders (4.3, `src/change-order.ts`).** Work added after acceptance comes two ways: the customer asks
+  for more on their job page (`…/more`, scope `customer`, until the job is complete; the owner is told as for an
+  edit), or the technician or owner records extra work found on site on the job sheet (while `in_progress`).
+  Either is a `job_task` waiting for a price (`requested`; the sheet marks it "do not start"). Only the owner
+  prices: `openChangeDraft` starts a draft with a line per waiting task, edited in the quote's editor
+  (`/jobs/<id>/change`, no deposit or validity), and sending it makes it `proposed` (its tasks `quoted`) and
+  notifies the customer (`change_order.proposed`). The customer approves or turns it down on their job page
+  (`…/change`, scope `customer`, `answerChangeOrder`: the job is looked up under the customer, so another's is
+  404). Approving makes its tasks `approved` (`done` if the job is already complete); turning it down drops them.
+  Change orders are written, sent and answered from `accepted` to `completed`, one waiting at a time, and do not
+  move the job's state; from 4.4 only while the invoice is not yet issued. **What is agreed** (`agreedWork`) is
+  the accepted quote's lines plus the approved change orders' lines, and nothing else; the invoice copies it.
 - A paid invoice is derived, not a job state. It drives the review request (6.1).
 - Each transition is one function, `transitionJob(tx, audit, jobId, { event, actor, acceptedQuoteId?, data? })`
   in `src/job.ts`, backed by the table above (`jobTransition(from, event, role)`; roles `owner`, `technician`,
@@ -401,7 +413,7 @@ that path, the `job` token purpose and the owner's "send a new link".)
 ### 9.1 One pattern: outbox, signed delivery, idempotent receiver
 
 1. A business change and its message are written in **one transaction**: `outbox.enqueue(tx, topic, payload,
-   idempotencyKey)` inserts into `outbox.message` and sends a pg-boss job in the same transaction.
+idempotencyKey)` inserts into `outbox.message` and sends a pg-boss job in the same transaction.
 2. The worker posts the message to the receiver. App → platform goes to `/internal/v1/<topic>`. Platform → app
    goes to the app's internal `/internal/v1/events`.
 3. Each request is signed (`tokens.signRequest`): HMAC-SHA256 over method, path, timestamp and the body's
@@ -463,7 +475,7 @@ receiver code handles provider webhooks, with the provider's signature in place 
 | `appointment.proposed`                                                    | customer                                        | the owner proposes the work's time (3.1b)        |
 | `appointment.response`                                                    | owner                                           | the customer confirms it or asks for another     |
 | `appointment.confirmed`, `appointment.reminder`, `appointment.on_the_way` | customer                                        | planned; 24 h before (3.3b); tapped by the owner |
-| `change_order.proposed`                                                   | customer                                        | technician or owner proposes                     |
+| `change_order.proposed`                                                   | customer                                        | owner sends a change order for approval          |
 | `invoice.issued`, `payment.received`                                      | customer; owner                                 | complete (4.3); a payment recorded by webhook    |
 | `review.request`, `review.held`                                           | customer; owner                                 | invoice paid; low rating                         |
 
@@ -548,13 +560,13 @@ Dependency direction (checked in 0.2): foundation (`config`, `log`, `money`) ←
 - **In the app:** `billing.status` is a local copy, updated by signed `billing.status_changed` events. It is
   applied only if its `version` is newer, so an old event can never undo a new one.
 - **Live is computed at request time:** `live = (trialing and now < trial_ends_at) or now < paid_through + 3
-  days grace`. Nothing is stored that can go stale, and a platform outage changes nothing.
+days grace`. Nothing is stored that can go stale, and a platform outage changes nothing.
 - **Lapsed:** the public page and the customer space show a contact card (name, phone, WhatsApp link) and accept
   no new requests or payments. The owner app goes read-only, apart from billing and export. Data is never
   deleted on lapse.
 - Limits are plan config: seats (owner plus technicians), and the WhatsApp quota (counted in platform). They are
   checked with `assertWithin` at the edge and refused with one error shape: `{ error: { code: 'limit',
-  limit, plan } }`.
+limit, plan } }`.
 - **Reviews (6.1):** ratings of 4 and 5 publish at once. Ratings of 1 to 3 are `held` for the owner, who can
   respond. They then publish, with any response, after 7 days. The owner can delay a low rating but not bury
   it. A review page that hides bad ratings would mislead the customers who read it.

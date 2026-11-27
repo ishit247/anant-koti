@@ -7,6 +7,7 @@ import type { DbClient } from "@bodhchakra/db";
 import type { CheckedImage, Storage } from "@bodhchakra/storage";
 import { z } from "zod";
 import { businessProfile } from "./business-profile.ts";
+import { addExtraWork, type ExtraWork } from "./change-order.ts";
 import { type JobStatus, transitionJob, type WorkItem, workItems } from "./job.ts";
 
 /** The member doing the work: the owner, or a technician, who may act only on their own visits. */
@@ -201,6 +202,24 @@ export async function tickChecklist(
     JSON.stringify(checklist),
   ]);
   return { ok: true };
+}
+
+/**
+ * Extra work found on site, while the work is under way: a task that waits for the owner to price it in a change
+ * order and the customer to approve it (4.3). A technician proposes it; only the owner prices.
+ */
+export async function addFoundWork(
+  client: DbClient,
+  worker: Worker,
+  jobId: string,
+  work: ExtraWork,
+): Promise<{ readonly ok: true } | { readonly ok: false; readonly error: WorkError | "items" }> {
+  const visit = await lockAssigned(client, worker, jobId);
+  if (!visit) return { ok: false, error: "not_found" };
+  if (visit.status !== "in_progress") return { ok: false, error: "refused" };
+  const added = await addExtraWork(client, jobId, "business", work);
+  if (added === "added") return { ok: true };
+  return { ok: false, error: added === "items" ? "items" : "refused" };
 }
 
 export type WorkPhotoResult =

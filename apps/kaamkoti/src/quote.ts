@@ -209,17 +209,7 @@ export async function saveDraft(
     quote.jobId,
   ]);
   if (!QUOTABLE.includes(job.rows[0]?.status ?? "")) return { ok: false, error: "closed" };
-  if (input.lines.length > MAX_QUOTE_LINES) return { ok: false, error: "lines" };
-
-  // The foreign keys refuse these too; checking first turns a forged id into a plain answer, not a crash.
-  const taskIds = new Set((await jobTasks(client, quote.jobId)).map((t) => t.id));
-  const itemIds = [...new Set(input.lines.flatMap((l) => l.catalogueItemId ?? []))];
-  const items = await client.query("select 1 from kk.catalogue_item where id = any($1::uuid[])", [
-    itemIds,
-  ]);
-  if (items.rowCount !== itemIds.length) return { ok: false, error: "lines" };
-  if (input.lines.some((l) => l.jobTaskId !== null && !taskIds.has(l.jobTaskId)))
-    return { ok: false, error: "lines" };
+  if (!(await linesBelong(client, quote.jobId, input.lines))) return { ok: false, error: "lines" };
 
   const { currency } = await currentBusiness(client);
   const totals = lineTotals(input.lines, currency);
@@ -380,6 +370,28 @@ export async function customerQuote(
   return (await loadQuotes(client, jobId, true, now))[0] ?? null;
 }
 
+/**
+ * True if the lines may price this job: at most MAX_QUOTE_LINES, each naming one of its tasks still asked for
+ * (or none) and a price-list item of this business (or none). The foreign keys refuse the rest too; checking
+ * first turns a forged id into a plain answer, not a crash. Change orders use it as well.
+ */
+export async function linesBelong(
+  client: DbClient,
+  jobId: string,
+  lines: readonly QuoteLineInput[],
+): Promise<boolean> {
+  if (lines.length > MAX_QUOTE_LINES) return false;
+  const taskIds = new Set((await jobTasks(client, jobId)).map((t) => t.id));
+  const itemIds = [...new Set(lines.flatMap((l) => l.catalogueItemId ?? []))];
+  const items = await client.query("select 1 from kk.catalogue_item where id = any($1::uuid[])", [
+    itemIds,
+  ]);
+  return (
+    items.rowCount === itemIds.length &&
+    lines.every((l) => l.jobTaskId === null || taskIds.has(l.jobTaskId))
+  );
+}
+
 async function lockQuote(
   client: DbClient,
   quoteId: string,
@@ -473,26 +485,12 @@ async function loadQuotes(
   );
   if (quotes.rows.length === 0) return [];
   const { currency } = await currentBusiness(client);
-  const lines = await client.query<{
-    quote_id: string;
-    job_task_id: string | null;
-    catalogue_item_id: string | null;
-    task_title: string | null;
-    description: string;
-    unit: Unit;
-    quantity_milli: string;
-    unit_price_minor: string;
-    tax_rate_bp: number;
-    net_minor: string;
-    tax_minor: string;
-  }>(
-    `select l.quote_id, l.job_task_id, l.catalogue_item_id, t.title as task_title, l.description, l.unit,
-            l.quantity_milli, l.unit_price_minor, l.tax_rate_bp, l.net_minor, l.tax_minor
-     from kk.quote_line l
-     left join kk.job_task t on t.business_id = l.business_id and t.id = l.job_task_id
-     where l.quote_id = any($1::uuid[])
-     order by l.position`,
-    [quotes.rows.map((q) => q.id)],
+  const lines = await loadLines(
+    client,
+    "quote_line",
+    "quote_id",
+    quotes.rows.map((q) => q.id),
+    currency,
   );
   const amount = (minor: string) => money(Number(minor), currency);
   return quotes.rows.map((q) => ({
@@ -511,19 +509,61 @@ async function loadQuotes(
       q.counter_total_minor === null
         ? null
         : { total: amount(q.counter_total_minor), note: q.counter_note },
-    lines: lines.rows
-      .filter((l) => l.quote_id === q.id)
-      .map((l) => ({
-        jobTaskId: l.job_task_id,
-        catalogueItemId: l.catalogue_item_id,
-        taskTitle: l.task_title,
-        description: l.description,
-        unit: l.unit,
-        quantityMilli: Number(l.quantity_milli),
-        unitPriceMinor: Number(l.unit_price_minor),
-        taxRateBp: l.tax_rate_bp,
-        net: amount(l.net_minor),
-        tax: amount(l.tax_minor),
-      })),
+    lines: lines.get(q.id) ?? [],
   }));
+}
+
+/**
+ * Lines of quotes or of change orders, by their parent's id, in position order, with the priced task's title.
+ * The two line tables have the same shape (architecture 5.3).
+ */
+export async function loadLines(
+  client: DbClient,
+  table: "quote_line" | "change_order_line",
+  parent: "quote_id" | "change_order_id",
+  ids: readonly string[],
+  currency: string,
+): Promise<Map<string, QuoteLine[]>> {
+  const byParent = new Map<string, QuoteLine[]>();
+  if (ids.length === 0) return byParent;
+  const { rows } = await client.query<{
+    parent_id: string;
+    job_task_id: string | null;
+    catalogue_item_id: string | null;
+    task_title: string | null;
+    description: string;
+    unit: Unit;
+    quantity_milli: string;
+    unit_price_minor: string;
+    tax_rate_bp: number;
+    net_minor: string;
+    tax_minor: string;
+  }>(
+    // Both names come from the literal types above, never from input.
+    `select l.${parent} as parent_id, l.job_task_id, l.catalogue_item_id, t.title as task_title,
+            l.description, l.unit, l.quantity_milli, l.unit_price_minor, l.tax_rate_bp, l.net_minor,
+            l.tax_minor
+     from kk.${table} l
+     left join kk.job_task t on t.business_id = l.business_id and t.id = l.job_task_id
+     where l.${parent} = any($1::uuid[])
+     order by l.position`,
+    [ids],
+  );
+  for (const l of rows) {
+    const list = byParent.get(l.parent_id) ?? [];
+    list.push({
+      jobTaskId: l.job_task_id,
+      catalogueItemId: l.catalogue_item_id,
+      taskTitle: l.task_title,
+      description: l.description,
+      unit: l.unit,
+      quantityMilli: Number(l.quantity_milli),
+      unitPriceMinor: Number(l.unit_price_minor),
+      taxRateBp: l.tax_rate_bp,
+      net: money(Number(l.net_minor), currency),
+      tax: money(Number(l.tax_minor), currency),
+    });
+    byParent.set(l.parent_id, list);
+  }
+  return byParent;
 }
