@@ -4,7 +4,10 @@ What we are building: [product-brief.md](product-brief.md). Shared modules:
 [platform-modules.md](platform-modules.md). The design is in [architecture.md](architecture.md);
 its first table says which sections each step reads.
 
-**Current position:** 4.4 done (2026-11-28): the invoice and cash. Marking the work complete issues the
+**Current position:** Phase 4 done (2026-11-28, tag `phase-4-done`): `validate full` green (kaamkoti 248, platform
+64, payments 23, other modules 175); every step's "Done when" was met and its mutants killed when it was built; the
+browser check passed on a fresh stack in 4.4 against the same tree. **Next: 5.1 (HIGH).**
+Before it, 4.4 done (2026-11-28): the invoice and cash. Marking the work complete issues the
 invoice (`bill`, `src/invoice.ts`), unless a change order is still waiting for the customer; then it follows their
 answer. It is a copy of `agreedWork`, numbered per business without gaps (`0011_invoice.sql`). The database
 keeps every invoice frozen: only `issued → paid`, refused unless payments for the job cover it, and the owner's
@@ -17,8 +20,6 @@ paid. Verified: kaamkoti 248 (19 new), platform 64, payments 23, `validate stand
 waiting for a change order, cash over the due, bill payable by another customer, change orders open on an
 invoiced job, list ignoring paid, paid without payments, invoice not frozen, line count unchecked, line UPDATE not
 revoked); `check:browser` passed on a fresh stack, with the bill paid end to end through the webhook.
-**Next: Phase 4 close** (`validate full`, "Done when" check, tag `phase-4-done`), then 5.1 (HIGH), in a fresh
-session.
 Before it, 4.3 done (2026-11-27): change orders. Work added after acceptance — asked for by the
 customer on their job page (`…/more`, until complete) or found on site on the job sheet ("Found more work?",
 while `in_progress`) — is a task waiting for a price, marked "do not start" on the sheet. Only the owner prices it:
