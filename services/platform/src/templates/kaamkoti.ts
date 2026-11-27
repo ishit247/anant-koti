@@ -135,6 +135,36 @@ export const kaamkoti = {
       params: (v) => [v.customerName, v.businessName, v.number, v.total, v.link],
     },
   }),
+  /**
+   * To the customer: the bill for completed work (4.4). `due` is the total less what they paid already (the
+   * deposit), so it may be less than the total, or nothing.
+   */
+  "invoice.issued": defineTemplate({
+    vars: z.object({
+      customerName: text,
+      businessName: text,
+      number,
+      total: text,
+      due: text,
+      link,
+    }),
+    email: (v) => ({
+      subject: `Your bill for request ${v.number}: ${v.total}`,
+      text:
+        `Hello ${v.customerName},\n\n` +
+        `${v.businessName} has finished the work on request ${v.number} and sent the bill: ` +
+        `${v.total} in all, ${v.due} still to pay.\n\n` +
+        `See the bill and pay here:\n${v.link}\n\n${SIGN_IN}`,
+    }),
+    whatsapp: {
+      name: "kaamkoti_invoice_issued",
+      body:
+        "Hello {{1}}, {{2}} has finished the work on request {{3}} and sent the bill: " +
+        "{{4}} in all, {{5}} still to pay.\n\n" +
+        `See the bill and pay here: {{6}}\n\n${WA_SIGN_IN}`,
+      params: (v) => [v.customerName, v.businessName, v.number, v.total, v.due, v.link],
+    },
+  }),
   /** To the owner: the customer's answer to a quote. A counter carries the price they offered. */
   "quote.response": defineTemplate({
     vars: z.discriminatedUnion("answer", [

@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { addressBook, MAX_ADDRESS, MAX_ADDRESSES, MAX_LABEL } from "../../../../../address-book.ts";
 import {
   agreedWork,
-  CHANGEABLE,
+  changeOpen,
   changeOrders,
   OPEN_FOR_WORK,
 } from "../../../../../change-order.ts";
@@ -17,6 +17,7 @@ import {
   MAX_REQUEST_ITEMS,
   MAX_REQUEST_PHOTOS,
 } from "../../../../../intake.ts";
+import { jobInvoice } from "../../../../../invoice.ts";
 import { CUSTOMER_STATUS_LABEL, formatWhen, statusTone } from "../../../../../job-labels.ts";
 import { localPhone } from "../../../../../phone.ts";
 import { formatPrice } from "../../../../../price.ts";
@@ -29,12 +30,13 @@ import { WorkItems } from "../../../../work-items.tsx";
 import { RequestForm } from "../../request/request-form.tsx";
 import { ChangeAnswer } from "./change-answer.tsx";
 import { DepositPay } from "./deposit-pay.tsx";
+import { InvoicePay } from "./invoice-pay.tsx";
 import { QuoteAnswer } from "./quote-answer.tsx";
 import { VisitAnswer } from "./visit-answer.tsx";
 
 // One of the signed-in customer's own requests (D15): the work's time once proposed (posting to ./visit), the
-// quote with its answer forms (posting to ./answer), the deposit once accepted (posting to ./pay), extra work
-// once accepted (approving a change order posts to ./change, asking for more to ./more; 4.3), and
+// quote with its answer forms (posting to ./answer), the deposit once accepted (posting to ./pay), the bill once
+// the work is complete (posting to ./bill; 4.4), extra work once accepted (approving a change order posts to ./change, asking for more to ./more; 4.3), and
 // the new-request screens over its work items until a quote is accepted (posting to ./edit); after that, the
 // items with their photos. Another customer's or business's id answers 404.
 // biome-ignore lint/correctness/noUnusedVariables: read by scanRoutes, which scans the source text
@@ -68,27 +70,37 @@ export default async function RequestDetail({
     answer?: string | string[];
     visit?: string | string[];
     pay?: string | string[];
+    bill?: string | string[];
     change?: string | string[];
     more?: string | string[];
   }>;
 }) {
   const { slug, jobId } = await params;
-  const { result, error, answer, visit, pay, change, more } = await searchParams;
+  const { result, error, answer, visit, pay, bill, change, more } = await searchParams;
   const space = `/b/${encodeURIComponent(slug)}`;
   const { db, storage, payments } = server();
-  const { job, own, book, deposit, orders, agreed } = await withCustomer(
+  const { job, own, book, deposit, invoice, orders, agreed } = await withCustomer(
     slug,
     `${space}/requests/${jobId}`,
     async (client, customer) => {
       const job = customer ? await customerRequest(client, customer, jobId) : null;
       if (!customer || !job)
-        return { job: null, own: null, book: [], deposit: null, orders: [], agreed: null };
+        return {
+          job: null,
+          own: null,
+          book: [],
+          deposit: null,
+          invoice: null,
+          orders: [],
+          agreed: null,
+        };
       return {
         job,
         own: await customerContact(client, customer),
         book: await addressBook(client, customer),
         // Only after the job was found under this customer.
         deposit: await jobDeposit(client, payments, customer.businessId, job.id),
+        invoice: await jobInvoice(client, payments, customer.businessId, job.id),
         orders: await changeOrders(client, job.id, true),
         agreed: await agreedWork(client, job.id),
       };
@@ -134,7 +146,16 @@ export default async function RequestDetail({
           said={typeof answer === "string" ? answer : undefined}
         />
       ) : null}
-      {deposit && (depositPayable(job.status) || deposit.paid.minor > 0) ? (
+      {invoice ? (
+        <InvoicePay
+          invoice={invoice}
+          businessName={page.name}
+          action={`${space}/requests/${job.id}/bill`}
+          said={typeof bill === "string" ? bill : undefined}
+        />
+      ) : null}
+      {/* Once billed, what the deposit paid is counted on the bill. */}
+      {!invoice && deposit && (depositPayable(job.status) || deposit.paid.minor > 0) ? (
         <DepositPay
           deposit={deposit}
           payable={depositPayable(job.status)}
@@ -147,7 +168,7 @@ export default async function RequestDetail({
         <ChangeAnswer
           orders={orders}
           agreed={agreed}
-          answerable={CHANGEABLE.includes(job.status)}
+          answerable={changeOpen(job.status, invoice !== null)}
           askable={OPEN_FOR_WORK.includes(job.status)}
           businessName={page.name}
           changeAction={`${space}/requests/${job.id}/change`}

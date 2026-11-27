@@ -1,11 +1,12 @@
-import { formatMoney } from "@bodhchakra/money";
+import { formatDecimal, formatMoney, type Money, minorDigits } from "@bodhchakra/money";
 import { defineRoute } from "@bodhchakra/tenancy";
 import { notFound } from "next/navigation";
 import { z } from "zod";
-import { agreedWork, CHANGEABLE, changeOrders } from "../../../change-order.ts";
+import { agreedWork, changeOpen, changeOrders } from "../../../change-order.ts";
 import { depositPayable, jobDeposit } from "../../../deposit.ts";
 import { requireMember } from "../../../guard.ts";
 import { ownerJob } from "../../../inbox.ts";
+import { jobInvoice } from "../../../invoice.ts";
 import {
   formatDay,
   formatTime,
@@ -25,6 +26,7 @@ import { QuoteSummary } from "../../quote-summary.tsx";
 import { WorkItems } from "../../work-items.tsx";
 import { startChange, startQuote } from "./actions.ts";
 import { CancelJob } from "./cancel-job.tsx";
+import { IssueInvoice, RecordCash, VoidInvoice } from "./invoice-forms.tsx";
 import { ConfirmForCustomer, OnTheWay, PlanVisit } from "./plan-visit.tsx";
 import { StartQuote } from "./start-quote.tsx";
 
@@ -40,7 +42,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   if (!id.success) notFound();
   const owner = await requireMember(route, `/jobs/${id.data}`);
   const { db, storage, payments } = server();
-  const { job, quotes, orders, agreed, visits, work, team, deposit, linkOpen } =
+  const { job, quotes, orders, agreed, visits, work, team, deposit, invoice, linkOpen } =
     await db.withTenant(owner.businessId, async (client) => ({
       job: await ownerJob(client, id.data),
       quotes: await ownerQuotes(client, id.data),
@@ -50,6 +52,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
       work: await workTime(client, id.data),
       team: await assignableMembers(client),
       deposit: await jobDeposit(client, payments, owner.businessId, id.data),
+      invoice: await jobInvoice(client, payments, owner.businessId, id.data),
       linkOpen: (await payments.linksFor(client, id.data)).some(
         (link) => link.status === "created" || link.status === "partially_paid",
       ),
@@ -62,7 +65,8 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const draft = quotes.find((q) => q.status === "draft");
   const [current, ...earlier] = quotes.filter((q) => q.status !== "draft");
   const quotable = job.status === "requested" || job.status === "quoted";
-  const changeable = CHANGEABLE.includes(job.status);
+  const changeable = changeOpen(job.status, invoice !== null);
+  const rupees = (amount: Money) => formatDecimal(amount.minor, minorDigits(amount.currency));
   const changeDraft = orders.find((o) => o.status === "draft");
   const unpriced = job.items.filter((item) => item.status === "requested").length;
   // Calls go to the person at the address, who may not be the customer who asked.
@@ -155,6 +159,9 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                   )}
                 </p>
               ) : null}
+              {!invoice && deposit && deposit.due.minor > 0 && depositPayable(job.status) ? (
+                <RecordCash jobId={job.id} owed={rupees(deposit.due)} />
+              ) : null}
             </>
           ) : draft ? null : (
             <p className="empty">
@@ -183,6 +190,49 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             </p>
           ) : null}
         </section>
+
+        {invoice ? (
+          <section className="panel" aria-labelledby="invoice-title">
+            <h2 id="invoice-title">Invoice</h2>
+            <div className="row">
+              <strong>Invoice {invoice.number}</strong>
+              {invoice.due.minor === 0 ? (
+                <span className="chip go">Paid</span>
+              ) : (
+                <span className="chip wait">
+                  {invoice.online ? "Not paid yet" : "Not paid · collect it yourself"}
+                </span>
+              )}
+            </div>
+            <p className="muted small">
+              Issued {formatWhen(invoice.issuedAt)}
+              {invoice.paidAt ? ` · paid ${formatWhen(invoice.paidAt)}` : ""}
+            </p>
+            <QuoteSummary quote={invoice} />
+            {invoice.due.minor > 0 ? (
+              <>
+                <p className="row" role="status">
+                  <span>
+                    {invoice.paid.minor > 0 ? `${formatMoney(invoice.paid)} received, ` : ""}
+                    {formatMoney(invoice.due)} to collect
+                  </span>
+                </p>
+                <RecordCash jobId={job.id} owed={rupees(invoice.due)} />
+              </>
+            ) : null}
+            <VoidInvoice jobId={job.id} />
+          </section>
+        ) : job.status === "completed" ? (
+          <section className="panel" aria-labelledby="invoice-title">
+            <h2 id="invoice-title">Invoice</h2>
+            <p className="empty">
+              {orders.some((o) => o.status === "proposed")
+                ? "The invoice goes to the customer once they answer the extra work waiting for them."
+                : "No invoice in force. Issue one for the work agreed, extra work included."}
+            </p>
+            {orders.some((o) => o.status === "proposed") ? null : <IssueInvoice jobId={job.id} />}
+          </section>
+        ) : null}
 
         {changeable || orders.length > 0 ? (
           <section className="panel" aria-labelledby="extra-title">

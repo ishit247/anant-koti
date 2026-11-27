@@ -220,8 +220,8 @@ Each module's own section in 12 lists its tables. Section 4.1 covers tenancy.
 | `job_visit`         | The work on site (4.2), one per job: `job_id`, `appointment_id` (the planned work visit), `checked_in_at`, `checklist` (the business's items copied at check-in, each with `done`), `completed_at`, `note`. Who checked in and completed is in the audit. Found through `work.ts`, whose one query also applies the technician's "assigned to me" rule (4.3). Ticks and photos only while the job is `in_progress`; at most 12 before and after photos per job                                                                                                                                                                                                                                                                                                                                                |
 | `change_order`      | Work priced after acceptance (4.3, `src/change-order.ts`): `job_id`, `number` (1, 2, … per job), `status` (`draft`, `proposed`, `approved`, `rejected`), totals (`net_minor`, `tax_minor`, `total_minor`, at least 0), `proposed_at`, `decided_at`. At most one `draft` and one `proposed` per job. Never deleted                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `change_order_line` | Same shape and `CHECK`s as `quote_line`, with `change_order_id`; composite keys carry `job_id`, so a line prices only a task of its own job                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `invoice`           | `job_id` (unique while not void), `number` (per business, gap-free sequence row), `status` (`issued`, `paid`, `void`), totals, `issued_at`, `paid_at`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `invoice_line`      | Snapshot of the accepted quote's lines plus approved change-order lines                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `invoice`           | The bill for a completed job (4.4, `0011_invoice.sql`, `src/invoice.ts`): `job_id` (one not `void` per job), `number` (per business, from the `invoice_counter` row, which the next number locks: no gaps, no repeats; a voided invoice keeps its number), `status` (`issued`, `paid`, `void`), totals and `line_count`, `issued_at`, `paid_at`, `voided_at`. Never deleted                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `invoice_line`      | A copy of `agreedWork`'s lines (the accepted quote's, then each approved change order's): `job_task_id`, `description`, `unit`, quantity, price, tax rate and amounts, with `quote_line`'s `CHECK`s; no price-list reference. Insert only                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `job_photo`         | `job_id`, `object_id` → `storage.object`, `kind` (`request`, `before`, `after`), `job_task_id` (the work item it shows; required for `request`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `review`            | `job_id` (unique), `rating` 1–5, `text`, `status` (`held`, `published`), `owner_response`, `publish_after`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
@@ -245,8 +245,12 @@ rejected | countered` is the customer's answer, the only write of `decided_at` a
   rule as `lineTotals` (section 8), so a line with wrong arithmetic cannot be stored.
 - **No double booking.** `EXCLUDE USING gist (technician_member_id WITH =, tstzrange(starts_at, ends_at) WITH &&)
 WHERE (status = 'planned')` (extension `btree_gist`).
-- **Paid invoices are immutable.** A trigger refuses changes to an invoice and its lines once `status = 'paid'`,
-  except `void` by the owner, which writes an audit event.
+- **Invoices are immutable** (`kk.invoice_guard`, 4.4), paid or not. An invoice is born `issued`; after that only
+  its status moves: `issued → paid` (with `paid_at`), refused unless the job's recorded payments cover the total,
+  and `issued | paid → void` (with `voided_at`), the owner's, audited strictly. At commit a deferred constraint
+  trigger (`kk.invoice_lines_match`) checks that the invoice has exactly `line_count` lines whose sums are its
+  totals, so a line added later, in any transaction, is refused. The runtime role may only insert and select
+  lines (`UPDATE` and `DELETE` revoked) and cannot delete an invoice.
 - Invoice lines are copied, not referenced, because an invoice is a document that must not change if anything
   upstream does.
 
@@ -282,7 +286,7 @@ requested ──send quote──▶ quoted ──customer accepts──▶ accep
 | `accepted`              | ask for another    | `accepted`    | customer                              | appointment `declined` with the note; notify owner                                                 |
 | `accepted`              | time confirmed     | `scheduled`   | customer, or owner for them (phone)   | appointment `planned`; notify customer and (if the customer confirmed) owner; reminder jobs        |
 | `scheduled`             | check in           | `in_progress` | assigned technician or owner          | `job_visit` created with the checklist (`checkIn`, `src/work.ts`)                                  |
-| `in_progress`           | complete           | `completed`   | assigned technician or owner          | visit closed, appointment and approved tasks `done`; invoice with pay link and notice in 4.4       |
+| `in_progress`           | complete           | `completed`   | assigned technician or owner          | visit closed, appointment and approved tasks `done`; invoice issued and `invoice.issued` (`bill`)  |
 | `requested`…`scheduled` | cancel             | `cancelled`   | owner, or the customer                | appointments cancelled; open payment links cancelled (`cancelJob`, `src/cancel.ts`)                |
 
 - **Quote expiry is computed at request time.** A `sent` quote with `valid_until < now()` is treated as
@@ -303,8 +307,8 @@ requested ──send quote──▶ quoted ──customer accepts──▶ accep
   `requested` and costs nothing until the business prices it in a change order and the customer approves.
   Invoice lines copy `job_task_id` from the lines they snapshot.
 - **The customer's list (D15)** groups jobs by state: **Active** is `requested`, `quoted`, `accepted`,
-  `scheduled` and `in_progress` (from phase 4 also `completed` with an unpaid invoice); **Completed** is
-  `completed`; **Cancelled** is `cancelled`, `declined` and `lost`. Active is the default.
+  `scheduled` and `in_progress`, and `completed` until its invoice is paid (4.4); **Completed** is `completed`
+  with a paid invoice; **Cancelled** is `cancelled`, `declined` and `lost`. Active is the default.
 - **Change orders (4.3, `src/change-order.ts`).** Work added after acceptance comes two ways: the customer asks
   for more on their job page (`…/more`, scope `customer`, until the job is complete; the owner is told as for an
   edit), or the technician or owner records extra work found on site on the job sheet (while `in_progress`).
@@ -315,8 +319,14 @@ requested ──send quote──▶ quoted ──customer accepts──▶ accep
   (`…/change`, scope `customer`, `answerChangeOrder`: the job is looked up under the customer, so another's is
   404). Approving makes its tasks `approved` (`done` if the job is already complete); turning it down drops them.
   Change orders are written, sent and answered from `accepted` to `completed`, one waiting at a time, and do not
-  move the job's state; from 4.4 only while the invoice is not yet issued. **What is agreed** (`agreedWork`) is
+  move the job's state; and only while the job has no invoice in force (`changeOpen`, 4.4). **What is agreed** (`agreedWork`) is
   the accepted quote's lines plus the approved change orders' lines, and nothing else; the invoice copies it.
+- **The bill (4.4, `src/invoice.ts`).** `bill` issues the invoice and tells the customer (`invoice.issued`) where
+  a job may have become ready: on completion, on the customer's answer to a change order on a completed job, and
+  from the owner's "Issue the invoice". It issues only for a `completed` job with no invoice in force and no change
+  order waiting for the customer (then the bill follows their answer). The invoice is a copy of `agreedWork`.
+  The owner may void it (a mistake, or extra work to add: change orders open again) and issue a new one; money
+  received stays recorded and counts towards it.
 - A paid invoice is derived, not a job state. It drives the review request (6.1).
 - Each transition is one function, `transitionJob(tx, audit, jobId, { event, actor, acceptedQuoteId?, data? })`
   in `src/job.ts`, backed by the table above (`jobTransition(from, event, role)`; roles `owner`, `technician`,
@@ -407,6 +417,16 @@ that path, the `job` token purpose and the owner's "send a new link".)
   Razorpay outage never blocks accepting a quote. A business without Razorpay gets no link; its customer pays
   directly. The webhook queues `payment.received` to the owner in the recording transaction. Cancelling a job
   cancels its open links at Razorpay first; if Razorpay refuses, the cancellation rolls back.
+- **Paying the bill (4.4, `src/invoice.ts`).** Due = the invoice's total − everything received for the job,
+  deposit included, never below 0. `settleInvoice` marks it `paid` in the transaction that records a payment
+  covering it: the webhook route calls it after recording, `recordCash` after the owner's entry, `issueInvoice`
+  at once if the deposit already covered the bill. The customer's job page shows the bill (`InvoicePay`) in place
+  of the deposit; "Pay" posts to `…/requests/<jobId>/bill` (scope `customer`, the job under that customer,
+  `payInvoice`), which reuses an open bill link for exactly what is due, else cancels every open link (a stale
+  deposit link, a bill link since part-paid in cash) and makes one, so the customer cannot pay twice. Under ₹1
+  left is settled directly. **Cash** (`recordCash`, the owner's job page, from acceptance to completion) is at
+  most what is owed: the invoice's due, or before it the agreed total less what was received. It cancels the
+  job's open links, whose amounts no longer match. Voiding cancels open bill links.
 
 ## 9. Notifications and app ↔ platform calls
 
@@ -465,19 +485,19 @@ receiver code handles provider webhooks, with the provider's signature in place 
   `failed` marks it `failed`, audited, with Meta's numeric code logged. Each change is guarded by the status it
   comes from, so a replay changes nothing. The message stores Meta's id (`provider_id`) to be found by it.
 
-| Template                                                                  | To                                              | When                                             |
-| ------------------------------------------------------------------------- | ----------------------------------------------- | ------------------------------------------------ |
-| `request.received`, `request.acknowledged`                                | owner; customer (linking to their request page) | a customer sends a request (not a phone entry)   |
-| `request.edited`                                                          | owner                                           | the customer saves a change to the request       |
-| `quote.sent`                                                              | customer                                        | quote sent or revised                            |
-| `quote.response`                                                          | owner                                           | accepted, rejected, countered                    |
-| `quote.expired`                                                           | owner                                           | a sent quote is still unanswered at its expiry   |
-| `appointment.proposed`                                                    | customer                                        | the owner proposes the work's time (3.1b)        |
-| `appointment.response`                                                    | owner                                           | the customer confirms it or asks for another     |
-| `appointment.confirmed`, `appointment.reminder`, `appointment.on_the_way` | customer                                        | planned; 24 h before (3.3b); tapped by the owner |
-| `change_order.proposed`                                                   | customer                                        | owner sends a change order for approval          |
-| `invoice.issued`, `payment.received`                                      | customer; owner                                 | complete (4.3); a payment recorded by webhook    |
-| `review.request`, `review.held`                                           | customer; owner                                 | invoice paid; low rating                         |
+| Template                                                                  | To                                              | When                                                |
+| ------------------------------------------------------------------------- | ----------------------------------------------- | --------------------------------------------------- |
+| `request.received`, `request.acknowledged`                                | owner; customer (linking to their request page) | a customer sends a request (not a phone entry)      |
+| `request.edited`                                                          | owner                                           | the customer saves a change to the request          |
+| `quote.sent`                                                              | customer                                        | quote sent or revised                               |
+| `quote.response`                                                          | owner                                           | accepted, rejected, countered                       |
+| `quote.expired`                                                           | owner                                           | a sent quote is still unanswered at its expiry      |
+| `appointment.proposed`                                                    | customer                                        | the owner proposes the work's time (3.1b)           |
+| `appointment.response`                                                    | owner                                           | the customer confirms it or asks for another        |
+| `appointment.confirmed`, `appointment.reminder`, `appointment.on_the_way` | customer                                        | planned; 24 h before (3.3b); tapped by the owner    |
+| `change_order.proposed`                                                   | customer                                        | owner sends a change order for approval             |
+| `invoice.issued`, `payment.received`                                      | customer; owner                                 | invoice issued (4.4); a payment recorded by webhook |
+| `review.request`, `review.held`                                           | customer; owner                                 | invoice paid; low rating                            |
 
 Sign-in OTPs go straight from identity to its own channel, inside platform, not through the outbox. Technician
 invites in 0.7 are shared by the owner: copy the link, or a `wa.me` share. Sending them by notify waits for 3.2.

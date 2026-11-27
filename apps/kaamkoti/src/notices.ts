@@ -6,7 +6,7 @@
 import { randomUUID } from "node:crypto";
 import type { Db, DbClient } from "@bodhchakra/db";
 import { defineJob, type Jobs, type JobType } from "@bodhchakra/jobs";
-import { formatMoney, money } from "@bodhchakra/money";
+import { formatMoney, type Money, money } from "@bodhchakra/money";
 import type { Notify, NotifyMessage } from "@bodhchakra/notify";
 import type { Payment, PaymentLink } from "@bodhchakra/payments";
 import { z } from "zod";
@@ -35,6 +35,8 @@ export interface Notices {
   visitProposed(client: DbClient, appointmentId: string): Promise<void>;
   /** The customer confirmed the proposed time or asked for another: the owner is told. */
   visitAnswered(client: DbClient, appointmentId: string): Promise<void>;
+  /** The completed job's invoice was issued: the customer is sent the bill and what is still to pay (4.4). */
+  invoiceIssued(client: DbClient, invoiceId: string, due: Money): Promise<void>;
   /** Razorpay's verified webhook recorded money for a job: the owner is told, once per payment. */
   paymentReceived(client: DbClient, payment: Payment, link: PaymentLink): Promise<void>;
   /** Worker only: runs the expiry notices and the visit reminders. Call after `jobs.start`. */
@@ -416,6 +418,36 @@ export function createNotices(deps: NoticesDeps): Notices {
                 },
         },
         `appointment.response:${appointmentId}`,
+      );
+    },
+
+    async invoiceIssued(client, invoiceId, due) {
+      const { rows } = await client.query<JobFacts & { currency: string; total_minor: string }>(
+        `select ${JOB_COLUMNS}, b.currency, i.total_minor
+         from kk.invoice i
+         join kk.job j on j.business_id = i.business_id and j.id = i.job_id
+         ${JOB_JOINS}
+         where i.id = $1 and i.status <> 'void'`,
+        [invoiceId],
+      );
+      const invoice = rows[0];
+      if (!invoice) throw new Error(`notices: invoice ${invoiceId} is not in force here`);
+      await notify.send(
+        client,
+        {
+          businessId: invoice.business_id,
+          template: "invoice.issued",
+          ...(await forCustomer(client, invoice)),
+          vars: {
+            customerName: invoice.customer_name,
+            businessName: invoice.business_name,
+            number: `#${invoice.number}`,
+            total: formatMoney(money(Number(invoice.total_minor), invoice.currency)),
+            due: formatMoney(due),
+            link: customerLink(invoice),
+          },
+        },
+        `invoice.issued:${invoiceId}`,
       );
     },
 

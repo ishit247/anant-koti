@@ -85,6 +85,20 @@ export {
   type WorkItemInput,
 } from "./intake.ts";
 export {
+  bill,
+  type CashResult,
+  INVOICE,
+  type Invoice,
+  type IssueResult,
+  issueInvoice,
+  jobInvoice,
+  type PayInvoiceResult,
+  payInvoice,
+  recordCash,
+  settleInvoice,
+  voidInvoice,
+} from "./invoice.ts";
+export {
   JOB_EVENTS,
   JOB_STATUSES,
   type JobActor,

@@ -11,7 +11,8 @@
 // shows as paid only once the signed webhook arrives, and cancelling a second job cancels its open link. A seeded
 // customer signs in on the bare domain and sees only her own request; intake answers 429 past its per-IP limit.
 // She asks for more work after accepting; the owner prices it in change orders, one approved and one turned
-// down (4.3). The seeded technician checks in on today's job, ticks the checklist, adds a photo, records extra
+// down (4.3). The owner completes the work, the bill goes out less the deposit, and she pays it through the
+// same stand-in and webhook (4.4). The seeded technician checks in on today's job, ticks the checklist, adds a photo, records extra
 // work found and completes it (4.2, 4.3).
 // Each page is screenshotted at phone and desktop width into .validation/browser/; the run fails on a console
 // error, a page wider than the viewport, or a cookie on the public page.
@@ -26,6 +27,9 @@ const APP = "http://127.0.0.1:45450";
 const PUBLIC = "http://localhost:45450";
 const MAILPIT = "http://127.0.0.1:45446";
 const OUT = fileURLToPath(new URL("../.validation/browser/", import.meta.url));
+/** Paise as the app shows them (formatMoney's format), to compare a Razorpay link with the page. */
+const rupees = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" });
+const formatRupees = (paise: number) => rupees.format(paise / 100);
 const WIDTHS = {
   phone: { width: 375, height: 812 },
   desktop: { width: 1280, height: 900 },
@@ -655,7 +659,7 @@ try {
   // A request that follows a redirect is not routed, so the pay route's own answer is taken here instead, and its
   // 303 to https://rzp.io/… is played out as Razorpay would.
   let payOnOpen = true;
-  await customer.route(/\/requests\/[0-9a-f-]{36}\/pay$/, async (route) => {
+  await customer.route(/\/requests\/[0-9a-f-]{36}\/(pay|bill)$/, async (route) => {
     // An intercepted request loses Sec-Fetch-Site (and Origin is null under no-referrer), so the click, a
     // same-origin form post, says so here; the cross-site refusal above is tested without interception.
     const answer = await route.fetch({
@@ -789,6 +793,63 @@ try {
     problems.push("the owner's job does not show the turned-down change order");
   await shoot(page, "13p5-job-change-orders");
 
+  // The bill (4.4). The owner does the work and marks it complete, and the invoice goes out at once: the quote
+  // plus the approved extra work, less the deposit she paid. Extra work is closed once billed. She pays the rest
+  // on Razorpay; only the signed webhook marks the bill paid, and the request moves to her Completed list. The
+  // bill route refuses another site's post and another customer's or business's job.
+  await page.goto(`${APP}/work/${jobId}`);
+  await page.getByRole("button", { name: "Check in" }).click();
+  await page.getByRole("button", { name: "Mark complete" }).click();
+  await page.getByRole("heading", { name: "Done" }).waitFor();
+  await page.goto(jobUrl);
+  await page.getByRole("heading", { name: "Invoice" }).waitFor();
+  if (!(await page.getByText(/^Invoice \d+$/).count())) problems.push("the invoice has no number");
+  if (await page.getByRole("button", { name: "Price extra work" }).count())
+    problems.push("extra work can still be priced on an invoiced job");
+  await shoot(page, "13p6-job-invoiced");
+  await expectMail(customerEmail, /^Your bill for request #\d+: ₹/, "the customer's bill");
+  const billTo = (s: string, id: string) => `${PUBLIC}/b/${s}/requests/${id}/bill`;
+  const crossSiteBill = await customer.request.post(billTo(slug, jobId), {
+    headers: { "sec-fetch-site": "cross-site", origin: PUBLIC },
+    maxRedirects: 0,
+  });
+  if (crossSiteBill.status() !== 403)
+    problems.push(`a cross-site bill payment answered ${crossSiteBill.status()}`);
+  for (const [whose, s, id] of [
+    ["another business's", "sharma-cooling", jobId],
+    ["another customer's", "sharma-cooling", SHARMA_2],
+  ] as const) {
+    const paid = await customer.request.post(billTo(s, id), {
+      headers: { "sec-fetch-site": "same-origin" },
+      maxRedirects: 0,
+    });
+    if (paid.status() !== 404) problems.push(`paying ${whose} bill answered ${paid.status()}`);
+  }
+  await form.goto(requestPage);
+  const bill = form.locator("section[aria-labelledby=bill-title]");
+  const due = await bill.locator(".row.total", { hasText: "To pay" }).textContent();
+  if (!due?.includes("₹") || !(await bill.getByText("Paid so far").count()))
+    problems.push(`the bill does not count the deposit: ${JSON.stringify(due)}`);
+  await shoot(form, "13p7-customer-bill");
+  const linksBefore = razorpay.links.length;
+  await bill.getByRole("button", { name: /^Pay ₹/ }).click();
+  await form.waitForURL(/\?bill=back$/);
+  const billLink = razorpay.links[linksBefore];
+  if (!billLink || !due?.endsWith(formatRupees(billLink.amount)))
+    problems.push(`the bill's link asks for ${billLink?.amount} paise, the bill says ${due}`);
+  if (!(await bill.locator(".chip.go", { hasText: "Paid" }).count()))
+    problems.push("the paid bill does not show as paid on her request");
+  if (await form.getByRole("button", { name: /^Pay / }).count())
+    problems.push("a paid bill still offers Pay");
+  await shoot(form, "13p8-customer-bill-paid");
+  await form.goto(`${PUBLIC}/b/${slug}/requests?status=completed`);
+  if (!(await form.locator(`a[href$="/requests/${jobId}"]`).count()))
+    problems.push("the paid request is not in her Completed list");
+  await page.goto(jobUrl);
+  if (!(await page.locator("section[aria-labelledby=invoice-title] .chip.go").count()))
+    problems.push("the owner's invoice does not show as paid");
+  await shoot(page, "13p9-job-invoice-paid");
+
   // Cancelling a job cancels its open link (4.1b): a second request, quoted with a ₹200 deposit and accepted;
   // she opens the Razorpay page but does not pay, and the owner cancels the request.
   payOnOpen = false;
@@ -816,7 +877,8 @@ try {
   await form.getByRole("status").filter({ hasText: "has your acceptance" }).waitFor();
   await form.getByRole("button", { name: "Pay ₹200.00" }).click();
   await form.getByText("Razorpay stand-in: not paid.").waitFor();
-  const openLink = razorpay.links[1];
+  // The link just made: the first request's deposit and bill links come before it.
+  const openLink = razorpay.links.at(-1);
   await page.goto(secondJob);
   await page.getByText("Cancel this request").click();
   if (!(await page.getByText("payment link stops working").count()))

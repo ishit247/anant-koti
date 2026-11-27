@@ -24,8 +24,8 @@ export const CHANGE_ORDER_STATUSES = ["draft", "proposed", "approved", "rejected
 export type ChangeOrderStatus = (typeof CHANGE_ORDER_STATUSES)[number];
 
 /**
- * Job states in which a change order may be written, proposed and answered: from acceptance to completion. From
- * 4.4 also only while the job's invoice is not yet issued.
+ * Job states in which a change order may be written, proposed and answered: from acceptance to completion, and
+ * only while the job has no invoice in force (`changeOpen`, 4.4).
  */
 export const CHANGEABLE: readonly JobStatus[] = [
   "accepted",
@@ -82,14 +82,29 @@ interface Owner {
 
 type Unit = QuoteLineInput["unit"];
 
-/** Locks the job, so drafting, proposing and answering on one job happen one at a time. */
+/** Change orders are open on a job in these states while it has no invoice in force (4.4). */
+export const changeOpen = (status: JobStatus, invoiced: boolean) =>
+  CHANGEABLE.includes(status) && !invoiced;
+
+/**
+ * Locks the job, so drafting, proposing, answering and issuing the invoice on one job happen one at a time.
+ * `changeable` says whether a change order may be written or answered now.
+ */
 async function lockJob(client: DbClient, jobId: string) {
   if (!z.uuid().safeParse(jobId).success) return null;
-  const { rows } = await client.query<{ status: JobStatus; customer_id: string }>(
-    "select status, customer_id from kk.job where id = $1 for update",
+  const { rows } = await client.query<{
+    status: JobStatus;
+    customer_id: string;
+    invoiced: boolean;
+  }>(
+    `select j.status, j.customer_id,
+            exists (select 1 from kk.invoice i
+                    where i.business_id = j.business_id and i.job_id = j.id and i.status <> 'void') as invoiced
+     from kk.job j where j.id = $1 for update of j`,
     [jobId],
   );
-  return rows[0] ?? null;
+  const row = rows[0];
+  return row ? { ...row, changeable: changeOpen(row.status, row.invoiced) } : null;
 }
 
 /**
@@ -103,7 +118,7 @@ export async function openChangeDraft(
 ): Promise<ChangeOrderResult<{ changeOrderId: string }>> {
   const job = await lockJob(client, jobId);
   if (!job) return { ok: false, error: "not_found" };
-  if (!CHANGEABLE.includes(job.status)) return { ok: false, error: "closed" };
+  if (!job.changeable) return { ok: false, error: "closed" };
   const open = await client.query<{ id: string }>(
     "select id from kk.change_order where job_id = $1 and status = 'draft'",
     [jobId],
@@ -160,7 +175,7 @@ export async function saveChangeDraft(
   const current = await lockChangeOrder(client, changeOrderId);
   if (!job || !current) return { ok: false, error: "not_found" };
   if (current.status !== "draft") return { ok: false, error: "proposed" };
-  if (!CHANGEABLE.includes(job.status)) return { ok: false, error: "closed" };
+  if (!job.changeable) return { ok: false, error: "closed" };
   if (!(await linesBelong(client, found, lines))) return { ok: false, error: "lines" };
   const { currency } = await currentBusiness(client);
   const totals = lineTotals(lines, currency);
@@ -187,7 +202,7 @@ export async function proposeChangeOrder(
   const current = await lockChangeOrder(client, changeOrderId);
   if (!job || !current) return { ok: false, error: "not_found" };
   if (current.status !== "draft") return { ok: false, error: "proposed" };
-  if (!CHANGEABLE.includes(job.status)) return { ok: false, error: "closed" };
+  if (!job.changeable) return { ok: false, error: "closed" };
   const lines = await client.query(
     "select 1 from kk.change_order_line where change_order_id = $1 limit 1",
     [changeOrderId],
@@ -246,7 +261,7 @@ export async function answerChangeOrder(
   // A draft was never shown to the customer, so it is as unknown as another job's.
   if (!current || current.status === "draft") return { ok: false, error: "not_found" };
   if (current.status !== "proposed") return { ok: false, error: "answered" };
-  if (!CHANGEABLE.includes(job.status)) return { ok: false, error: "closed" };
+  if (!job.changeable) return { ok: false, error: "closed" };
 
   await client.query("update kk.change_order set status = $2, decided_at = now() where id = $1", [
     changeOrderId,

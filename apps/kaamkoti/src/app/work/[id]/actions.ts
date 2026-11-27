@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { extraWorkInput } from "../../../change-order.ts";
 import { requireMember } from "../../../guard.ts";
+import { bill } from "../../../invoice.ts";
 import { server } from "../../../server.ts";
 import {
   addFoundWork,
@@ -85,10 +86,19 @@ export async function foundWorkAction(_previous: WorkState, form: FormData): Pro
 export async function completeAction(_previous: WorkState, form: FormData): Promise<WorkState> {
   const found = await worker(form);
   if (!found) return { error: WORK_ERROR.not_found };
-  const { db, audit } = server();
-  const result = await db.withTenant(found.member.businessId, (client) =>
-    completeWork(client, audit, found.member, found.jobId, String(form.get("note") ?? "")),
-  );
+  const deps = server();
+  const result = await deps.db.withTenant(found.member.businessId, async (client) => {
+    const done = await completeWork(
+      client,
+      deps.audit,
+      found.member,
+      found.jobId,
+      String(form.get("note") ?? ""),
+    );
+    // The bill goes out with the completion, unless a change order is still waiting for the customer.
+    if (done.ok) await bill(client, deps, found.jobId);
+    return done;
+  });
   if (!result.ok) return { error: WORK_ERROR[result.error] };
   redirect(`/work/${found.jobId}`);
 }

@@ -1,10 +1,12 @@
 "use server";
-import { defineRoute } from "@bodhchakra/tenancy";
+import { minorDigits, parseDecimal } from "@bodhchakra/money";
+import { currentBusiness, defineRoute } from "@bodhchakra/tenancy";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { cancelJob } from "../../../cancel.ts";
 import { openChangeDraft } from "../../../change-order.ts";
 import { requireMember } from "../../../guard.ts";
+import { bill, recordCash, voidInvoice } from "../../../invoice.ts";
 import { openDraft } from "../../../quote.ts";
 import {
   confirmVisitFor,
@@ -164,6 +166,88 @@ export async function startQuote(
   redirect(`/jobs/${jobId.data}/quote`);
 }
 
+export interface InvoiceState {
+  readonly error?: string;
+}
+
+/** Cash the owner took for the job, typed in rupees (4.4); the bill is paid once it is covered. */
+export async function recordCashAction(
+  _previous: InvoiceState,
+  form: FormData,
+): Promise<InvoiceState> {
+  const jobId = z.uuid().safeParse(form.get("jobId"));
+  if (!jobId.success) return { error: "That request was not found." };
+  const owner = await requireMember(route, `/jobs/${jobId.data}`);
+  const { db, audit, payments } = server();
+  const result = await db.withTenant(owner.businessId, async (client) => {
+    const { currency } = await currentBusiness(client);
+    const minor = parseDecimal(String(form.get("amount") ?? "").trim(), minorDigits(currency));
+    if (minor === null) return { ok: false as const, error: "too_much" as const };
+    return recordCash(client, audit, payments, owner, jobId.data, minor);
+  });
+  if (!result.ok) {
+    return {
+      error:
+        result.error === "too_much"
+          ? "Enter an amount up to what is still owed."
+          : result.error === "closed"
+            ? "Nothing is owed on this request now."
+            : "That request was not found.",
+    };
+  }
+  redirect(`/jobs/${jobId.data}`);
+}
+
+/** Voids the job's invoice; the owner may then issue a new one (4.4). */
+export async function voidInvoiceAction(
+  _previous: InvoiceState,
+  form: FormData,
+): Promise<InvoiceState> {
+  const jobId = z.uuid().safeParse(form.get("jobId"));
+  if (!jobId.success) return { error: "That request was not found." };
+  const owner = await requireMember(route, `/jobs/${jobId.data}`);
+  const { db, audit, payments } = server();
+  const result = await db.withTenant(owner.businessId, (client) =>
+    voidInvoice(client, audit, payments, owner, jobId.data),
+  );
+  if (!result.ok) {
+    return {
+      error:
+        result.error === "none"
+          ? "This request has no invoice to void."
+          : "That request was not found.",
+    };
+  }
+  redirect(`/jobs/${jobId.data}`);
+}
+
+/** Issues the completed job's invoice: after a void, or once extra work is answered (4.4). */
+export async function issueInvoiceAction(
+  _previous: InvoiceState,
+  form: FormData,
+): Promise<InvoiceState> {
+  const jobId = z.uuid().safeParse(form.get("jobId"));
+  if (!jobId.success) return { error: "That request was not found." };
+  const owner = await requireMember(route, `/jobs/${jobId.data}`);
+  const deps = server();
+  const result = await deps.db.withTenant(owner.businessId, (client) =>
+    bill(client, deps, jobId.data),
+  );
+  if (!result.ok) {
+    return {
+      error:
+        result.error === "waiting"
+          ? "Extra work is waiting for the customer's answer; the invoice follows it."
+          : result.error === "issued"
+            ? "This request already has an invoice."
+            : result.error === "closed"
+              ? "Only completed work is invoiced."
+              : "That request was not found.",
+    };
+  }
+  redirect(`/jobs/${jobId.data}`);
+}
+
 /** Opens the job's change-order draft (a new one if none is open) and goes to the editor (4.3). */
 export async function startChange(
   _previous: StartQuoteState,
@@ -179,7 +263,7 @@ export async function startChange(
     return {
       error:
         result.error === "closed"
-          ? "Extra work can be priced only between acceptance and completion."
+          ? "Extra work can be priced only between acceptance and the invoice. Void the invoice to add more."
           : "That request was not found.",
     };
   }

@@ -8,9 +8,12 @@ import { z } from "zod";
 import type { JobStatus } from "./job.ts";
 import { localPhone, phone } from "./phone.ts";
 
-/** The customer's list, by state (architecture 6): Active is the default. */
+/**
+ * The customer's list, by state (architecture 6): Active is the default. A completed job is in both lists here;
+ * `customerJobs` keeps it Active until its invoice is paid, then Completed.
+ */
 export const JOB_GROUPS = {
-  active: ["requested", "quoted", "accepted", "scheduled", "in_progress"],
+  active: ["requested", "quoted", "accepted", "scheduled", "in_progress", "completed"],
   completed: ["completed"],
   cancelled: ["cancelled", "declined", "lost"],
 } as const satisfies Record<string, readonly JobStatus[]>;
@@ -153,8 +156,11 @@ export async function customerJobs(
                   order by t.added_at, t.id) as tasks
      from kk.job j
      where j.business_id = $1 and j.customer_id = $2 and j.status = any($3)
+       and (j.status <> 'completed'
+            or exists (select 1 from kk.invoice i
+                       where i.business_id = j.business_id and i.job_id = j.id and i.status = 'paid') = $4)
      order by j.created_at desc, j.number desc`,
-    [customer.businessId, customer.id, JOB_GROUPS[group]],
+    [customer.businessId, customer.id, JOB_GROUPS[group], group === "completed"],
   );
   return rows.map((r) => ({
     id: r.id,

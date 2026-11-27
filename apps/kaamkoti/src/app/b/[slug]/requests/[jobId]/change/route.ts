@@ -2,6 +2,7 @@ import { defineRoute } from "@bodhchakra/tenancy";
 import { z } from "zod";
 import { answerChangeOrder } from "../../../../../../change-order.ts";
 import { customerPost } from "../../../../../../guard.ts";
+import { bill } from "../../../../../../invoice.ts";
 import { server } from "../../../../../../server.ts";
 
 // The signed-in customer's approval or refusal of a change order on their own request (architecture 6, 7; 4.3).
@@ -35,15 +36,20 @@ export async function POST(
       answer: form.get("answer"),
     });
     if (!read.success) return `${page}?change=form`;
+    const deps = server();
     const answered = await answerChangeOrder(
       client,
-      server().audit,
+      deps.audit,
       customer,
       jobId,
       read.data.changeOrder,
       read.data.answer === "approve",
     );
-    if (answered.ok) return `${page}?change=${read.data.answer}`;
+    if (answered.ok) {
+      // On a completed job the bill was waiting for this answer; before completion this issues nothing.
+      await bill(client, deps, jobId);
+      return `${page}?change=${read.data.answer}`;
+    }
     if (answered.error === "not_found") return new Response("No such request.\n", { status: 404 });
     return `${page}?change=${answered.error}`;
   });
