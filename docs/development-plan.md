@@ -4,7 +4,18 @@ What we are building: [product-brief.md](product-brief.md). Shared modules:
 [platform-modules.md](platform-modules.md). The design is in [architecture.md](architecture.md);
 its first table says which sections each step reads.
 
-**Current position:** 4.1b done (2026-11-27): Kaam Koti takes deposits through the owner's own Razorpay.
+**Current position:** 4.2 done (2026-11-27): job execution. A technician's home lists the work given to them;
+the job sheet `/work/<jobId>` (scope `member`, owner and technician; `src/work.ts`, whose one query applies the
+"assigned to me" rule, so another technician's job is a 404) checks in (`scheduled → in_progress`, new table
+`kk.job_visit` with the business's checklist copied), saves each tick, takes before/after photos
+(`/work/<jobId>/photos`, at most 12 per job, 4 per post) and marks complete (`→ completed`; appointment and
+approved tasks `done`; the note kept). The owner's job page links to the sheet. The checklist need not be fully
+ticked. No notice to the customer on completion yet: it comes with the invoice in 4.4. Seed: Sharma #3,
+scheduled today for Imran; Sharma's checklist has three items. Verified: kaamkoti 216 (14 new), typecheck;
+3 mutants killed (technician assignment, ticks outside `in_progress`, photo limit); `check:browser` passed on a
+fresh stack (start the dev server and worker only after `up:fresh`: they keep stale Redis and pg-boss
+connections otherwise). **Next: 4.3 (HIGH)** in a fresh session.
+Before it, 4.1b done (2026-11-27): Kaam Koti takes deposits through the owner's own Razorpay.
 `/settings/payments` connects it (only the key id is shown back) and gives the webhook address,
 `/hooks/razorpay/<businessId>` (scope `provider-webhook`), which records money and queues `payment.received`
 to the owner (new platform template). The customer's job page has a Deposit panel; Pay (`…/requests/<jobId>/pay`,
@@ -367,7 +378,7 @@ also write the module's README, and their tests run through the module's public 
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | -------- | ------ | ---------------------------------------------------------------------------------------------------------------------- |
 | 4.1a | `[module]` `payments` (D5, split from 4.1 2026-11-27): tables, encrypted account, Razorpay adapter (payment link create and cancel, webhook signature), `handleWebhook` verified and deduplicated, idempotent recording, part-payments summed, `recordManual` | M    | HIGH     | done   | Replayed and forged webhooks are rejected; paid state comes only from the webhook (real Postgres, local fake provider) |
 | 4.1b | Kaam Koti wiring: owner connects Razorpay in settings, webhook route (`provider-webhook` scope), deposit link on accept, customer pays from their space, open links cancelled with the job, `payment.received` notify                                         | M    | HIGH     | done   | A deposit paid through a webhook shows on the job at 375 px; cancelling a job cancels its open link                    |
-| 4.2  | Job execution (basic): check-in, checklist, photos, mark complete                                                                                                                                                                                             | M    | STANDARD | todo   | Technician completes a job at 375 px                                                                                   |
+| 4.2  | Job execution (basic): check-in, checklist, photos, mark complete                                                                                                                                                                                             | M    | STANDARD | done   | Technician completes a job at 375 px                                                                                   |
 | 4.3  | Change orders: extra work found on site or tasks the customer adds after acceptance; business prices, customer re-approves                                                                                                                                    | M    | HIGH     | todo   | Invoice includes only approved change orders                                                                           |
 | 4.4  | Invoice from accepted quote plus change orders; cash payment recorded by the owner                                                                                                                                                                            | M    | HIGH     | todo   | Invoice totals match the tests; a paid invoice is immutable                                                            |
 

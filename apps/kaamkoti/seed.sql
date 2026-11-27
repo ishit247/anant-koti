@@ -2,7 +2,8 @@
 -- manual checks can name rows. Two businesses with three customers each, so isolation always has rows on both
 -- sides. Phone numbers are in the fictional +91 90000 range; emails use example.com.
 -- Grows with the schema: two requests per business, one of Sharma's quoted, and Kaveri's #3 negotiated to
--- acceptance; jobs across the other states of section 6 arrive with the steps that move them there.
+-- acceptance, Sharma's #3 scheduled for today's work; jobs across the other states of section 6 arrive with the
+-- steps that move them there.
 insert into tenancy.business (id, slug, name, phone, city) values
   ('10000000-0000-4000-8000-000000000001', 'sharma-cooling', 'Sharma Cooling Services', '+919000000101', 'Pune'),
   ('20000000-0000-4000-8000-000000000002', 'kaveri-electricals', 'Kaveri Electricals', '+919000000202', 'Bengaluru');
@@ -58,7 +59,8 @@ insert into kk.customer_address (id, business_id, customer_id, label, contact_na
 -- Kaveri built its own list. Prices are in paise, tax in basis points.
 insert into kk.business_profile (business_id, trade_key, about, service_area, checklist, terms) values
   ('10000000-0000-4000-8000-000000000001', 'ac_repair', 'AC and appliance repair across Pune since 2012.',
-   'Pune, Pimpri-Chinchwad', '[{"key":"power_off","label":"Power isolated before opening"}]',
+   'Pune, Pimpri-Chinchwad',
+   '[{"key":"power_off","label":"Power isolated before opening"},{"key":"cause_found","label":"Cause of the fault found and explained to the customer"},{"key":"drain_checked","label":"Drain line clear, no leaks"}]',
    'Quote is valid for 7 days. Parts replaced carry a 30-day warranty. Payment is due on completion.'),
   ('20000000-0000-4000-8000-000000000002', 'electrician', '', 'Bengaluru south', '[]',
    'Payment is due on completion.');
@@ -183,3 +185,33 @@ insert into kk.appointment (business_id, job_id, kind, technician_member_id, sta
   ('10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-0000000e0001', 'site_visit',
    '10000000-0000-4000-8000-0000000a0002',
    date_trunc('day', now()) + interval '1 day 10 hours', date_trunc('day', now()) + interval '1 day 11 hours');
+
+-- Work ready to do (4.2): Sharma's request #3, Rahul's AC service, quoted at ₹944, accepted, and its time
+-- confirmed for today with the technician, so the job is `scheduled` and Imran can check in, tick the
+-- checklist, add photos and complete it.
+insert into kk.job (id, business_id, customer_id, number, source, contact_name, contact_phone_e164, address) values
+  ('10000000-0000-4000-8000-0000000e0003', '10000000-0000-4000-8000-000000000001',
+   '10000000-0000-4000-8000-0000000c0002', 3, 'phone', 'Rahul Joshi', '+919000001002',
+   '12 Lane 5, Baner, Pune');
+insert into kk.job_task (id, business_id, job_id, catalogue_item_id, title, added_by) values
+  ('10000000-0000-4000-8000-0000000f0005', '10000000-0000-4000-8000-000000000001',
+   '10000000-0000-4000-8000-0000000e0003', '10000000-0000-4000-8000-0000000b0003', 'AC general service',
+   'business');
+insert into kk.quote (id, business_id, job_id, version, net_minor, tax_minor, total_minor) values
+  ('10000000-0000-4000-8000-000000100002', '10000000-0000-4000-8000-000000000001',
+   '10000000-0000-4000-8000-0000000e0003', 1, 80000, 14400, 94400);
+insert into kk.quote_line (business_id, job_id, quote_id, position, job_task_id, catalogue_item_id, description,
+                           unit, quantity_milli, unit_price_minor, tax_rate_bp, net_minor, tax_minor) values
+  ('10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-0000000e0003',
+   '10000000-0000-4000-8000-000000100002', 0, '10000000-0000-4000-8000-0000000f0005',
+   '10000000-0000-4000-8000-0000000b0003', 'AC general service', 'unit', 1000, 80000, 1800, 80000, 14400);
+update kk.quote set status = 'sent', sent_at = now(), valid_until = now() + interval '7 days'
+  where id = '10000000-0000-4000-8000-000000100002';
+update kk.quote set status = 'accepted', decided_at = now() where id = '10000000-0000-4000-8000-000000100002';
+update kk.job_task set status = 'approved' where id = '10000000-0000-4000-8000-0000000f0005';
+insert into kk.appointment (id, business_id, job_id, kind, technician_member_id, starts_at, ends_at) values
+  ('10000000-0000-4000-8000-000000120001', '10000000-0000-4000-8000-000000000001',
+   '10000000-0000-4000-8000-0000000e0003', 'work', '10000000-0000-4000-8000-0000000a0002',
+   date_trunc('day', now()) + interval '9 hours', date_trunc('day', now()) + interval '11 hours');
+update kk.job set status = 'scheduled', accepted_quote_id = '10000000-0000-4000-8000-000000100002'
+  where id = '10000000-0000-4000-8000-0000000e0003';

@@ -209,6 +209,11 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
               {work.note ? `: "${work.note}"` : "."} Propose a new one below.
             </p>
           ) : null}
+          {["scheduled", "in_progress", "completed"].includes(job.status) ? (
+            <a className="button quiet" href={`/work/${job.id}`}>
+              {job.status === "scheduled" ? "Open the job sheet" : "Checklist, photos and notes"}
+            </a>
+          ) : null}
           {visitable ? (
             <PlanVisit jobId={job.id} workable={job.status === "accepted"} team={team} />
           ) : null}

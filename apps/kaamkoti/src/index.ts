@@ -146,6 +146,24 @@ export {
   saveTradeTemplate,
   type TradeTemplate,
 } from "./trade-template.ts";
+export {
+  addWorkPhotos,
+  type ChecklistResult,
+  checkIn,
+  completeWork,
+  MAX_WORK_PHOTOS,
+  type MyWorkRow,
+  myWork,
+  tickChecklist,
+  WORK_PHOTO_KINDS,
+  type WorkError,
+  type Worker,
+  type WorkPhotoKind,
+  type WorkPhotoResult,
+  type WorkResult,
+  type WorkSheet,
+  workSheet,
+} from "./work.ts";
 
 /** The role web and worker connect as (docs/architecture.md, section 2); migrations grant to it. */
 export const RUNTIME_ROLE = "kaamkoti_app";

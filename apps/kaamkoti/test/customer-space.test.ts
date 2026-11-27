@@ -110,13 +110,13 @@ describe("the customer space on the seeded database", () => {
   });
 
   it("claims an owner-entered customer by verified mobile, and keeps it from the next identity with it", async () => {
-    // Sharma entered Rahul by phone, with no email and no identity; his phone enquiry is Sharma's #2.
+    // Sharma entered Rahul by phone, with no email and no identity; his phone enquiries are Sharma's #2 and #3.
     const rahul = {
       identityId: "00000000-0000-4000-8000-00000000d097",
       email: null,
       phone: "+919000001002",
     };
-    expect(await home(SHARMA, rahul)).toEqual([2]);
+    expect(await home(SHARMA, rahul)).toEqual([3, 2]);
     const { rows } = await owner.tx((c) =>
       c.query<{ identity_id: string }>("select identity_id from kk.customer where id = $1", [
         "10000000-0000-4000-8000-0000000c0002",

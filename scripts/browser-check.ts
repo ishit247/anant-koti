@@ -10,6 +10,7 @@
 // connects Razorpay (a local stand-in on 45451, and the browser answers its pages); she pays the deposit, which
 // shows as paid only once the signed webhook arrives, and cancelling a second job cancels its open link. A seeded
 // customer signs in on the bare domain and sees only her own request; intake answers 429 past its per-IP limit.
+// The seeded technician checks in on today's job, ticks the checklist, adds a photo and completes it (4.2).
 // Each page is screenshotted at phone and desktop width into .validation/browser/; the run fails on a console
 // error, a page wider than the viewport, or a cookie on the public page.
 import { createHmac } from "node:crypto";
@@ -925,7 +926,68 @@ try {
   if (!(await ownerPage.getByRole("link", { name: "Call" }).getAttribute("href"))?.endsWith("1011"))
     problems.push("the owner's Call does not ring the person at the address");
   await shoot(ownerPage, "16f-owner-job-for-someone-else");
+
+  // Doing the work (4.2): the owner cannot open a job sheet whose work is not planned; the technician Imran
+  // opens today's job (Sharma's #3, seed.sql) from his home, checks in, ticks the checklist, adds a photo and
+  // completes it. His session posts no photo to a job not given to him.
+  const QUOTED_JOB = "10000000-0000-4000-8000-0000000e0002";
+  const SCHEDULED_JOB = "10000000-0000-4000-8000-0000000e0003";
+  if ((await sharma.request.get(`${APP}/work/${QUOTED_JOB}`)).status() !== 404)
+    problems.push("a job sheet opened for a job whose work is not planned");
   await sharma.close();
+
+  const imran = await browser.newContext({ viewport: WIDTHS.phone });
+  const field = await imran.newPage();
+  watchConsole(field, "technician");
+  await field.goto(`${APP}/`);
+  await field.getByRole("link", { name: "Sign in" }).click();
+  await signInAs(field, "imran@example.com");
+  await field.waitForURL(`${APP}/`);
+  await shoot(field, "17a-technician-home");
+  await field.locator(`a.card[href="/work/${SCHEDULED_JOB}"]`).click();
+  await field.waitForURL(`${APP}/work/${SCHEDULED_JOB}`);
+  await shoot(field, "17b-job-sheet-scheduled");
+  if ((await imran.request.get(`${APP}/jobs/${SCHEDULED_JOB}`)).status() !== 404)
+    problems.push("the technician opened the owner's job page");
+  await field.getByRole("button", { name: "Check in" }).click();
+  await field.getByRole("button", { name: "Mark complete" }).waitFor();
+  const boxes = field.locator("input[name=done]");
+  for (const i of [0, 1]) {
+    // Each tick posts the server action; wait for its answer before the next.
+    await Promise.all([
+      field.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/work/")),
+      boxes.nth(i).check(),
+    ]);
+  }
+  await field.locator("input[name=photo]").setInputFiles({
+    name: "before.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(ONE_PIXEL_PNG, "base64"),
+  });
+  await field.getByRole("button", { name: "Add photos" }).click();
+  await field.locator("img[alt='Before the work']").waitFor();
+  await field.reload();
+  if ((await field.locator("input[name=done]:checked").count()) !== 2)
+    problems.push("the job sheet did not keep the checklist ticks");
+  await shoot(field, "17c-job-sheet-under-way");
+  const forged = await imran.request.post(`${APP}/work/${QUOTED_JOB}/photos`, {
+    headers: { "sec-fetch-site": "same-origin" },
+    multipart: {
+      kind: "before",
+      photo: { name: "x.png", mimeType: "image/png", buffer: Buffer.from(ONE_PIXEL_PNG, "base64") },
+    },
+    maxRedirects: 0,
+  });
+  if (forged.status() !== 404)
+    problems.push(`a photo for a job not given to the technician answered ${forged.status()}`);
+  await field.fill("textarea[name=note]", "Cleaned the filters and coils.");
+  await field.getByRole("button", { name: "Mark complete" }).click();
+  await field.getByRole("heading", { name: "Done" }).waitFor();
+  await shoot(field, "17d-job-sheet-done");
+  await field.goto(`${APP}/`);
+  if ((await field.locator(`a.card[href="/work/${SCHEDULED_JOB}"]`).count()) !== 0)
+    problems.push("the completed job is still on the technician's list");
+  await imran.close();
 } finally {
   await owner?.close();
   await browser.close();

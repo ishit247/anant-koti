@@ -27,6 +27,8 @@ create table kk.appointment (
     technician_member_id with =,
     tstzrange(starts_at, ends_at) with &&
   ) where (status in ('proposed', 'planned')),
+  -- Target of job_visit's composite foreign key.
+  unique (business_id, id),
   foreign key (business_id, job_id) references kk.job (business_id, id),
   foreign key (business_id, technician_member_id) references tenancy.member (business_id, id)
 );

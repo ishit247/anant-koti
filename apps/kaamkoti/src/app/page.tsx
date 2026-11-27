@@ -4,7 +4,9 @@ import { redirect } from "next/navigation";
 import { businessProfile } from "../business-profile.ts";
 import { requireMember } from "../guard.ts";
 import { countNewRequests } from "../inbox.ts";
+import { formatWhen, STATUS_LABEL, statusTone } from "../job-labels.ts";
 import { server } from "../server.ts";
+import { myWork } from "../work.ts";
 import { OwnerNav } from "./owner-nav.tsx";
 import { ShareLink } from "./share-link.tsx";
 import { InviteForm } from "./team/invite-form.tsx";
@@ -33,7 +35,7 @@ export default async function Home() {
   }
   const me = await requireMember(route);
   const { db, payments } = server();
-  const { business, members, profile, newRequests, paymentsConnected } = await db.withTenant(
+  const { business, members, profile, newRequests, paymentsConnected, work } = await db.withTenant(
     me.businessId,
     async (client) => ({
       business: await currentBusiness(client),
@@ -42,6 +44,7 @@ export default async function Home() {
       newRequests: me.role === "owner" ? await countNewRequests(client) : 0,
       paymentsConnected:
         me.role === "owner" && (await payments.connectedAccount(client, me.businessId)) !== null,
+      work: me.role === "technician" ? await myWork(client, me.memberId) : [],
     }),
   );
   if (me.role === "owner" && !profile) redirect("/onboarding");
@@ -109,7 +112,33 @@ export default async function Home() {
           <OwnerNav current="/" />
         </>
       ) : (
-        <p className="empty">Your jobs will appear here once the owner assigns them.</p>
+        <>
+          <h2>My jobs</h2>
+          {work.length > 0 ? (
+            <ul className="cards">
+              {work.map((job) => (
+                <li key={job.jobId}>
+                  <a className="card" href={`/work/${job.jobId}`}>
+                    <div className="row">
+                      <strong>
+                        #{job.number} · {job.contactName}
+                      </strong>
+                      <span className={`chip ${statusTone(job.status)}`}>
+                        {STATUS_LABEL[job.status]}
+                      </span>
+                    </div>
+                    <span className="muted small">
+                      {formatWhen(job.startsAt)}
+                      {job.address ? ` · ${job.address}` : ""}
+                    </span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="empty">Your jobs will appear here once the owner assigns them.</p>
+          )}
+        </>
       )}
     </>
   );

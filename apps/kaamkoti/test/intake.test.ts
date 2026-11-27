@@ -167,7 +167,7 @@ describe("the request form", () => {
   it("creates the signed-in person's customer row from their first place, and the job with its own copy, on their page", async () => {
     const result = await submit(request({ latitude: "18.5590", longitude: "73.8070" }));
     if (!result.ok) throw new Error(result.error);
-    expect(result.number).toBe(3);
+    expect(result.number).toBe(4);
     const { rows } = await owner.tx((c) =>
       c.query(
         `select j.source, j.status, j.contact_name, j.contact_phone_e164, j.address, j.latitude, j.longitude,
@@ -189,7 +189,7 @@ describe("the request form", () => {
       phone_e164: "+919876543210",
       email: "vikram@example.test",
     });
-    expect(await ownRequest(result.jobId)).toMatchObject({ number: 3, status: "requested" });
+    expect(await ownRequest(result.jobId)).toMatchObject({ number: 4, status: "requested" });
   });
 
   it("makes each work item a task in the order sent; a price-list name is that item, any other the customer's own", async () => {

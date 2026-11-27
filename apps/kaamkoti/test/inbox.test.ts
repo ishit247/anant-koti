@@ -43,10 +43,11 @@ describe("the owner's inbox on the seeded database", () => {
   it("lists only this business's requests, from every source, newest first", async () => {
     const rows = await app.withTenant(SHARMA, listInbox);
     expect(rows.map((r) => [r.number, r.source, r.customerName])).toEqual([
+      [3, "phone", "Rahul Joshi"],
       [2, "phone", expect.any(String)],
       [1, "public_form", "Anita Deshpande"],
     ]);
-    expect(rows[1]?.tasks).toEqual(["AC gas refill", "AC general service", "Broken wire"]);
+    expect(rows[2]?.tasks).toEqual(["AC gas refill", "AC general service", "Broken wire"]);
     expect(await app.withTenant(KAVERI, listInbox)).toHaveLength(3);
   });
 
